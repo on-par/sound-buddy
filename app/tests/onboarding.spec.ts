@@ -2,6 +2,7 @@ import { test, expect, type ElectronApplication, type Page } from '@playwright/t
 import { launchElectron } from './launch-electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import { FAKE_ANALYSIS } from './e2e/e2e-helpers';
 
 // First-run onboarding (#69), run for REAL against a throwaway --user-data-dir:
 // a brand-new user sees the welcome overlay, one click analyzes the bundled demo
@@ -11,6 +12,10 @@ import * as fs from 'fs';
 
 const MAIN = path.join(__dirname, '..', 'dist', 'electron', 'main.js');
 const USER_DATA = path.join(__dirname, '..', 'test-results', 'onboarding-userdata');
+const SILENCE = path.join(__dirname, 'fixtures', 'silence.wav');
+const SIMPLE_MODES = ['analyze', 'history', 'reportcard'];
+const ADVANCED_MODES = ['dir', 'live', 'console', 'recent', 'guide', 'ringout'];
+const ALL_MODES = ['analyze', 'history', 'dir', 'live', 'console', 'recent', 'guide', 'ringout', 'reportcard'];
 
 let app: ElectronApplication;
 let win: Page;
@@ -19,6 +24,20 @@ async function launch(): Promise<void> {
   app = await launchElectron({ args: [MAIN, `--user-data-dir=${USER_DATA}`] });
   win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
+}
+
+async function launchWithAdvancedEnvOverrideCleared(): Promise<void> {
+  const env = { ...process.env };
+  delete env.SOUND_BUDDY_ADVANCED_FEATURES;
+  app = await launchElectron({ args: [MAIN, `--user-data-dir=${USER_DATA}`], env });
+  win = await app.firstWindow();
+  await win.waitForLoadState('domcontentloaded');
+}
+
+async function expectTabHiddenAttr(mode: string, hidden: boolean): Promise<void> {
+  const tab = win.locator(`.mode-tab[data-mode="${mode}"]`);
+  await expect(tab).toHaveCount(1);
+  await expect.poll(() => tab.evaluate((el) => (el as HTMLButtonElement).hidden)).toBe(hidden);
 }
 
 test.describe.serial('First-run onboarding (#69)', () => {
@@ -71,5 +90,100 @@ test.describe.serial('First-run onboarding (#69)', () => {
     // No analysis ran, and the seen flag persisted so it won't reappear.
     const ls = await win.evaluate(() => localStorage.getItem('sb-onboarding-seen-v1'));
     expect(ls).toBe('1');
+  });
+
+  test('new installs boot into Simple mode with Report Card ready', async () => {
+    fs.rmSync(USER_DATA, { recursive: true, force: true });
+    await launchWithAdvancedEnvOverrideCleared();
+
+    await expect(win.locator('body')).toHaveClass(/simple-mode/);
+    await expect(win.locator('#reportcard-view')).toHaveClass(/active/);
+    await expect(win.locator('#file-dropzone')).toBeVisible();
+    for (const mode of SIMPLE_MODES) await expectTabHiddenAttr(mode, false);
+    for (const mode of ADVANCED_MODES) await expectTabHiddenAttr(mode, true);
+  });
+
+  test('an active rig preserves Advanced tabs for existing users', async () => {
+    fs.rmSync(USER_DATA, { recursive: true, force: true });
+    fs.mkdirSync(USER_DATA, { recursive: true });
+    fs.writeFileSync(path.join(USER_DATA, 'settings.json'), JSON.stringify({ activeRigId: 'r1' }, null, 2));
+    await launchWithAdvancedEnvOverrideCleared();
+
+    await expect(win.locator('body')).not.toHaveClass(/simple-mode/);
+    for (const mode of ALL_MODES) await expectTabHiddenAttr(mode, false);
+  });
+
+  test('console network consent preserves Advanced tabs for existing users', async () => {
+    fs.rmSync(USER_DATA, { recursive: true, force: true });
+    fs.mkdirSync(USER_DATA, { recursive: true });
+    fs.writeFileSync(path.join(USER_DATA, 'settings.json'), JSON.stringify({ consoleNetworkConsentGranted: true }, null, 2));
+    await launchWithAdvancedEnvOverrideCleared();
+
+    await expect(win.locator('body')).not.toHaveClass(/simple-mode/);
+    for (const mode of ALL_MODES) await expectTabHiddenAttr(mode, false);
+  });
+
+  test('Simple mode onboarding points users at the Report Card dropzone or Analyze', async () => {
+    fs.rmSync(USER_DATA, { recursive: true, force: true });
+    fs.mkdirSync(USER_DATA, { recursive: true });
+    fs.writeFileSync(path.join(USER_DATA, 'settings.json'), JSON.stringify({ advancedFeaturesEnabled: false }, null, 2));
+    await launchWithAdvancedEnvOverrideCleared();
+
+    const copy = win.locator('#onboarding-copy');
+    await expect(copy).toHaveText("Drop last Sunday's recording on the Report Card panel - or click Analyze - and Sound Buddy hands back a report card telling you what to fix.");
+    await expect(copy).toContainText('report card');
+    await expect(copy).toContainText('Report Card');
+    await expect(copy).toContainText('Analyze');
+  });
+
+  test('Simple mode hides advanced tabs but leaves their buttons mounted', async () => {
+    fs.rmSync(USER_DATA, { recursive: true, force: true });
+    fs.mkdirSync(USER_DATA, { recursive: true });
+    fs.writeFileSync(path.join(USER_DATA, 'settings.json'), JSON.stringify({ advancedFeaturesEnabled: false }, null, 2));
+    await launchWithAdvancedEnvOverrideCleared();
+
+    await expect(win.locator('body')).toHaveClass(/simple-mode/);
+    await expect(win.locator('#nav-history')).toBeVisible();
+    await expect(win.locator('.mode-tab[data-mode="reportcard"]')).toBeVisible();
+    await expect(win.locator('#nav-analyze')).toBeVisible();
+
+    for (const mode of ADVANCED_MODES) await expectTabHiddenAttr(mode, true);
+  });
+
+  test('Simple mode Analyze opens the native file choice directly', async () => {
+    fs.rmSync(USER_DATA, { recursive: true, force: true });
+    fs.mkdirSync(USER_DATA, { recursive: true });
+    fs.writeFileSync(path.join(USER_DATA, 'settings.json'), JSON.stringify({ advancedFeaturesEnabled: false }, null, 2));
+    await launchWithAdvancedEnvOverrideCleared();
+    await app.evaluate(({ ipcMain }, payload) => {
+      const { fixturePath, analysis } = payload;
+      ipcMain.removeHandler('open-file-dialog');
+      ipcMain.handle('open-file-dialog', () => fixturePath);
+      ipcMain.removeHandler('analyze-file');
+      ipcMain.handle('analyze-file', () => ({
+        success: true,
+        data: {
+          ...analysis,
+          filePath: fixturePath,
+          ffprobe: {
+            ...analysis.ffprobe,
+            format: { ...analysis.ffprobe.format, filename: fixturePath },
+          },
+        },
+      }));
+    }, { fixturePath: SILENCE, analysis: FAKE_ANALYSIS });
+
+    await expect(win.locator('body')).toHaveClass(/simple-mode/);
+    await win.locator('#onboarding-skip').click();
+    await expect(win.locator('#onboarding-dialog')).toBeHidden();
+    await expect(win.locator('#analyze-source-picker')).toHaveCount(0);
+    await win.locator('#nav-analyze').click();
+
+    await expect(win.locator('#analyze-source-picker')).toHaveCount(0);
+    await expect(win.locator('#reportcard-view')).toHaveClass(/active/);
+    await expect(win.locator('#rc-content')).toBeVisible();
+    await expect(win.locator('#rc-filename')).toHaveText('silence.wav');
+    await expect(win.locator('.mode-tab[data-mode="reportcard"]')).toHaveClass(/active/);
+    await expect(win.locator('#nav-analyze')).not.toHaveClass(/active/);
   });
 });

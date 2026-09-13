@@ -493,7 +493,11 @@ test.describe('Session tab playback (#1080)', () => {
     await expect(window.locator('.daw-transport-time')).toHaveText('0:02');
 
     await sendLiveEvent({ type: 'meter', channels: [{ rms: -18, peak: -6 }] });
-    await expect(window.locator('.daw-track-head-level-fill').first()).toHaveAttribute('style', 'width:78.26086956521739%');
+    const expectedMeterFillPercent = 78.2609;
+    const fillWidth = await window.locator('.daw-track-head-level-fill').first()
+      .evaluate((element) => (element as HTMLElement).style.width);
+    expect(fillWidth.endsWith('%')).toBe(true);
+    expect(parseFloat(fillWidth)).toBeCloseTo(expectedMeterFillPercent, 3);
   });
 
   test('session-timeline-monitoring', async () => {

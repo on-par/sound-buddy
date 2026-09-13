@@ -25,7 +25,7 @@ const FULL_SETTINGS: AppSettings = {
   inputInstrumentProfiles: {},
   crashReportingEnabled: true,
   liveAdjustmentsEnabled: true,
-  reportFirstUxEnabled: false,
+  advancedFeaturesEnabled: true,
   shareChurchName: '',
   weeklyReminderEnabled: true,
   weeklyReminderServiceDay: 3,
@@ -41,6 +41,7 @@ const FULL_SETTINGS: AppSettings = {
 describe('instantSettingValues', () => {
   it('returns the documented defaults when settings is null', () => {
     expect(instantSettingValues(null)).toEqual({
+      advancedFeaturesEnabled: true,
       gradingProfile: 'casual',
       weeklyReminderEnabled: false,
       weeklyReminderServiceDay: 0,
@@ -52,6 +53,7 @@ describe('instantSettingValues', () => {
 
   it('mirrors a fully-populated AppSettings field by field', () => {
     expect(instantSettingValues(FULL_SETTINGS)).toEqual({
+      advancedFeaturesEnabled: true,
       gradingProfile: 'broadcast',
       weeklyReminderEnabled: true,
       weeklyReminderServiceDay: 3,
@@ -75,11 +77,17 @@ describe('instantSettingValues', () => {
     const settings = { ...FULL_SETTINGS, usageSignalEnabled: 1 } as unknown as AppSettings;
     expect(instantSettingValues(settings).usageSignalEnabled).toBe(true);
   });
+
+  it('treats advancedFeaturesEnabled as an instant boolean setting', () => {
+    expect(instantSettingValues({ ...FULL_SETTINGS, advancedFeaturesEnabled: false }).advancedFeaturesEnabled).toBe(false);
+    expect(instantSettingValues({ ...FULL_SETTINGS, advancedFeaturesEnabled: true }).advancedFeaturesEnabled).toBe(true);
+  });
 });
 
 describe('commitInstantSetting', () => {
   const CASES: { key: InstantSettingKey; value: InstantSettingValues[InstantSettingKey] }[] = [
     { key: 'gradingProfile', value: 'broadcast' },
+    { key: 'advancedFeaturesEnabled', value: false },
     { key: 'weeklyReminderEnabled', value: true },
     { key: 'weeklyReminderServiceDay', value: 5 },
     { key: 'usageSignalEnabled', value: true },

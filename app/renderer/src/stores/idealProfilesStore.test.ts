@@ -153,7 +153,7 @@ describe('createIdealProfilesStore', () => {
   });
 
   describe('openEditor / closeEditor', () => {
-    it('opens the editor for a new curve, seeded from the auto-resolved profile', () => {
+    it('opens the editor before analysis for a new curve, seeded from the auto-resolved profile with capture disabled', () => {
       const { deps } = createFakeDeps();
       const store = createIdealProfilesStore(deps);
 
@@ -164,6 +164,7 @@ describe('createIdealProfilesStore', () => {
       expect(store.getState().editor.title).toBe('Create Ideal Curve');
       expect(store.getState().editor.name).toBe('Copy of Worship service');
       expect(store.getState().editor.bands).toHaveLength(7);
+      expect(store.getState().editor.canCapture).toBe(false);
       expect(store.getState().editor.canDelete).toBe(false);
     });
 
@@ -238,7 +239,7 @@ describe('createIdealProfilesStore', () => {
       expect(settingsCalls).toHaveLength(0);
     });
 
-    it('upserts, persists, selects the new custom profile, and closes the editor', async () => {
+    it('upserts, persists, selects the new custom profile, and closes the editor without analysis data', async () => {
       const { deps, settingsCalls } = createFakeDeps();
       const store = createIdealProfilesStore(deps);
       store.getState().openEditor();
@@ -256,7 +257,7 @@ describe('createIdealProfilesStore', () => {
       });
     });
 
-    it('updates an existing custom profile in place when editing it', async () => {
+    it('updates an existing custom profile in place without analysis data when editing it', async () => {
       const { deps } = createFakeDeps();
       const store = createIdealProfilesStore(deps);
       store.setState({ selectedId: 'custom:sanctuary-ref', customProfiles: [customProfile()] });

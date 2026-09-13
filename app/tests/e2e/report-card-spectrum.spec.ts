@@ -40,22 +40,27 @@ test.describe('Sound Buddy E2E — report card spectrum', () => {
     await expect(window.locator('#source-panel')).toBeHidden();
   });
 
-  test('spectrum panel renders uniform-width EQ bars (AW-2, #178)', async () => {
+  test('spectrum panel renders analyzer-style EQ bars (#1446)', async () => {
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
 
-    // Seven upright bars, one per frequency band, laid out left (lowest) to right.
+    // Seven upright bars, one per frequency band, laid out on the same
+    // log-frequency analyzer frame as live monitoring.
     const bars = window.locator('#spectrum-chart .veq-bar');
     await expect(bars).toHaveCount(7);
     const boxes = await bars.evaluateAll(els => els.map(el => (el as HTMLElement).getBoundingClientRect()));
     for (let i = 1; i < boxes.length; i++) expect(boxes[i].left).toBeGreaterThan(boxes[i - 1].left);
 
-    // Every bar has the same width.
+    // Band widths follow frequency span on the log grid; this intentionally
+    // replaces the old uniform-width graphic EQ style.
     const widths = boxes.map(b => Math.round(b.width));
-    for (const w of widths) expect(w).toBe(widths[0]);
+    expect(new Set(widths).size).toBeGreaterThan(1);
 
-    // Each bar keeps its existing per-band color (distinct across the 7 bands).
+    // Bars share the live analyzer energy color; frequency identity comes from
+    // muted background zones and the band labels.
     const colors = await bars.evaluateAll(els => els.map(el => getComputedStyle(el as HTMLElement).backgroundColor));
-    expect(new Set(colors).size).toBe(7);
+    expect(new Set(colors).size).toBe(1);
+    await expect(window.locator('#spectrum-chart [data-eq-style="live-analyzer"]')).toBeVisible();
+    await expect(window.locator('#spectrum-chart .sb-analyzer-db-pill')).toHaveCount(6);
 
     // Band-name labels replace the old frequency-decade axis, low → high.
     await expect(window.locator('#spectrum-chart .veq-label')).toHaveCount(7);
@@ -83,7 +88,7 @@ test.describe('Sound Buddy E2E — report card spectrum', () => {
     await expect(window.locator('#spectrum-chart .veq-bar.dim')).toHaveCount(0);
   });
 
-  test('time-sampled spectrogram scrubber redraws the AW-2 bars', async () => {
+  test('time-sampled spectrogram scrubber redraws the analyzer bars', async () => {
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
 
     // Heatmap strip under the bars: one column per frame (6 in the fixture).
@@ -101,7 +106,7 @@ test.describe('Sound Buddy E2E — report card spectrum', () => {
     await expect(window.locator('#spectrum-heatmap .hm-col.sel')).toHaveCount(1);
     const frameHeights = await barHeights();
     expect(frameHeights).not.toEqual(avgHeights);
-    // Still 7 uniform-width bars — the scrub redraw stays within AW-2's model.
+    // Still 7 analyzer bars — the scrub redraw stays within the shared EQ style.
     await expect(window.locator('#spectrum-chart .veq-bar')).toHaveCount(7);
 
     // "▶ Average" reset restores the whole-file bars exactly.

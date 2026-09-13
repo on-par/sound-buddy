@@ -15,8 +15,45 @@
 import type { JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useRigStore } from './stores/rigStore';
+import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { rigOptionsView } from './rig-panel';
 import { iconSvg } from './report-card';
+import { captureOptsFromCadence } from './measurement-device-state';
+import { runtime, startLiveCapture, stopCaptureIfRunning, type LiveCaptureRuntime } from './LiveControls';
+
+async function confirmRecordingRigChange(rigName: string): Promise<boolean> {
+  const result = await window.rigDialog?.({
+    title: 'Change rig?',
+    msg: `Sound Buddy will stop this recording and restart capture using "${rigName}".`,
+    confirmLabel: 'Change',
+    withInput: false,
+  });
+  return result === true;
+}
+
+export async function changeRig(id: string, rt: LiveCaptureRuntime | undefined = runtime()): Promise<void> {
+  const rigState = useRigStore.getState();
+  const currentId = rigState.activeRigId ?? '';
+  if (id === currentId) return;
+
+  const live = useLiveCaptureStore.getState();
+  if (live.isCapturing && live.liveMode === 'record') {
+    const rigName = rigState.rigs.find((r) => r.id === id)?.name ?? 'the selected rig';
+    if (!(await confirmRecordingRigChange(rigName))) return;
+    const opts = captureOptsFromCadence(live.windowSecs, live.meterIntervalMs);
+    await stopCaptureIfRunning(rt);
+    if (useLiveCaptureStore.getState().isCapturing) return;
+    await useRigStore.getState().selectRig(id);
+    await startLiveCapture(rt, opts.windowSecs, opts.intervalSecs);
+    return;
+  }
+
+  await useRigStore.getState().selectRig(id);
+  const next = useLiveCaptureStore.getState();
+  if (next.isCapturing && next.liveMode === 'monitor') {
+    await next.restartMonitorCapture();
+  }
+}
 
 export default function RigControls(): JSX.Element {
   const { rigs, activeRigId, locked } = useStoreShallow(useRigStore, (s) => ({
@@ -62,9 +99,8 @@ export default function RigControls(): JSX.Element {
             <select
               id="rig-select"
               value={activeRigId ?? ''}
-              disabled={locked}
-              aria-disabled={locked}
-              onChange={(e) => { void useRigStore.getState().selectRig(e.target.value); }}
+              aria-disabled={false}
+              onChange={(e) => { void changeRig(e.target.value); }}
             >
               <option value="">{placeholder}</option>
               {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}

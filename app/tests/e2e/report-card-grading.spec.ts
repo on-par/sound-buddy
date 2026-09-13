@@ -29,9 +29,9 @@ test.describe('Sound Buddy E2E — report card grading', () => {
     await electronApp.close();
   });
 
-  test('missing spectrum curve degrades to the same uniform-width bars without error', async () => {
+  test('missing spectrum curve degrades to the analyzer-style band bars without error', async () => {
     // Render a spectrum with no `curve` — the fallback path must not throw, and
-    // (AW-2) must render the same bar visualization as the curve path.
+    // must render the same analyzer frame without drawing a fake curve.
     const errors: string[] = [];
     window.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     await window.evaluate(() => {
@@ -42,15 +42,17 @@ test.describe('Sound Buddy E2E — report card grading', () => {
     });
     const bars = window.locator('#spectrum-chart .veq-bar');
     await expect(bars).toHaveCount(7);
-    const widths = await bars.evaluateAll(els => els.map(el => Math.round((el as HTMLElement).getBoundingClientRect().width)));
-    for (const w of widths) expect(w).toBe(widths[0]);
-    await expect(window.locator('#spectrum-body svg.sb-spectrum-curve')).toHaveCount(0);
+    const boxes = await bars.evaluateAll(els => els.map(el => (el as HTMLElement).getBoundingClientRect()));
+    for (let i = 1; i < boxes.length; i++) expect(boxes[i].left).toBeGreaterThan(boxes[i - 1].left);
+    await expect(window.locator('#spectrum-chart [data-eq-style="live-analyzer"]')).toBeVisible();
+    await expect(window.locator('#spectrum-chart .sb-analyzer-band-only')).toBeVisible();
+    await expect(window.locator('#spectrum-chart .sb-curve-line')).toHaveCount(0);
     // Header falls back to the meters label so it matches the fallback view.
     await expect(window.locator('#spectrum-title')).toHaveText('Spectrum · Meters');
     expect(errors).toEqual([]);
   });
 
-  test('report card renders grade, metrics table, and recommendations', async () => {
+  test('report card renders grade, metric rows, and recommendations', async () => {
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
     // This file runs standalone (its own Electron session), so — unlike the
     // original single-session file, where the prior "playback transport"
@@ -62,16 +64,21 @@ test.describe('Sound Buddy E2E — report card grading', () => {
     const grade = (await window.locator('#rc-ring .letter').textContent())?.trim();
     expect(['A', 'B', 'C', 'D', 'F']).toContain(grade);
 
-    // Peak Level leads the metrics table in the redesign (clipping is the headline metric).
-    const metricNames = await window.locator('#rc-metrics-body tr td:first-child .mt-metric').allTextContents();
-    expect(metricNames).toEqual(['Peak Level', 'RMS Level', 'Dynamic Range', 'Clipping', 'Spectral Centroid']);
+    // Peak Level leads the score rows in the redesign (clipping is the headline metric).
+    const metricRows = window.locator('#rc-metric-rows .metric-row');
+    await expect(metricRows).toHaveCount(6);
+    await expect(window.locator('#rc-metric-rows')).toContainText('Peak Level');
+    await expect(window.locator('#rc-metric-rows')).toContainText('RMS Level');
+    await expect(window.locator('#rc-metric-rows')).toContainText('Dynamic Range');
+    await expect(window.locator('#rc-metric-rows')).toContainText('Band Balance');
+    await expect(window.locator('#rc-metric-rows')).toContainText('Clipping');
+    await expect(window.locator('#rc-metric-rows')).toContainText('Spectral Centroid');
 
     // Each row shows its config-sourced target beside the value (#132). RMS reads
     // the acceptable band; Clipping has no config target so it renders an em dash.
-    const targets = await window.locator('#rc-metrics-body tr .mt-target').allTextContents();
-    expect(targets).toHaveLength(5);
-    expect(targets[1]).toBe('-20 to -14 dBFS'); // RMS Level
-    expect(targets[3]).toBe('—'); // Clipping — no target in config
+    await expect(metricRows.nth(0)).toContainText('Target -20 to -14 dBFS'); // RMS Level
+    await expect(metricRows.nth(4)).toContainText('Target No clipping'); // Clipping
+    await expect(window.locator('#rc-metric-rows')).toContainText('-18.0 dBFS');
 
     const recCount = await window.locator('#rc-recommendations .rc-rec').count();
     expect(recCount).toBeGreaterThanOrEqual(1);
@@ -81,6 +88,7 @@ test.describe('Sound Buddy E2E — report card grading', () => {
     // The default fixture grades an A (in-band RMS, healthy DR, balanced bands),
     // so the breakdown is the explicit positive state — never a blank box.
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await loadAndAnalyze(window, fixturePath());
     await expect(window.locator('#rc-content')).toBeVisible();
     await expect(window.locator('#rc-why .rc-why-none')).toBeVisible();
     await expect(window.locator('#rc-why')).toContainText('No deductions');

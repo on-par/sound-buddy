@@ -745,6 +745,37 @@ test.describe('Timeline alignment invariant (#1325)', () => {
     await expect(window.locator('#daw-session-play')).toBeVisible();
   });
 
+  test('follow-scroll advances the viewport while live recording', async () => {
+    const shell = window.locator('.daw-shell');
+    const rangeReadout = window.locator('#daw-zoom-range');
+    const followToggle = window.locator('#daw-follow-toggle');
+
+    // Shrink the visible range to the 1s floor so the wall-clock record head can leave it
+    // quickly. Each toolbar zoom is a navigation event, so follow remains enabled.
+    for (let i = 0; i < 6; i++) {
+      await window.locator('#daw-zoom-in').click();
+    }
+    await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
+    const scrollBefore = await shell.evaluate((el) => getComputedStyle(el).getPropertyValue('--daw-scroll-x').trim());
+    const rangeBefore = await rangeReadout.textContent();
+
+    await window.locator('#daw-session-record').click();
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
+
+    await window.waitForTimeout(1300);
+    await sendLiveMeterTick();
+    await expect.poll(() => window.locator('.daw-playhead-lanes').evaluate((el) => (el as HTMLElement).classList.contains('advancing'))).toBe(true);
+
+    await expect.poll(() => shell.evaluate((el) => getComputedStyle(el).getPropertyValue('--daw-scroll-x').trim()))
+      .not.toBe(scrollBefore);
+    await expect.poll(() => rangeReadout.textContent()).not.toBe(rangeBefore);
+    await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
+
+    await window.locator('#daw-session-record').click();
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
+    await stopCaptureIfRunning(window);
+  });
+
   test('a resumed follow re-acquires the playhead on the next progress tick (#1343)', async () => {
     // #1342 boots at the full range, so one zoom-in narrows the viewport (no Fit-click first).
     await window.locator('#daw-zoom-in').click();

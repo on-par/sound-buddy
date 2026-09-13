@@ -17,7 +17,7 @@ const grading = require('../grading.js');
 const SETTINGS: AppSettings = {
   idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null, usageSignalEnabled: false,
   channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: false, liveAdjustmentsEnabled: false,
-  reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
+  advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
   measurementDeviceName: '', gradingProfile: 'casual', gradingRubric: {}, consoleNetworkConsentGranted: false, soundcheckBuses: [],
   splCalibrationOffsetDb: null, lastAppMode: '',
 };

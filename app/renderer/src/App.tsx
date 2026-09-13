@@ -49,9 +49,7 @@ import dawWorkspaceStateSrc from '../daw-workspace-state.js?raw';
 import dawPlayheadStateSrc from '../daw-playhead-state.js?raw';
 import dawWaveformStateSrc from '../daw-waveform-state.js?raw';
 import liveAdjustmentsStateSrc from '../live-adjustments-state.js?raw';
-import reportFirstUxStateSrc from '../report-first-ux-state.js?raw';
 import singleColumnStateSrc from '../single-column-state.js?raw';
-import analyzeSourceStateSrc from '../analyze-source-state.js?raw';
 import batchAnalysisSrc from '../batch-analysis.js?raw';
 import skillTreeStateSrc from '../skill-tree-state.js?raw';
 import inlineAppSrc from './inline-app.js?raw';
@@ -92,7 +90,6 @@ import { getSoundBuddy } from './useElectron';
 import FeedbackDialog from './FeedbackDialog';
 import GradeOwnGuideDialog from './GradeOwnGuideDialog';
 import PhaseDoublingDialog from './PhaseDoublingDialog';
-import AnalyzeSourcePicker from './AnalyzeSourcePicker';
 import LiveArmHint from './LiveArmHint';
 import MeasurementBadge from './MeasurementBadge';
 import { installStoreBridge } from './stores/bridge';
@@ -106,6 +103,7 @@ import { installLiveFrameProbeTestHook } from './live-frame-probe';
 import { sessionClipSelection } from './clip-selection';
 import { sessionTimeSelection } from './time-selection';
 import { sessionLoopRegion } from './loopBrace.render';
+import { installSimpleModeBodyClassSync } from './simple-mode-body';
 import LiveStatusLine from './LiveStatusLine';
 import LiveSessionOffers from './LiveSessionOffers';
 import WindowBadge from './WindowBadge';
@@ -161,9 +159,7 @@ const BOOT_SCRIPTS = [
   dawPlayheadStateSrc,
   dawWaveformStateSrc,
   liveAdjustmentsStateSrc,
-  reportFirstUxStateSrc,
   singleColumnStateSrc,
-  analyzeSourceStateSrc,
   batchAnalysisSrc,
   skillTreeStateSrc,
   inlineAppSrc,
@@ -331,6 +327,7 @@ export default function App() {
     // Skill-tree onboarding (#382): hydrates progress after BOOT_SCRIPTS so
     // window.skillTreeState exists — same ordering guarantee as onboarding.
     useSkillTreeStore.getState().init();
+    const unsubscribeSimpleModeBodyClass = installSimpleModeBodyClassSync();
     // #report-card/#spectrum-island now exist (just injected above) —
     // trigger the second render that portals ReportCardIsland/SpectrumPanel
     // onto them (TD-001 slice 4, #422).
@@ -344,8 +341,10 @@ export default function App() {
       hydration: (window as unknown as { rendererHydration?: Promise<unknown> }).rendererHydration ?? Promise.resolve(),
       getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
       getCurrentMode: () => useLiveCaptureStore.getState().appMode,
+      getSettings: () => useSettingsStore.getState().settings,
     });
     setBooted(true);
+    return unsubscribeSimpleModeBodyClass;
   }, []);
 
   // #license-island and #settings-island are static nodes in index.html (see
@@ -413,7 +412,6 @@ export default function App() {
       {booted && createPortal(<RigDialog />, document.getElementById('rig-dialog-island')!)}
       {booted && <LicenseChrome />}
       {booted && <ConsoleNetworkConsentDialog />}
-      {booted && <AnalyzeSourcePicker />}
       {booted && createPortal(<UpdateBanner />, document.getElementById('update-surface-island')!)}
       {booted && createPortal(<WhatsNewBanner />, document.getElementById('whats-new-banner-island')!)}
     </>

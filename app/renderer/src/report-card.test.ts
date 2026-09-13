@@ -145,14 +145,16 @@ describe('fmtDev', () => {
 });
 
 describe('deviationMiniCurve', () => {
-  it('renders devbar-over rects for positive deviations and devbar-under for negative', () => {
+  it('renders the shared analyzer style with measured and target curves', () => {
     const svg = deviationMiniCurve([2, -3, 0]);
-    expect(svg).toContain('devbar-over');
-    expect(svg).toContain('devbar-under');
+    expect(svg).toContain('data-eq-style="live-analyzer"');
+    expect(svg).toContain('sb-analyzer-profile-match');
+    expect(svg).toContain('sb-curve-line');
+    expect(svg).toContain('sb-target-line');
   });
-  it('always renders exactly one zero line', () => {
+  it('always renders exactly one target line', () => {
     const svg = deviationMiniCurve([1, -1, 4, -4]);
-    expect(svg.match(/class="zero"/g)?.length).toBe(1);
+    expect(svg.match(/class="sb-target-line"/g)?.length).toBe(1);
   });
 });
 
@@ -692,7 +694,9 @@ describe('bandBreakdownHTML', () => {
   it('renders one row per BAND_META band with a balanced/hot/quiet verdict', () => {
     const bands = { subBass: -20, bass: -10, lowMid: -30, mid: -20, highMid: -20, presence: -20, brilliance: -20 };
     const html = bandBreakdownHTML(bands, g);
-    expect(html.match(/rc-band-row/g)).toHaveLength(7);
+    expect(html).toContain('data-eq-style="live-analyzer"');
+    expect(html).toContain('sb-analyzer-band-breakdown');
+    expect(html.match(/rc-band-verdict /g)).toHaveLength(7);
     expect(html).toContain('rc-band-verdict hot');
     expect(html).toContain('Too Hot');
     expect(html).toContain('rc-band-verdict quiet');
@@ -1156,14 +1160,13 @@ describe('band meter ideal-level overlay', () => {
     expect(html).toContain('title="Balanced level -30.0 dB (moves with the other bands)"');
   });
 
-  it('the breakdown shows a legend naming the baseline, a ±dB deviation per band, and an overlay per row', () => {
+  it('the breakdown shows a legend naming the baseline, a target overlay, and a ±dB deviation per band', () => {
     const pink = { subBass: -60, bass: -64.9, lowMid: -69.7, mid: -74, highMid: -78.8, presence: -81, brilliance: -84.8 };
     const baseline: GradeBaseline = { label: 'Worship service', bandTargets: { subBass: 12, bass: 7.1, lowMid: 2.3, mid: -2, highMid: -6.8, presence: -9, brilliance: -12.8 } };
     const html = bandBreakdownWithBaseline(pink, grading, baseline);
     expect(html).toContain('balanced level vs. Worship service, given the other bands');
-    expect(html).toContain('balanced range (-15 to +12 dB)');
-    expect(html.match(/class="bm-target"/g)).toHaveLength(7);
-    expect(html.match(/rc-band-dev/g)).toHaveLength(7);
+    expect(html).toContain('class="sb-target-line"');
+    expect(html.match(/class="rc-band-verdict [^"]+" data-band=/g)).toHaveLength(7);
     expect(html).toContain('+0.0 dB');
     const flat = bandBreakdownWithBaseline(pink, grading);
     expect(flat).toContain('balanced level vs. the other bands');

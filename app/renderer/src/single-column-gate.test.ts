@@ -5,16 +5,10 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-// Single-column workspace gate (#542, epic e17): renders the Source panel
-// full-width and folds the spectrum panel away for Recent / Build Guide /
-// Ring-Out when report-first-ux is on, mirroring report-first-ux-gate.test.ts
-// file-for-file. inline-app.js is coverage-excluded glue (see
-// vitest.config.ts), so its wiring is verified here the same way that gate
-// test encodes its acceptance criteria. The predicate + DOM apply moved from
-// inline-app.js's syncSingleColumn into mode-switch.ts#applySingleColumnSync
-// (TD-001 slice 6e, #703), called from switchMode() (mode-tab clicks) and
-// still bridged onto window.modeSwitch for inline-app.js's own remaining
-// settings-change/boot call sites.
+// Simple-mode History uses the Recent workspace as a full-width list. The
+// predicate + DOM apply live in mode-switch.ts#applySingleColumnSync, called
+// from switchMode() and bridged onto window.modeSwitch for settings-change and
+// boot call sites in inline-app.js.
 
 const inlineApp = fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8');
 const modeSwitchSrc = fs.readFileSync(fileURLToPath(new URL('./mode-switch.ts', import.meta.url)), 'utf8');
@@ -35,7 +29,7 @@ describe('Single-column workspace gate (#542)', () => {
 
   it('mode-switch.ts derives the single-column class from the predicate, never hardwired', () => {
     expect(modeSwitchSrc).toContain('getSingleColumnState().isSingleColumn(');
-    expect(modeSwitchSrc).toContain('getReportFirstUxState().isEnabled(');
+    expect(modeSwitchSrc).toContain('isSimpleMode(useSettingsStore.getState().settings)');
     expect(modeSwitchSrc).toContain("document.body.classList.toggle('single-column'");
   });
 
@@ -44,14 +38,14 @@ describe('Single-column workspace gate (#542)', () => {
     expect(inlineApp).toContain('setStore.subscribe(() => window.modeSwitch.applySingleColumnSync());');
   });
 
-  it('inline-app.js re-syncs once at boot for a flag-already-on first paint', () => {
+  it('inline-app.js re-syncs once at boot for a Simple-mode first paint', () => {
     const bootCallIdx = inlineApp.lastIndexOf('window.modeSwitch.applySingleColumnSync();');
     const subscribeIdx = inlineApp.indexOf('setStore.subscribe(() => window.modeSwitch.applySingleColumnSync());');
     expect(bootCallIdx).toBeGreaterThan(-1);
     expect(bootCallIdx).not.toBe(subscribeIdx);
   });
 
-  it('root-markup.html has no single-column markup (flag-off shell is byte-identical)', () => {
+  it('root-markup.html has no single-column markup', () => {
     expect(rootMarkup).not.toContain('single-column');
   });
 

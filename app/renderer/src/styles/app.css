@@ -154,25 +154,8 @@
     .pro-gate .pg-link { background:none; border:none; padding:0; cursor:pointer; color:var(--gold-text); font:var(--fw-medium) var(--fs-label)/1.3 var(--font-sans); text-decoration:underline; text-underline-offset:2px; }
     .pro-gate .pg-link:hover { filter:brightness(1.1); }
 
-    /* Unified "Analyze" source picker (#543, epic e17): the two answers to
-       "where's the audio coming from?", offered as an overlay dialog at the
-       moment a new analysis starts. Same layout language as .pro-gate as a
-       centered modal panel. Gated behind report-first-ux; `hidden` in the
-       markup already prevents a flag-off flash, this is belt-and-braces
-       (see the rule below). */
-    .source-picker { position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.55); }
-    .source-picker[hidden] { display:none; }
-    .sp-panel { display:flex; flex-direction:column; gap:8px; width:min(420px,calc(100vw - 48px)); padding:22px; background:var(--bg-panel); border:1px solid var(--border-default); border-radius:var(--radius-lg); box-shadow:0 12px 40px rgba(0,0,0,0.5); }
-    .sp-title { margin:0 0 6px; font:var(--fw-semibold) var(--fs-body)/1.3 var(--font-sans); color:var(--text-primary); text-align:center; }
-    .sp-choice { display:flex; flex-direction:column; align-items:flex-start; gap:2px; padding:12px 14px; background:var(--surface-raised); border:1px solid var(--border-subtle); border-radius:var(--radius-md); cursor:pointer; text-align:left; transition:var(--transition-control); }
-    .sp-choice:hover { border-color:var(--gold-500); background:var(--surface-inset); }
-    .sp-choice .sp-label { font:var(--fw-semibold) var(--fs-body-sm)/1.3 var(--font-sans); color:var(--text-primary); }
-    .sp-choice .sp-hint { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-secondary); }
-    .sp-cancel { margin-top:4px; background:none; border:none; padding:6px; cursor:pointer; color:var(--text-tertiary); font:var(--fw-medium) var(--fs-label)/1.3 var(--font-sans); }
-    .sp-cancel:hover { color:var(--text-secondary); }
-    body:not(.report-first-ux) #analyze-source-picker { display:none !important; }
-
     .mode-tab .tab-lock { display:none; margin-left:2px; color:var(--text-muted); }
+    .mode-tab[hidden] { display:none; }
     body.not-pro .mode-tab .tab-lock { display:inline-flex; }
     /* "Coming soon" version badge for roadmap tabs. The #270 Directory tab
        dropped its own v1.1 badge when it shipped for real, but this base rule
@@ -180,33 +163,6 @@
        cascade-ordering assertions in source-tabs-gate / tool-tabs-gate tests). */
     .mode-tab .tab-soon { margin-left:4px; padding:1px 5px; border-radius:var(--radius-sm); background:var(--surface-raised); color:var(--text-muted); font:var(--fw-semibold) var(--fs-micro)/1.2 var(--font-sans); }
 
-    /* Unified source entry point (#544, epic e17): with report-first-ux on, the
-       three "where's the audio from?" tabs are reachable only through the #543
-       picker — keeping them in the tab bar too is duplicate navigation. The
-       guide/ringout tabs join this rule for a separate reason (#546): they're
-       redundant once #545 ships contextual links to both tools from the
-       Report Card. In both cases, the buttons stay in the DOM (routing/links
-       route by simulated .click(), and the flag-off shell must be unchanged);
-       display:none also drops them from the accessibility tree, so they are
-       not announced as tabs either. */
-    body.report-first-ux .mode-tab[data-mode="dir"],
-    body.report-first-ux .mode-tab[data-mode="live"],
-    body.report-first-ux .mode-tab[data-mode="guide"],
-    body.report-first-ux .mode-tab[data-mode="ringout"] { display:none; }
-    /* Final nav consolidation (#547, epic e17): flag-on, the tab bar offers
-       exactly two destinations — Analyze (opens the #543 source picker) and
-       History (the #542 full-width Recent list) — so the two remaining legacy
-       tabs fold away too. Same rationale as above: buttons stay in the DOM
-       because simulated .click() routing and the flag-off shell depend on them. */
-    body.report-first-ux .mode-tab[data-mode="recent"],
-    body.report-first-ux .mode-tab[data-mode="reportcard"] { display:none; }
-    /* The two #547 entries are new, flag-only chrome: hidden by default so the
-       flag-off shell is unchanged (same idiom as #analyze-source-picker).
-       Selected by id, not [data-mode=...], so the rule above stays the only
-       display:none on mode-tab data-mode selectors (source-tabs-gate.test.ts
-       asserts every such line is flag-scoped). */
-    #nav-analyze, #nav-history { display:none; }
-    body.report-first-ux #nav-analyze, body.report-first-ux #nav-history { display:inline-flex; }
     body.not-pro #tab-live > :not(.pro-gate),
     body.not-pro #settings-pane-audio > :not(.pro-gate) { display:none !important; }
     body.not-pro #tab-live .pro-gate,
@@ -568,7 +524,7 @@
     .settings-rail-item:hover { background:var(--surface); color:var(--text-primary); }
     .settings-rail-item.active { background:var(--gold-tint); border-color:var(--gold-600); color:var(--gold-text); }
     .settings-panes { display:flex; flex-direction:column; flex:1; min-width:0; min-height:0; }
-    .settings-pane { display:flex; flex-direction:column; flex:1; min-height:0; gap:12px; overflow-y:auto; }
+    .settings-pane { display:flex; flex-direction:column; flex:1; min-height:0; gap:12px; overflow-y:auto; overflow-x:hidden; }
     .settings-footer { display:flex; flex-direction:column; gap:10px; }
     /* Settings row grid (#1009, epic #999) — Ableton-style aligned rows:
        label in column 1, control in column 2 at a fixed width, so a pane can
@@ -583,7 +539,7 @@
     .settings-pane .select-label,
     .settings-pane .ai-enable-row,
     .settings-pane .slider,
-    .settings-pane .record-row { display:grid; grid-template-columns:1fr var(--settings-control-w); align-items:center; column-gap:var(--settings-row-gap); row-gap:6px; width:100%; }
+    .settings-pane .record-row { display:grid; grid-template-columns:minmax(0,1fr) var(--settings-control-w); align-items:center; column-gap:var(--settings-row-gap); row-gap:6px; width:100%; min-width:0; }
     .settings-pane .ai-field-label,
     .settings-pane .settings-row-label,
     .settings-pane .select-label > span,
@@ -594,6 +550,7 @@
     .settings-pane .select-label > .device-hint { grid-column:2; margin:0; }
     .settings-pane .ai-enable-row input[type="checkbox"] { justify-self:start; }
     .settings-pane .slider-head { grid-column:1; }
+    .settings-pane .select-row { min-width:0; }
     .settings-pane .record-row .ghost-btn { order:2; }
     .settings-pane .record-path { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .settings-pane .rig-actions { width:var(--settings-control-w); margin-left:auto; }
@@ -1249,6 +1206,26 @@
       .veq-label .veq-label-abbr { display:inline; }
     }
 
+    /* Shared analyzer-style EQ display (#1446): report-card, ideal-curve,
+       curve-editor, and thumbnails now use the same dark log plot language as
+       the live EQ pane. */
+    .sb-analyzer { width:100%; min-width:0; }
+    .sb-analyzer-plot { position:relative; min-height:280px; border-radius:var(--radius-md); overflow:hidden; background:#08090b; box-shadow:inset 0 0 0 1px var(--border-subtle); }
+    .sb-analyzer-svg svg { width:100%; height:auto; display:block; }
+    .sb-analyzer-bars { z-index:2; mix-blend-mode:screen; }
+    .sb-analyzer .veq-bar { background:var(--azure-400) !important; opacity:0.38; border-radius:2px 2px 0 0; box-shadow:0 0 8px color-mix(in srgb, var(--azure-400) 24%, transparent); }
+    .sb-analyzer .veq-bar.loud { opacity:0.68; box-shadow:0 0 12px color-mix(in srgb, var(--azure-400) 42%, transparent); }
+    .sb-analyzer .veq-bar.dim { opacity:0.16; }
+    .sb-analyzer-db-scale { position:absolute; pointer-events:none; z-index:4; }
+    .sb-analyzer-db-pill { position:absolute; right:6px; transform:translateY(-50%); padding:2px 5px; border:1px solid color-mix(in srgb, var(--border-default) 70%, transparent); border-radius:999px; background:color-mix(in srgb, var(--surface-inset) 78%, transparent); color:var(--gridline-label); font:var(--fw-medium) 9px/1 var(--font-mono); font-variant-numeric:tabular-nums; text-shadow:0 1px 2px #000; }
+    .sb-analyzer-labels { margin-top:5px; }
+    .sb-analyzer .veq-label { color:var(--text-tertiary); }
+    .sb-analyzer .veq-label.loud { color:var(--text-primary); }
+    .sb-analyzer-compact .sb-analyzer-plot { min-height:0; aspect-ratio:3.8 / 1; }
+    .sb-analyzer-compact .sb-analyzer-labels { height:10px; margin-top:3px; }
+    .sb-analyzer-compact .veq-label { font-size:8px; }
+    .sb-analyzer-compact .veq-val { display:none; }
+
     /* BandMeter */
     .bm { display:flex; flex-direction:column; }
     .bm-scale { position:relative; height:14px; margin-left:116px; margin-right:56px; }
@@ -1457,7 +1434,7 @@
     .mt-value .unit { color:var(--text-muted); margin-left:3px; }
     .mt-target { font:var(--fw-regular) var(--fs-data-sm)/1 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-muted); white-space:nowrap; }
 
-    /* ── Score-circle expandable metric rows (report-first-ux epic, #540) ── */
+    /* ── Score-circle expandable metric rows ── */
     .metric-rows { display:flex; flex-direction:column; gap:10px; }
     details.metric-row {
       background:var(--surface); border:1px solid var(--border-subtle);
@@ -1491,12 +1468,10 @@
     .metric-detail-row .impact { margin-left:auto; font:var(--fw-medium) 10px/1.2 var(--font-sans); letter-spacing:0.02em; text-transform:uppercase; color:var(--text-tertiary); }
     .metric-extra { margin-top:8px; font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-tertiary); }
 
-    /* ── Single-column workspace (#542, report-first-ux epic) ──
-       Recent / Build Guide / Ring-Out are a list, a checklist and a step
-       wizard — nothing to meter — so the spectrum panel sits empty beside
-       them. body.single-column (set from window.singleColumnState,
-       flag-gated) folds it away and lets the Source panel take the full
-       workspace width. */
+    /* ── Single-column workspace ──
+       Simple-mode History is a list, not a metered workspace, so the spectrum
+       panel sits empty beside it. body.single-column folds it away and lets
+       the Source panel take the full workspace width. */
     body.single-column #spectrum-panel { display:none; }
     body.single-column #source-panel { width:100%; flex:1; border-right:none; }
     body.single-column #live-eq-pane { display:none; }
@@ -1509,16 +1484,12 @@
     .pill.issue { background:var(--issue-tint); border:1px solid var(--issue-border); color:var(--issue-text); }
     .pill.info { background:var(--info-tint); border:1px solid var(--info-border); color:var(--info-text); }
 
-    .rc-bands { background:var(--surface); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); padding:16px 20px; box-shadow:var(--elevation-card); }
-    .rc-band-row { display:flex; align-items:center; gap:8px; }
-    .rc-band-row .bm { flex:1; min-width:0; }
-    .rc-band-dev { width:48px; flex-shrink:0; text-align:right; font:var(--fw-medium) 10px/1 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-muted); }
-    .rc-band-dev.hot { color:var(--check-text); } .rc-band-dev.ok { color:var(--good-text); }
-    .rc-band-legend { display:flex; align-items:center; flex-wrap:wrap; gap:4px; margin:0 0 8px; font:var(--fw-medium) 10px/1.3 var(--font-sans); color:var(--text-tertiary); }
+    .rc-bands { background:var(--surface); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); padding:14px 16px; box-shadow:var(--elevation-card); }
+    .rc-band-legend { display:flex; align-items:center; flex-wrap:wrap; gap:4px; margin:10px 0 0; font:var(--fw-medium) 10px/1.3 var(--font-sans); color:var(--text-tertiary); }
     .rc-band-legend b { color:var(--text-secondary); }
     .rc-band-legend-tick { display:inline-block; width:2px; height:11px; background:var(--good-text); box-shadow:0 0 4px var(--good-text); margin-right:4px; }
-    .rc-band-legend-zone { display:inline-block; width:18px; height:10px; background:var(--good-text); opacity:0.25; border-radius:2px; margin-right:4px; }
-    .rc-band-verdict { width:74px; flex-shrink:0; text-align:right; font:var(--fw-medium) 10px/1 var(--font-sans); }
+    .rc-band-verdicts { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+    .rc-band-verdict { flex:0 1 auto; padding:4px 7px; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--surface-inset); text-align:center; font:var(--fw-medium) 9px/1 var(--font-sans); white-space:nowrap; }
     .rc-band-verdict.hot { color:var(--check-text); } .rc-band-verdict.quiet { color:var(--text-muted); } .rc-band-verdict.ok { color:var(--good-text); }
 
     /* Report-card "Spectrum Over Time" (PRD 03) */
@@ -1529,7 +1500,7 @@
     .rc-frame-head { display:flex; align-items:baseline; justify-content:space-between; gap:6px; margin-bottom:6px; }
     .rc-frame-tag { font:var(--fw-semibold) 10px/1 var(--font-sans); letter-spacing:0.04em; text-transform:uppercase; color:var(--gold-text); }
     .rc-frame-t { font:var(--fw-regular) 9.5px/1 var(--font-mono); color:var(--text-muted); }
-    .rc-frame-curve svg { display:block; width:100%; height:70px; }
+    .rc-frame-curve .sb-analyzer-plot { aspect-ratio:2.9 / 1; }
 
     .rc-recs { display:flex; flex-direction:column; gap:10px; }
     .rc-rec { display:flex; gap:12px; padding:13px 15px; background:var(--surface); border:1px solid var(--border-subtle); border-left:3px solid var(--gold-500); border-radius:var(--radius-md); box-shadow:var(--elevation-card); }
@@ -1610,12 +1581,24 @@
     #ideal-profile-wrap .select-caret { right:9px; }
     #ideal-curve-edit-btn { display:flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0; background:var(--surface); color:var(--text-secondary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); cursor:pointer; transition:var(--transition-control); }
     #ideal-curve-edit-btn:hover { color:var(--gold-text); border-color:var(--border-default); background:var(--surface-raised); }
-    .curve-dialog-card { width:min(560px,calc(100vw - 48px)); }
+    .curve-dialog-card { width:min(640px,calc(100vw - 48px)); }
+    .curve-editor-preview { margin:4px 0 12px; }
     .curve-editor-grid { display:grid; grid-template-columns:1fr; gap:10px; margin-top:4px; }
     .curve-row { display:grid; grid-template-columns:92px 1fr 66px; align-items:center; gap:10px; }
     .curve-row label { font:var(--fw-medium) var(--fs-label)/1.25 var(--font-sans); color:var(--text-secondary); }
     .curve-row input[type="number"] { height:28px; padding:0 8px; background:var(--surface); color:var(--text-primary); border:1px solid var(--border-default); border-radius:var(--radius-md); font:var(--fw-medium) var(--fs-label)/1 var(--font-mono); outline:none; }
     .curve-row input[type="number"]:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); }
+    .curve-live-compare { display:flex; flex-direction:column; gap:8px; margin-top:4px; padding:10px 12px; background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-md); }
+    .curve-live-compare.muted { background:var(--surface); }
+    .curve-live-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+    .curve-live-title { font:var(--fw-semibold) var(--fs-label)/1.2 var(--font-sans); color:var(--text-primary); }
+    .curve-live-state { flex-shrink:0; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); }
+    .curve-live-chart { display:flex; gap:8px; min-width:0; }
+    .curve-live-chart .eq-yaxis { height:150px; }
+    .curve-live-chart .eq-plot { height:150px; }
+    .curve-live-compare .spectrum-legend { flex-wrap:wrap; gap:10px 14px; margin-top:2px; padding:0; }
+    .curve-live-compare .spectrum-legend .sl-score { margin-left:0; }
+    .curve-live-note, .curve-live-empty { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-muted); }
     .curve-dialog-actions { display:flex; justify-content:space-between; align-items:center; gap:8px; }
     .curve-dialog-actions .right { display:flex; gap:8px; }
     #curve-capture-btn:disabled, #curve-delete-btn:disabled { opacity:0.45; cursor:not-allowed; }
@@ -1660,7 +1643,7 @@
     .rcp-region.over { border-left:3px solid var(--meter-hot, #E0A33C); }
     .rcp-region.under { border-left:3px solid var(--band-mid, #23BBA6); }
     .rcp-region b { color:var(--text-secondary); font-weight:var(--fw-semibold); }
-    .rcp-dev svg { display:block; width:100%; height:auto; }
+    .rcp-dev .sb-analyzer-plot { aspect-ratio:4 / 1; }
     .rcp-dev .zero { stroke:var(--border-strong); stroke-width:1; stroke-dasharray:2 3; }
     .rcp-dev .devbar-over { fill:var(--meter-hot, #E0A33C); opacity:0.8; }
     .rcp-dev .devbar-under { fill:var(--band-mid, #23BBA6); opacity:0.8; }

@@ -117,9 +117,9 @@ describe('Settings dialog CSS (#204, chrome #1008)', () => {
     expect(appCss).toContain('.settings-dialog-card { width:var(--settings-card-w); height:var(--settings-card-h);');
     expect(appCss).toContain('flex:0 0 var(--settings-rail-w)');
     expect(appCss).toContain('height:var(--control-h-sm)');
-    expect(tokensCss).toContain('--settings-card-w:min(760px,calc(100vw - 48px))');
+    expect(tokensCss).toContain('--settings-card-w:min(900px,calc(100vw - 48px))');
     expect(tokensCss).toContain('--settings-card-h:min(560px,calc(100vh - 96px))');
-    expect(tokensCss).toContain('--settings-rail-w:176px');
+    expect(tokensCss).toContain('--settings-rail-w:160px');
   });
 
   it('leaves the shared .rig-dialog-card untouched so other dialogs are unaffected (#1008)', () => {
@@ -129,7 +129,7 @@ describe('Settings dialog CSS (#204, chrome #1008)', () => {
   });
 
   it('lets the Settings pane scroll inside the fixed frame instead of growing the card', () => {
-    expect(appCss).toContain('.settings-pane { display:flex; flex-direction:column; flex:1; min-height:0; gap:12px; overflow-y:auto; }');
+    expect(appCss).toContain('.settings-pane { display:flex; flex-direction:column; flex:1; min-height:0; gap:12px; overflow-y:auto; overflow-x:hidden; }');
     expect(appCss).not.toContain('max-height:min(72vh, 640px)');
   });
 
@@ -170,16 +170,18 @@ describe('Feedback message textarea sizing (#926)', () => {
 
 describe('Settings row grid (#1009)', () => {
   it('adds the control-column-width and row-gap tokens', () => {
-    expect(tokensCss).toContain('--settings-control-w:260px');
+    expect(tokensCss).toContain('--settings-control-w:220px');
     expect(tokensCss).toContain('--settings-row-gap:14px');
   });
 
   it('lays out every row class as a two-column grid keyed on the token', () => {
-    expect(appCss).toContain('grid-template-columns:1fr var(--settings-control-w)');
+    expect(appCss).toContain('grid-template-columns:minmax(0,1fr) var(--settings-control-w)');
     expect(appCss).toContain('.settings-pane .ai-field,');
     expect(appCss).toContain('.settings-pane .select-label,');
     expect(appCss).toContain('.settings-pane .ai-enable-row,');
     expect(appCss).toContain('.settings-pane .slider,');
+    expect(appCss).toContain('width:100%; min-width:0;');
+    expect(appCss).toContain('.settings-pane .select-row { min-width:0; }');
   });
 
   it('gives the group header a small-caps hairline divider', () => {

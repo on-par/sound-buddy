@@ -163,13 +163,14 @@ describe('changeDevice', () => {
     expect(selectDevice).toHaveBeenCalledWith('0');
   });
 
-  it('stops a running capture, switches the selected input, then restarts with the current cadence', async () => {
+  it('stops a monitoring capture, switches the selected input, then restarts with the current cadence without prompting', async () => {
     const order: string[] = [];
     const rt = mockRuntime();
     useLiveCaptureStore.setState({
       devices: DEVICES,
       selectedDevice: '',
       isCapturing: true,
+      liveMode: 'monitor',
       windowSecs: 5,
       meterIntervalMs: 250,
       stopCapture: vi.fn(async () => {

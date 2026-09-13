@@ -120,7 +120,7 @@ export default function RecentServicesPanel(): JSX.Element {
   const [summaries, setSummaries] = useState<AnalysisSummary[]>([]);
 
   /* c8 ignore start -- IPC round trip, no jsdom in this harness; exercised
-     by tests/e2e/report-first-ux.spec.ts and live-capture-workspace.spec.ts.
+     by tests/e2e/live-capture-workspace.spec.ts.
      RecentServicesList's rendering is unit-tested directly above. */
   useEffect(() => {
     if (appMode !== 'recent') return;

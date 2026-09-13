@@ -21,7 +21,6 @@ import { useElectron } from './useElectron';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useAnalysisStore, type AnalysisStatus } from './stores/analysisStore';
 import { useSpectrumStore } from './stores/spectrumStore';
-import { useSettingsStore } from './stores/settingsStore';
 import { useSceneDiffStore } from './stores/sceneDiffStore';
 import { usePhaseDoublingStore } from './stores/phaseDoublingStore';
 import { useRingoutStore } from './stores/ringoutStore';
@@ -103,10 +102,6 @@ function getFindSpectralPeaks(): unknown {
   return (window as unknown as { audioEngineSpectral: { findSpectralPeaks: unknown } }).audioEngineSpectral
     .findSpectralPeaks;
 }
-function getReportFirstUxState(): { isEnabled(s: unknown): boolean } | undefined {
-  return (window as unknown as { reportFirstUxState?: { isEnabled(s: unknown): boolean } }).reportFirstUxState;
-}
-
 interface HistorySummary {
   sourceFilename: string;
   date: string;
@@ -348,7 +343,6 @@ export default function ReportCardIsland() {
     idealProfile: s.idealProfile,
     isAutoProfile: s.isAutoProfile,
   }));
-  const { settings } = useStoreShallow(useSettingsStore, (s) => ({ settings: s.settings }));
   const { sceneStatus, sceneDiff, sceneNameA, sceneNameB, sceneError } = useStoreShallow(useSceneDiffStore, (s) => ({
     sceneStatus: s.status,
     sceneDiff: s.diff,
@@ -378,8 +372,6 @@ export default function ReportCardIsland() {
   let saveTargetSaved = false;
   let troubleshooting: TroubleshootingItem[] | null = null;
 
-  const reportFirstUxOn = getReportFirstUxState()?.isEnabled(settings) ?? false;
-
   if (!isHistoryCard && source) {
     const grading = getGrading();
     grade = {
@@ -393,7 +385,7 @@ export default function ReportCardIsland() {
       baselineLabel: gradeBaselineLabel(source),
     };
 
-    scoreRows = reportFirstUxOn ? buildScoreRows(source, grading, grade.explain) : null;
+    scoreRows = buildScoreRows(source, grading, grade.explain);
 
     if (hasUsableCurve(source.curve) && idealProfile) {
       comparison = compareToProfile(source.curve, idealProfile as IdealProfile);
@@ -521,7 +513,7 @@ export default function ReportCardIsland() {
             void useIdealProfilesStore.getState().saveMeasuredBands(source.bands, targetMetaForSource(source));
           }}
           /* c8 ignore stop */
-          contextualLinks={reportFirstUxOn}
+          contextualLinks
           /* c8 ignore next -- interaction-only glue; no jsdom in this harness to
              click the button (renderToString doesn't run DOM events). */
           onOpenBuildGuide={() => switchMode('guide')}

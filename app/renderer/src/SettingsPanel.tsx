@@ -42,7 +42,7 @@
 // #tab-live rule) hides/shows them exactly like the Live tab
 // always did.
 //
-// Instant-apply Settings controls (#1018, epic #1000): the six controls
+// Instant-apply Settings controls (#1018, epic #1000): these controls
 // covered by settings-instant-apply.ts (grading strictness, weekly reminder
 // + service day, usage signal, crash reporting, and live
 // adjustments) render straight from settingsStore's persisted `settings` via
@@ -106,6 +106,7 @@ const SECTION_LABELS: Record<SettingsSection, string> = {
 };
 
 export type SettingsControl =
+  | 'advancedFeatures'
   | 'gradingProfile'
   | 'gradingBaseline'
   | 'gradingRubric'
@@ -130,6 +131,7 @@ export type SettingsControl =
   | 'license';
 
 const SETTING_SECTION_TARGETS: readonly { setting: SettingsControl; section: SettingsSection }[] = [
+  { setting: 'advancedFeatures', section: 'general' },
   { setting: 'gradingProfile', section: 'general' },
   { setting: 'gradingBaseline', section: 'general' },
   { setting: 'gradingRubric', section: 'general' },
@@ -341,6 +343,19 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
           </div>
           <div className="settings-panes">
         <div className="settings-pane" id="settings-pane-general" style={{ display: section === 'general' ? 'flex' : 'none' }}>
+          <SettingsGroup title="Workspace">
+            <label className="ai-enable-row" {...helpFor('advancedFeatures')}>
+              <span className="settings-row-label">Advanced features</span>
+              <input
+                type="checkbox"
+                id="advanced-features-toggle"
+                aria-describedby={settingsHelpNoteId('advancedFeatures')}
+                checked={controlValues.advancedFeaturesEnabled}
+                onChange={(e) => void commitInstantSetting(useSettingsStore, 'advancedFeaturesEnabled', e.target.checked)}
+              />
+            </label>
+            <SettingsNote control="advancedFeatures" />
+          </SettingsGroup>
           <SettingsGroup title="Grading">
             <label className="ai-field" id="grading-profile-field" {...helpFor('gradingProfile')}>
               <span className="ai-field-label">Grading strictness</span>
@@ -525,10 +540,9 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
           </div>
           {isCapturing && (
             <p className="ai-dialog-note" id="settings-audio-capture-lock-note">
-              A capture is running — the rig, record folder, and meter cadence sliders are
-              locked until it stops. Input device changes restart capture on the selected
-              device. Measurement source and the secondary measurement device can still be
-              changed.
+              A capture is running — record folder and meter cadence sliders are locked until
+              it stops. Rig and input device changes restart capture on the selected setup.
+              Measurement source and the secondary measurement device can still be changed.
             </p>
           )}
           {booted && (

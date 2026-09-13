@@ -284,7 +284,7 @@ export async function launchApp(
   seedProLicense(userDataDir);
   const electronApp = await launchElectron({
     args: [path.join(__dirname, '..', '..', 'dist', 'electron', 'main.js'), `--user-data-dir=${userDataDir}`],
-    env: { ...process.env, ...LICENSE_ENV, ...extraEnv },
+    env: { ...process.env, ...LICENSE_ENV, SOUND_BUDDY_ADVANCED_FEATURES: '1', ...extraEnv },
   });
   const window = await electronApp.firstWindow();
   await window.waitForLoadState('domcontentloaded');

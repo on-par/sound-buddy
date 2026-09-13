@@ -6,6 +6,7 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import CurveEditorDialog, { EDITOR_MAX_ABS_DB } from './CurveEditorDialog';
 import { useIdealProfilesStore } from './stores/idealProfilesStore';
+import { useLiveCaptureStore } from './stores/liveCaptureStore';
 
 function renderMarkup(): string {
   return renderToString(createElement(CurveEditorDialog));
@@ -22,9 +23,25 @@ const CLOSED_EDITOR = {
   canDelete: false,
 };
 
+const INITIAL_LIVE_CAPTURE_STATE = useLiveCaptureStore.getInitialState();
+
+function installIdealCurvesMock() {
+  const root = globalThis as unknown as { window?: { idealCurves?: unknown } };
+  root.window ??= {};
+  root.window.idealCurves = {
+    clampDb: (value: number) => value,
+    profileFromBands: (bands: number[], freqs: number[], meta: { label: string }) => ({
+      id: 'editor-live-target',
+      label: meta.label,
+      dbOffsets: freqs.map((_, i) => bands[i % bands.length] ?? 0),
+    }),
+  };
+}
+
 describe('CurveEditorDialog', () => {
   afterEach(() => {
     useIdealProfilesStore.setState({ editor: CLOSED_EDITOR });
+    useLiveCaptureStore.setState(INITIAL_LIVE_CAPTURE_STATE, true);
   });
 
   it('is hidden (display:none) when the editor is closed', () => {
@@ -121,6 +138,68 @@ describe('CurveEditorDialog', () => {
 
     expect(html).not.toContain('data-icon="waveform"');
     expect(html).not.toContain('data-icon="x"');
+  });
+
+  it('shows a non-blocking live comparison degraded state when no room data is available', () => {
+    useIdealProfilesStore.setState({ editor: { ...CLOSED_EDITOR, open: true } });
+    useLiveCaptureStore.setState({ isCapturing: true, lastLiveChannels: null });
+
+    const html = renderMarkup();
+
+    expect(html).toContain('id="curve-live-compare"');
+    expect(html).toContain('Waiting for live room measurements');
+    expect(html).not.toContain('eq-target-svg');
+  });
+
+  it('compares live room measurements against the unsaved editor bands', () => {
+    installIdealCurvesMock();
+    const curve = Array.from({ length: 48 }, (_, i) => -42 + i * 0.1);
+    useLiveCaptureStore.setState({
+      isCapturing: true,
+      measurementSource: 1,
+      lastLiveChannels: [
+        { rms: -50, peak: -30, bands: {}, curve: curve.map(() => -90) },
+        { rms: -24, peak: -12, bands: {}, curve },
+      ] as never,
+    });
+    useIdealProfilesStore.setState({
+      editor: { ...CLOSED_EDITOR, open: true, name: 'Unsaved curve', bands: [-3, -1, 0, 2, 3, 1, -2] },
+    });
+
+    const initial = renderMarkup();
+    useIdealProfilesStore.getState().setEditorBand(3, 6);
+    const edited = renderMarkup();
+
+    expect(initial).toContain('Live room vs edited target');
+    expect(initial).toContain('Target · Unsaved curve');
+    expect(initial).toContain('Match');
+    expect(initial).toContain('data-eq-style="live-analyzer"');
+    expect(initial).toContain('sb-target-line');
+    expect(edited).toContain('sb-target-line');
+    expect(edited).not.toBe(initial);
+  });
+
+  it('renders a 7-band live comparison without a match score when analyzer data is absent', () => {
+    installIdealCurvesMock();
+    useLiveCaptureStore.setState({
+      isCapturing: true,
+      measurementSource: null,
+      lastLiveChannels: [{
+        rms: -24,
+        peak: -12,
+        bands: { sub_bass: -45, bass: -40, low_mid: -32, mid: -24, high_mid: -28, presence: -35, brilliance: -42 },
+      }] as never,
+    });
+    useIdealProfilesStore.setState({
+      editor: { ...CLOSED_EDITOR, open: true, name: 'Band-only target', bands: [0, 0, 0, 0, 0, 0, 0] },
+    });
+
+    const html = renderMarkup();
+
+    expect(html).toContain('data-eq-style="live-analyzer"');
+    expect(html).toContain('sb-target-line');
+    expect(html).toContain('7-band live meters');
+    expect(html).not.toContain('Match');
   });
 });
 

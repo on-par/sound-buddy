@@ -23,6 +23,7 @@ import { bandTargetsFromProfile, GRID_FREQS } from '@sound-buddy/audio-engine/di
 import {
   escapeHtml, toPct, DIM_DB, HOT_DB, GRID, BAND_META,
   heatmapSVG, miniCurveSVG, fmtDur, classLabel, pickRepresentativeFrames,
+  analyzerStyleHTML, bandCurveFromDb, bandDbFromSpectrum,
   type SpectrumFrame,
 } from './spectrum-display';
 
@@ -300,19 +301,16 @@ export function fmtDev(d: number): string {
   return (d >= 0 ? '+' : '') + d.toFixed(1) + ' dB';
 }
 export function deviationMiniCurve(dev: number[]): string {
-  const W = 700, H = 64, padL = 4, padT = 4;
-  const plotW = W - padL * 2, mid = H / 2;
-  const maxAbs = Math.max(3, ...dev.map((d) => Math.abs(d)));
-  const bw = plotW / dev.length;
-  const bars = dev.map((d, i) => {
-    const x = padL + i * bw;
-    const h = Math.abs(d) / maxAbs * (mid - padT);
-    const y = d >= 0 ? mid - h : mid;
-    const cls = d >= 0 ? 'devbar-over' : 'devbar-under';
-    return `<rect class="${cls}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(1, bw - 1).toFixed(1)}" height="${Math.max(0.5, h).toFixed(1)}"/>`;
-  }).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Per-frequency deviation from the ideal target">
-    <line class="zero" x1="${padL}" y1="${mid}" x2="${padL + plotW}" y2="${mid}"/>${bars}</svg>`;
+  const measured = dev.map((d) => -36 + (Number.isFinite(d) ? d : 0));
+  const target = BAND_META.map(() => -36);
+  return analyzerStyleHTML({
+    curve: bandCurveFromDb(measured),
+    bandDb: measured,
+    targetDb: target,
+    compact: true,
+    uid: 'profile-match',
+    className: 'sb-analyzer-profile-match',
+  });
 }
 
 // The string-building body of the former renderProfileMatch — `isAuto`
@@ -809,21 +807,29 @@ export interface BandDiffApi {
 export function bandBreakdownHTML(bands: Record<string, number>, g: BandDiffApi, baseline?: GradeBaseline | null): string {
   const targets = baseline?.bandTargets ?? null;
   const levels = bandTargetLevels(bands, targets, g.CONFIG.bandBalance);
+  const bandDb = bandDbFromSpectrum({ bands });
+  const targetBandDb = BAND_META.map((b, i) => levels[b.key]?.db ?? bandDb[i]);
+  const analyzer = analyzerStyleHTML({
+    bandDb,
+    curve: bandCurveFromDb(bandDb),
+    targetDb: bandCurveFromDb(targetBandDb).db,
+    uid: 'rc-band-breakdown',
+    className: 'sb-analyzer-band-breakdown',
+  });
   const vs = baseline?.label ? escapeHtml(baseline.label) : 'the other bands';
   const legend = `<div class="rc-band-legend"><span class="rc-band-legend-tick"></span>balanced level vs. ${vs}, given the other bands` +
-    ` · <span class="rc-band-legend-zone"></span>balanced range (${g.CONFIG.bandBalance.quietDiff} to +${g.CONFIG.bandBalance.hotDiff} dB)` +
     ` · <b>±dB</b> = this band vs. its balanced level</div>`;
-  const rows = BAND_META.map((b) => {
+  const verdicts = BAND_META.map((b) => {
     const db = bands[b.key];
     const diff = g.bandDiffFromOthers(bands, b.key, targets);
     let vc: 'ok' | 'hot' | 'quiet' = 'ok';
     let vt = 'Balanced';
     if (diff > g.CONFIG.bandBalance.hotDiff) { vc = 'hot'; vt = 'Too Hot'; }
     else if (diff < g.CONFIG.bandBalance.quietDiff) { vc = 'quiet'; vt = 'Too Quiet'; }
-    const dev = Number.isFinite(diff) ? `<span class="rc-band-dev ${vc}">${fmtDev(diff)}</span>` : '';
-    return `<div class="rc-band-row">${bandMeterHTML(b.label, b.range, db, { colorBy: 'level', target: levels[b.key] })}${dev}<span class="rc-band-verdict ${vc}">${vt}</span></div>`;
+    const dev = Number.isFinite(diff) ? ` · ${fmtDev(diff)}` : '';
+    return `<span class="rc-band-verdict ${vc}" data-band="${b.key}">${b.short} · ${vt} · ${fmt(db)}${dev}</span>`;
   }).join('');
-  return legend + rows;
+  return `${analyzer}${legend}<div class="rc-band-verdicts">${verdicts}</div>`;
 }
 
 /* ── "Spectrum Over Time" report-card section ──

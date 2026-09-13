@@ -1,5 +1,9 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
+import * as fs from 'fs';
+import * as path from 'path';
 import { launchApp } from './e2e-helpers';
+import { launchElectron } from '../launch-electron';
+import { LICENSE_ENV, seedProLicense } from '../license-fixture';
 import type { SettingsApi, AppSettings, UpdateSettingsPatch } from '../../electron/ipc/api';
 
 // Unified Settings dialog (#204) — combines the AI provider settings (#76)
@@ -338,5 +342,63 @@ test.describe('Settings dialog (#204)', () => {
       'what appears on shared images',
     );
     await window.locator('#settings-dialog-done').click();
+  });
+});
+
+test.describe('Advanced features setting (#1422)', () => {
+  const advancedTabs = ['dir', 'live', 'console', 'recent', 'guide', 'ringout'];
+  const simpleTabs = ['analyze', 'history', 'reportcard'];
+  const userDataDir = path.join(__dirname, '..', '..', 'test-results', `e2e-advanced-features-${process.pid}-${Date.now()}`);
+
+  async function launchPersisted(): Promise<{ electronApp: ElectronApplication; window: Page }> {
+    seedProLicense(userDataDir);
+    const settingsPath = path.join(userDataDir, 'settings.json');
+    if (!fs.existsSync(settingsPath)) {
+      fs.writeFileSync(settingsPath, JSON.stringify({ advancedFeaturesEnabled: true }, null, 2));
+    }
+    const env = { ...process.env, ...LICENSE_ENV };
+    delete env.SOUND_BUDDY_ADVANCED_FEATURES;
+    const app = await launchElectron({
+      args: [path.join(__dirname, '..', '..', 'dist', 'electron', 'main.js'), `--user-data-dir=${userDataDir}`],
+      env,
+    });
+    const page = await app.firstWindow();
+    await page.waitForLoadState('domcontentloaded');
+    return { electronApp: app, window: page };
+  }
+
+  test('toggle off collapses workspace tabs without Save; relaunch persists; toggle on restores them', async () => {
+    let app = await launchPersisted();
+
+    await app.window.locator('#settings-btn').click();
+    await expect(app.window.locator('#settings-pane-general')).toBeVisible();
+    const toggle = app.window.locator('#advanced-features-toggle');
+    await expect(toggle).toBeChecked();
+    await toggle.uncheck();
+    await expect.poll(() => persistedSetting(app.window, 'advancedFeaturesEnabled')).toBe(false);
+    for (const mode of advancedTabs) {
+      await expect(app.window.locator(`.mode-tab[data-mode="${mode}"]`)).toBeHidden();
+    }
+    for (const mode of simpleTabs) {
+      await expect(app.window.locator(`.mode-tab[data-mode="${mode}"]`)).toBeVisible();
+    }
+    await app.window.locator('#settings-dialog-done').click();
+    await app.electronApp.close();
+
+    app = await launchPersisted();
+    for (const mode of advancedTabs) {
+      await expect(app.window.locator(`.mode-tab[data-mode="${mode}"]`)).toBeHidden();
+    }
+    for (const mode of simpleTabs) {
+      await expect(app.window.locator(`.mode-tab[data-mode="${mode}"]`)).toBeVisible();
+    }
+
+    await app.window.locator('#settings-btn').click();
+    await app.window.locator('#advanced-features-toggle').check();
+    await expect.poll(() => persistedSetting(app.window, 'advancedFeaturesEnabled')).toBe(true);
+    for (const mode of advancedTabs) {
+      await expect(app.window.locator(`.mode-tab[data-mode="${mode}"]`)).toBeVisible();
+    }
+    await app.electronApp.close();
   });
 });
