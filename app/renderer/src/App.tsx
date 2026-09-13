@@ -49,9 +49,7 @@ import dawWorkspaceStateSrc from '../daw-workspace-state.js?raw';
 import dawPlayheadStateSrc from '../daw-playhead-state.js?raw';
 import dawWaveformStateSrc from '../daw-waveform-state.js?raw';
 import liveAdjustmentsStateSrc from '../live-adjustments-state.js?raw';
-import reportFirstUxStateSrc from '../report-first-ux-state.js?raw';
 import singleColumnStateSrc from '../single-column-state.js?raw';
-import analyzeSourceStateSrc from '../analyze-source-state.js?raw';
 import batchAnalysisSrc from '../batch-analysis.js?raw';
 import skillTreeStateSrc from '../skill-tree-state.js?raw';
 import inlineAppSrc from './inline-app.js?raw';
@@ -91,7 +89,6 @@ import { getSoundBuddy } from './useElectron';
 import FeedbackDialog from './FeedbackDialog';
 import GradeOwnGuideDialog from './GradeOwnGuideDialog';
 import PhaseDoublingDialog from './PhaseDoublingDialog';
-import AnalyzeSourcePicker from './AnalyzeSourcePicker';
 import LiveArmHint from './LiveArmHint';
 import MeasurementBadge from './MeasurementBadge';
 import { installStoreBridge } from './stores/bridge';
@@ -161,9 +158,7 @@ const BOOT_SCRIPTS = [
   dawPlayheadStateSrc,
   dawWaveformStateSrc,
   liveAdjustmentsStateSrc,
-  reportFirstUxStateSrc,
   singleColumnStateSrc,
-  analyzeSourceStateSrc,
   batchAnalysisSrc,
   skillTreeStateSrc,
   inlineAppSrc,
@@ -415,7 +410,6 @@ export default function App() {
       {booted && createPortal(<RigDialog />, document.getElementById('rig-dialog-island')!)}
       {booted && <LicenseChrome />}
       {booted && <ConsoleNetworkConsentDialog />}
-      {booted && <AnalyzeSourcePicker />}
       {booted && createPortal(<UpdateBanner />, document.getElementById('update-surface-island')!)}
       {booted && createPortal(<WhatsNewBanner />, document.getElementById('whats-new-banner-island')!)}
     </>

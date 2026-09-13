@@ -13,11 +13,10 @@ import { useSpectrumStore } from './stores/spectrumStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { createMockSoundBuddy } from './mock-sound-buddy';
 import type { GradingPillApi, BandDiffApi } from './report-card';
-import type { AppSettings, AnalysisSummary } from '../../electron/ipc/api';
+import type { AnalysisSummary } from '../../electron/ipc/api';
 import type { AnalysisPayload } from '@sound-buddy/shared';
 
 const require = createRequire(import.meta.url);
-const reportFirstUxState = require('../report-first-ux-state.js');
 
 const gradingMock: GradingPillApi & BandDiffApi & {
   computeGrade(): string;
@@ -143,7 +142,6 @@ beforeEach(() => {
     phaseDoublingState: phaseDoublingStateMock,
     feedbackRingout: feedbackRingoutMock,
     audioEngineSpectral: audioEngineSpectralMock,
-    reportFirstUxState,
   };
 });
 
@@ -229,7 +227,7 @@ describe('ReportCardIsland', () => {
     expect(html).toContain('rc-contenttype speech');
     expect(html).toContain('rc-bands-section');
     expect(html).toContain('rc-phase-doubling');
-    expect(html).toContain('rc-feedback-ringout');
+    expect(html).toContain('rc-build-guide-link');
   });
 
   it('renders the live-capture card from liveSource when there is no currentAnalysis', () => {
@@ -374,10 +372,8 @@ describe('ReportCardIsland', () => {
     expect(html).not.toContain('rc-delta');
   });
 
-  it('renders the score-circle metric rows when the report-first-ux flag is enabled (#540)', () => {
+  it('renders the score-circle metric rows', () => {
     useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
-    // cast comment: minimal settings slice for the gate — only the flag it reads matters here
-    useSettingsStore.setState({ settings: { reportFirstUxEnabled: true } as unknown as AppSettings });
 
     const html = renderMarkup();
 
@@ -385,24 +381,14 @@ describe('ReportCardIsland', () => {
     expect(html).not.toContain('metric-table');
   });
 
-  it('renders the legacy metric table when the report-first-ux flag is off', () => {
-    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
-    useSettingsStore.setState({ settings: { reportFirstUxEnabled: false } as unknown as AppSettings });
-
-    const html = renderMarkup();
-
-    expect(html).toContain('metric-table');
-    expect(html).not.toContain('rc-metric-rows');
-  });
-
-  it('renders the legacy metric table when settings are still null/loading (strict gate)', () => {
+  it('keeps the metric rows while settings are still null/loading', () => {
     useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
     useSettingsStore.setState({ settings: null });
 
     const html = renderMarkup();
 
-    expect(html).toContain('metric-table');
-    expect(html).not.toContain('rc-metric-rows');
+    expect(html).toContain('rc-metric-rows');
+    expect(html).not.toContain('metric-table');
   });
 });
 
@@ -421,7 +407,6 @@ describe('ReportCardIsland — troubleshooting section (#862)', () => {
     expect(html).toContain('Cut 2–4 kHz to tame it.');
     // supplements, not replaces — the grading sections still render.
     expect(html).toContain('id="rc-metrics-section"');
-    expect(html).toContain('id="rc-why-section"');
     expect(html).toContain('id="rc-recommendations"');
   });
 
@@ -452,9 +437,8 @@ describe('ReportCardIsland — troubleshooting section (#862)', () => {
 });
 
 describe('ReportCardIsland — contextual tool links (#545)', () => {
-  it('flag on, no feedback peak: shows the Build Guide link and hides the Ring-Out callout', () => {
+  it('no feedback peak: shows the Build Guide link and hides the Ring-Out callout', () => {
     useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
-    useSettingsStore.setState({ settings: { reportFirstUxEnabled: true } as unknown as AppSettings });
 
     const html = renderMarkup();
 
@@ -462,9 +446,8 @@ describe('ReportCardIsland — contextual tool links (#545)', () => {
     expect(html).not.toContain('rc-feedback-ringout');
   });
 
-  it('flag on, feedback peak detected: shows the Ring-Out callout with the detected class', () => {
+  it('feedback peak detected: shows the Ring-Out callout with the detected class', () => {
     useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
-    useSettingsStore.setState({ settings: { reportFirstUxEnabled: true } as unknown as AppSettings });
     const realFeedbackRingout = require('../feedback-ringout-state.js');
     (globalThis as { window?: { feedbackRingout?: typeof feedbackRingoutMock } }).window!.feedbackRingout = {
       ...feedbackRingoutMock,
@@ -478,24 +461,14 @@ describe('ReportCardIsland — contextual tool links (#545)', () => {
     expect(html).toContain('pd-launch detected');
   });
 
-  it('flag off: shows the always-on Ring-Out callout (undetected copy) and no Build Guide link', () => {
-    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
-    useSettingsStore.setState({ settings: { reportFirstUxEnabled: false } as unknown as AppSettings });
-
-    const html = renderMarkup();
-
-    expect(html).toContain('rc-feedback-ringout');
-    expect(html).not.toContain('rc-build-guide-btn');
-  });
-
-  it('settings null/loading (strict gate): behaves like flag off', () => {
+  it('settings null/loading keeps contextual links enabled', () => {
     useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
     useSettingsStore.setState({ settings: null });
 
     const html = renderMarkup();
 
-    expect(html).toContain('rc-feedback-ringout');
-    expect(html).not.toContain('rc-build-guide-btn');
+    expect(html).toContain('rc-build-guide-btn');
+    expect(html).not.toContain('rc-feedback-ringout');
   });
 });
 

@@ -109,7 +109,7 @@ describe('Live monitoring visibly leads to a Report Card (#488)', () => {
 
 describe('Live tab reads as always-listening, never capture (#777)', () => {
   // The AC's no-"capture" wording rule covers the Live tab UI (the #tab-live
-  // block) and the Analyze source-picker's live option.
+  // block).
   it('purges every user-visible "capture" from the #tab-live block', () => {
     const liveTabStart = markup.indexOf('<div class="tab-content" id="tab-live">');
     const liveTabEnd = markup.indexOf('id="spectrum-header"');
@@ -117,16 +117,6 @@ describe('Live tab reads as always-listening, never capture (#777)', () => {
     expect(liveTabEnd).toBeGreaterThan(liveTabStart);
     const liveTab = markup.slice(liveTabStart, liveTabEnd);
     expect(liveTab).not.toMatch(/>[^<]*[Cc]apture[^<]*</);
-  });
-
-  it('purges "capture" from the Analyze source-picker live option (TD-001 slice 6h, #711 — now AnalyzeSourcePicker.tsx)', () => {
-    const pickerTsx = fs.readFileSync(fileURLToPath(new URL('./AnalyzeSourcePicker.tsx', import.meta.url)), 'utf8');
-    const liveOptionStart = pickerTsx.indexOf("id: 'live'");
-    const liveOptionEnd = pickerTsx.indexOf('}', liveOptionStart);
-    expect(liveOptionStart).toBeGreaterThan(-1);
-    expect(liveOptionEnd).toBeGreaterThan(liveOptionStart);
-    const liveOption = pickerTsx.slice(liveOptionStart, liveOptionEnd);
-    expect(liveOption).not.toMatch(/[Cc]apture/);
   });
 
   it('rewords the two runtime Live-tab strings to listening/monitoring vocabulary (capture-lifecycle.ts)', () => {

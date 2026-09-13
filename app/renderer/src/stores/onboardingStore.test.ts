@@ -48,7 +48,6 @@ beforeEach(() => {
     localStorage: {},
     onboardingState: { shouldShowOnboarding, markOnboardingSeen },
     singleColumnState: { isSingleColumn: () => false },
-    reportFirstUxState: { isEnabled: () => false },
   };
 });
 

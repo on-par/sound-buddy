@@ -9,8 +9,7 @@ const SIMPLE_TAB_MODES: readonly ModeSwitchRequest[] = ['analyze', 'history', 'r
 
 export function isSimpleMode(settings: AppSettings | null): boolean {
   return settings !== null
-    && settings.advancedFeaturesEnabled === false
-    && settings.reportFirstUxEnabled !== true;
+    && settings.advancedFeaturesEnabled === false;
 }
 
 export function visibleTabModes(settings: AppSettings | null): readonly ModeSwitchRequest[] {

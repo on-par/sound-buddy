@@ -9,8 +9,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
     idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null,
     usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
-    crashReportingEnabled: false, liveAdjustmentsEnabled: false,
-    reportFirstUxEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '',
+    crashReportingEnabled: false, liveAdjustmentsEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '',
     weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
     measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
     soundcheckBuses: [], splCalibrationOffsetDb: null, lastAppMode: '',
@@ -27,12 +26,6 @@ describe('simple-mode', () => {
   it('is Simple mode only when advanced features are disabled', () => {
     expect(isSimpleMode(settings({ advancedFeaturesEnabled: false }))).toBe(true);
     expect(visibleTabModes(settings({ advancedFeaturesEnabled: false }))).toEqual(['analyze', 'history', 'reportcard']);
-  });
-
-  it('keeps the report-first-ux experiment in precedence over Simple mode', () => {
-    const s = settings({ advancedFeaturesEnabled: false, reportFirstUxEnabled: true });
-    expect(isSimpleMode(s)).toBe(false);
-    expect(visibleTabModes(s)).toEqual(['analyze', 'history', 'dir', 'live', 'console', 'recent', 'guide', 'ringout', 'reportcard']);
   });
 
   it('clamps a hidden boot mode to reportcard in Simple mode', () => {

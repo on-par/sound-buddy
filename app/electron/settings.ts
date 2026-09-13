@@ -309,12 +309,6 @@ export const SETTING_SPECS: { [K in keyof AppSettings]: SettingSpec<AppSettings[
     sanitizeFile: (v) => ((v ?? SETTING_SPECS.liveAdjustmentsEnabled.default) as boolean),
     sanitizePatch: (v) => (typeof v === 'boolean' ? v : undefined),
   },
-  reportFirstUxEnabled: {
-    default: false,
-    sanitizeFile: (v) => ((v ?? SETTING_SPECS.reportFirstUxEnabled.default) as boolean),
-    sanitizePatch: (v) => (typeof v === 'boolean' ? v : undefined),
-    envRead: (f) => envBool('SOUND_BUDDY_REPORT_FIRST_UX') ?? f,
-  },
   advancedFeaturesEnabled: {
     default: false,
     sanitizeFile: (v) => ((v ?? SETTING_SPECS.advancedFeaturesEnabled.default) as boolean),
@@ -475,10 +469,10 @@ export function getSettings(): AppSettings {
 /** Merge and persist a partial update; returns the new settings. */
 export function updateSettings(patch: Partial<AppSettings>): AppSettings {
   // Persist the patch over the FILE contents (layered on defaults) — never over
-  // getSettings()'s env-resolved view. Otherwise a transient env override (e.g.
-  // SOUND_BUDDY_REPORT_FIRST_UX=1) would be baked permanently into
-  // settings.json, silently defeating the launch-time-only contract after the
-  // env var is removed. Env overrides stay transient (read-time only).
+  // getSettings()'s env-resolved view. Otherwise a transient env override would
+  // be baked permanently into settings.json, silently defeating the
+  // launch-time-only contract after the env var is removed. Env overrides stay
+  // transient (read-time only).
   const file = readSettingsFile('before update');
   const nextFile = { ...file, ...patch };
   writeSettingsFile(nextFile);

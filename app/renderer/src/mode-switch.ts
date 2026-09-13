@@ -22,7 +22,7 @@ import { SPECTRUM_TITLE } from './spectrum-chrome';
 import { decideLiveAutoStart } from './live-auto-start';
 import { startLiveCapture, runtime } from './LiveControls';
 import { captureOptsFromCadence } from './measurement-device-state';
-import { clampBootMode } from './simple-mode';
+import { clampBootMode, isSimpleMode } from './simple-mode';
 import type { AppSettings } from '../../electron/ipc/api';
 
 export type WorkspaceMode = 'dir' | 'live' | 'console' | 'recent' | 'guide' | 'ringout' | 'reportcard';
@@ -38,7 +38,6 @@ export function isWorkspaceMode(mode: string): mode is WorkspaceMode {
 export type ModeSwitchDecision =
   | { type: 'noop' }
   | { type: 'chooseFile' }
-  | { type: 'openPicker' }
   | { type: 'redirect'; mode: WorkspaceMode }
   | { type: 'switch'; mode: WorkspaceMode };
 
@@ -49,27 +48,20 @@ export function resolveModeSwitch(
   currentMode: string,
   opts?: { simpleMode?: boolean },
 ): ModeSwitchDecision {
-  if (requestedMode === 'analyze') return opts?.simpleMode ? { type: 'chooseFile' } : { type: 'openPicker' };
+  if (requestedMode === 'analyze') return { type: 'chooseFile' };
   if (requestedMode === 'history') return { type: 'redirect', mode: 'recent' };
   if (requestedMode === currentMode) return { type: 'noop' };
   if (!isWorkspaceMode(requestedMode)) return { type: 'noop' };
   return { type: 'switch', mode: requestedMode };
 }
 
-// single-column-state.js/report-first-ux-state.js stay classic scripts —
-// read via a typed window cast, matching ReportCardIsland.tsx's
-// getGrading()-style pattern.
+// single-column-state.js stays a classic script — read via a typed window
+// cast, matching ReportCardIsland.tsx's getGrading()-style pattern.
 interface SingleColumnStateApi {
-  isSingleColumn(reportFirstUxEnabled: boolean, mode: string): boolean;
-}
-interface ReportFirstUxStateApi {
-  isEnabled(settings: unknown): boolean;
+  isSingleColumn(simpleMode: boolean, mode: string): boolean;
 }
 function getSingleColumnState(): SingleColumnStateApi {
   return (window as unknown as { singleColumnState: SingleColumnStateApi }).singleColumnState;
-}
-function getReportFirstUxState(): ReportFirstUxStateApi {
-  return (window as unknown as { reportFirstUxState: ReportFirstUxStateApi }).reportFirstUxState;
 }
 
 // The Live tab's meter board + docked EQ pane are React-owned now (TD-001
@@ -114,12 +106,11 @@ export function applySpectrumForMode(mode: string): void {
   }
 }
 
-// Verbatim port of syncSingleColumn (inline-app.js) — #542 (epic e17): fold
-// the workspace to one column for Recent/Build Guide/Ring-Out/Directory when
-// the report-first-ux flag is on.
+// Fold the workspace to one column for Simple-mode History (backed by the
+// Recent workspace). In Advanced mode, the normal multi-panel shell stays.
 export function applySingleColumnSync(): void {
   document.body.classList.toggle('single-column', getSingleColumnState().isSingleColumn(
-    getReportFirstUxState().isEnabled(useSettingsStore.getState().settings),
+    isSimpleMode(useSettingsStore.getState().settings),
     useLiveCaptureStore.getState().appMode));
 }
 

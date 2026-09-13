@@ -24,7 +24,6 @@ const SIMPLE_COPY = 'Drop last Sunday&#x27;s recording on the Report Card panel 
 
 function settings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
-    reportFirstUxEnabled: false,
     advancedFeaturesEnabled: true,
     ...overrides,
   } as AppSettings;

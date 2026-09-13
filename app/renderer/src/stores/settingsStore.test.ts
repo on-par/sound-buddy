@@ -30,7 +30,7 @@ describe('createSettingsStore', () => {
           rigs: [],
           activeRigId: null,
           usageSignalEnabled: false,
-          channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: true, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: false, soundcheckBuses: [], splCalibrationOffsetDb: null, lastAppMode: '',
+          channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: true, liveAdjustmentsEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: false, soundcheckBuses: [], splCalibrationOffsetDb: null, lastAppMode: '',
         };
       },
     });
@@ -51,7 +51,7 @@ describe('createSettingsStore', () => {
       rigs: [],
       activeRigId: null,
       usageSignalEnabled: false,
-      channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: true, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: false, soundcheckBuses: [], splCalibrationOffsetDb: null, lastAppMode: '',
+      channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: true, liveAdjustmentsEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: false, soundcheckBuses: [], splCalibrationOffsetDb: null, lastAppMode: '',
     };
     const mock = createMockSoundBuddy({
       updateSettings: async (patch) => {
@@ -97,7 +97,7 @@ describe('createSettingsStore', () => {
       rigs: [],
       activeRigId: null,
       usageSignalEnabled: false,
-      channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: false, soundcheckBuses: [], splCalibrationOffsetDb: null, lastAppMode: '',
+      channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: false, liveAdjustmentsEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: false, soundcheckBuses: [], splCalibrationOffsetDb: null, lastAppMode: '',
     };
     const mock = createMockSoundBuddy({
       updateSettings: () => Promise.reject(new Error('write failed')),
@@ -130,7 +130,7 @@ describe('createSettingsStore', () => {
       rigs: [],
       activeRigId: null,
       usageSignalEnabled: false,
-      channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: true, soundcheckBuses: [], splCalibrationOffsetDb: null, lastAppMode: '',
+      channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: false, liveAdjustmentsEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: true, soundcheckBuses: [], splCalibrationOffsetDb: null, lastAppMode: '',
     };
     const mock = createMockSoundBuddy({
       grantConsoleNetworkConsent: async () => {
@@ -195,7 +195,7 @@ describe('createSettingsStore', () => {
         rigs: [],
         activeRigId: null,
         usageSignalEnabled: false,
-        channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: true, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: false, soundcheckBuses: [], splCalibrationOffsetDb: null, lastAppMode: '',
+        channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: true, liveAdjustmentsEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: false, soundcheckBuses: [], splCalibrationOffsetDb: null, lastAppMode: '',
       }),
     });
     (globalThis as { window?: unknown }).window = { soundBuddy: mock.api };
