@@ -1,4 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
+import * as fs from 'fs';
 import * as path from 'path';
 import { launchApp } from './e2e-helpers';
 import { launchElectron } from '../launch-electron';
@@ -346,14 +347,20 @@ test.describe('Settings dialog (#204)', () => {
 
 test.describe('Advanced features setting (#1422)', () => {
   const advancedTabs = ['dir', 'live', 'console', 'recent', 'guide', 'ringout'];
-  const simpleTabs = ['history', 'reportcard'];
+  const simpleTabs = ['analyze', 'history', 'reportcard'];
   const userDataDir = path.join(__dirname, '..', '..', 'test-results', `e2e-advanced-features-${process.pid}-${Date.now()}`);
 
   async function launchPersisted(): Promise<{ electronApp: ElectronApplication; window: Page }> {
     seedProLicense(userDataDir);
+    const settingsPath = path.join(userDataDir, 'settings.json');
+    if (!fs.existsSync(settingsPath)) {
+      fs.writeFileSync(settingsPath, JSON.stringify({ advancedFeaturesEnabled: true }, null, 2));
+    }
+    const env = { ...process.env, ...LICENSE_ENV };
+    delete env.SOUND_BUDDY_ADVANCED_FEATURES;
     const app = await launchElectron({
       args: [path.join(__dirname, '..', '..', 'dist', 'electron', 'main.js'), `--user-data-dir=${userDataDir}`],
-      env: { ...process.env, ...LICENSE_ENV, SOUND_BUDDY_ADVANCED_FEATURES: '' },
+      env,
     });
     const page = await app.firstWindow();
     await page.waitForLoadState('domcontentloaded');

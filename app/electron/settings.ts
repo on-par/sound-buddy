@@ -316,7 +316,7 @@ export const SETTING_SPECS: { [K in keyof AppSettings]: SettingSpec<AppSettings[
     envRead: (f) => envBool('SOUND_BUDDY_REPORT_FIRST_UX') ?? f,
   },
   advancedFeaturesEnabled: {
-    default: true,
+    default: false,
     sanitizeFile: (v) => ((v ?? SETTING_SPECS.advancedFeaturesEnabled.default) as boolean),
     sanitizePatch: (v) => (typeof v === 'boolean' ? v : undefined),
     envRead: (f) => envBool('SOUND_BUDDY_ADVANCED_FEATURES') ?? f,
@@ -409,6 +409,23 @@ function readSettingsFile(context: string): Partial<AppSettings> {
   return {};
 }
 
+function hasOwn(obj: object, key: PropertyKey): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+export function deriveAdvancedFeaturesDefault(file: Partial<AppSettings>): boolean {
+  const activeRigId = file.activeRigId;
+  return (typeof activeRigId === 'string' && activeRigId.trim().length > 0)
+    || file.consoleNetworkConsentGranted === true;
+}
+
+function fileLayerValue<K extends keyof AppSettings>(file: Partial<AppSettings>, key: K): AppSettings[K] {
+  if (key === 'advancedFeaturesEnabled' && !hasOwn(file, key)) {
+    return deriveAdvancedFeaturesDefault(file) as AppSettings[K];
+  }
+  return SETTING_SPECS[key].sanitizeFile(file[key]);
+}
+
 /**
  * Persist the file layer, preserving any fields not being changed — including
  * unknown top-level keys a future version may add. Every known key is
@@ -425,7 +442,9 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     // directly indexable-and-callable under tsc --noEmit, so each entry is
     // widened to the shared SettingSpec<union> shape (see getSettings below).
     const spec = SETTING_SPECS[key] as SettingSpec<AppSettings[keyof AppSettings]>;
-    persisted[key] = spec.sanitizeFile(file[key]);
+    persisted[key] = key === 'advancedFeaturesEnabled' && !hasOwn(file, key)
+      ? deriveAdvancedFeaturesDefault(file)
+      : spec.sanitizeFile(file[key]);
   }
   try {
     fs.writeFileSync(settingsPath(), JSON.stringify(persisted, null, 2));
@@ -447,7 +466,7 @@ export function getSettings(): AppSettings {
   const result: Record<string, unknown> = {};
   for (const key of Object.keys(SETTING_SPECS) as Array<keyof AppSettings>) {
     const spec = SETTING_SPECS[key] as SettingSpec<AppSettings[keyof AppSettings]>;
-    const fileValue = spec.sanitizeFile(file[key]);
+    const fileValue = fileLayerValue(file, key);
     result[key] = spec.envRead ? spec.envRead(fileValue) : fileValue;
   }
   return result as unknown as AppSettings;
