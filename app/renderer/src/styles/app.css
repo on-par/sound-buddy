@@ -1222,6 +1222,8 @@
     .sb-analyzer .veq-bar { background:var(--azure-400) !important; opacity:0.38; border-radius:2px 2px 0 0; box-shadow:0 0 8px color-mix(in srgb, var(--azure-400) 24%, transparent); }
     .sb-analyzer .veq-bar.loud { opacity:0.68; box-shadow:0 0 12px color-mix(in srgb, var(--azure-400) 42%, transparent); }
     .sb-analyzer .veq-bar.dim { opacity:0.16; }
+    .sb-analyzer.sb-analyzer-session-eq .veq-bar { background:var(--veq-bar-bg) !important; opacity:0.62; box-shadow:none; }
+    .sb-analyzer.sb-analyzer-session-eq .veq-bar.dim { opacity:0.3; }
     .sb-analyzer-db-scale { position:absolute; pointer-events:none; z-index:4; }
     .sb-analyzer-db-pill { position:absolute; right:6px; transform:translateY(-50%); padding:2px 5px; border:1px solid color-mix(in srgb, var(--border-default) 70%, transparent); border-radius:999px; background:color-mix(in srgb, var(--surface-inset) 78%, transparent); color:var(--gridline-label); font:var(--fw-medium) 9px/1 var(--font-mono); font-variant-numeric:tabular-nums; text-shadow:0 1px 2px #000; }
     .sb-analyzer-labels { margin-top:5px; }

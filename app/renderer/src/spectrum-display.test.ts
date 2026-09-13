@@ -443,7 +443,7 @@ describe('veqBarsAndLabelsHTML', () => {
 });
 
 describe('analyzerStyleHTML', () => {
-  it('keeps analyzer bands log-width by default and can render uniform EQ columns for editable targets', () => {
+  it('keeps analyzer bands log-width by default and can render uniform EQ columns when requested', () => {
     const bandDb = [-42, -38, -30, -24, -28, -32, -36];
     const analyzer = analyzerStyleHTML({
       curve: bandCurveFromDb(bandDb),
@@ -461,6 +461,24 @@ describe('analyzerStyleHTML', () => {
     expect(new Set(widths(analyzer)).size).toBeGreaterThan(1);
     expect(new Set(widths(uniform))).toEqual(new Set([EQ_COLS[0].width]));
     expect(uniform).toContain('sb-analyzer-uniform-bands');
+  });
+
+  it('can render Session-style EQ grid bars for the curve editor preview', () => {
+    const bandDb = [-42, -38, -30, -24, -28, -32, -36];
+    const html = analyzerStyleHTML({
+      curve: bandCurveFromDb(bandDb),
+      bandDb,
+      uid: 'session-layout',
+      bandLayout: 'session',
+    });
+    const bars = [...html.matchAll(/class="veq-bar[^"]*" data-band="g\d+"/g)];
+    const widths = [...html.matchAll(/class="veq-bar[^"]*" data-band="g\d+" style="[^"]*width:([0-9.]+)%/g)].map((m) => m[1]);
+
+    expect(html).toContain('sb-analyzer-session-eq');
+    expect(bars).toHaveLength(48);
+    expect(new Set(widths).size).toBe(1);
+    expect(html).toContain('--veq-bar-bg:var(--band-sub)');
+    expect(html).toContain('--veq-bar-bg:var(--band-brilliance)');
   });
 });
 

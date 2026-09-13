@@ -100,7 +100,7 @@ export default function CurveEditorDialog() {
     compact: true,
     uid: 'curve-editor',
     className: 'sb-analyzer-curve-editor',
-    bandLayout: 'uniform',
+    bandLayout: 'session',
   });
 
   /* c8 ignore start -- document-level Escape close + name-field autofocus, same

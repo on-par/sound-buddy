@@ -140,7 +140,7 @@ describe('CurveEditorDialog', () => {
     expect(html).not.toContain('data-icon="x"');
   });
 
-  it('renders the ideal curve preview with uniform EQ band widths', () => {
+  it('renders the ideal curve preview with the Session EQ grid style', () => {
     useIdealProfilesStore.setState({
       editor: { ...CLOSED_EDITOR, open: true, bands: [-3, -1, 0, 2, 3, 1, -2] },
     });
@@ -148,8 +148,8 @@ describe('CurveEditorDialog', () => {
     const html = renderMarkup();
     const widths = [...html.matchAll(/class="veq-bar[^"]*" data-band="[^"]+" style="[^"]*width:([0-9.]+)%/g)].map((m) => m[1]);
 
-    expect(html).toContain('sb-analyzer-uniform-bands');
-    expect(widths).toHaveLength(7);
+    expect(html).toContain('sb-analyzer-session-eq');
+    expect(widths).toHaveLength(48);
     expect(new Set(widths).size).toBe(1);
   });
 
