@@ -354,6 +354,64 @@ export const ANALYZER_BANDS: BarColumn[] = BAND_META.map((b) => {
   };
 });
 
+const SESSION_EQ_GRID_POINTS = 48;
+const SESSION_EQ_GRID_GAP = 0.25;
+const SESSION_EQ_GRID_FREQS = Array.from({ length: SESSION_EQ_GRID_POINTS }, (_, i) =>
+  CURVE_FMIN * Math.pow(CURVE_FMAX / CURVE_FMIN, i / (SESSION_EQ_GRID_POINTS - 1)));
+const SESSION_EQ_GRID_STEP = 100 / (SESSION_EQ_GRID_POINTS - 1);
+
+function bandColorForFreq(f: number): string {
+  if (f < BAND_META[0].lo) return BAND_META[0].color;
+  const last = BAND_META[BAND_META.length - 1];
+  if (f >= last.hi) return last.color;
+  const band = BAND_META.find((b) => f >= b.lo && f < b.hi);
+  return (band ?? last).color;
+}
+
+const SESSION_EQ_GRID_BARS: BarColumn[] = SESSION_EQ_GRID_FREQS.map((freq, i) => {
+  const center = analyzerLogPos(freq);
+  const width = SESSION_EQ_GRID_STEP - 2 * SESSION_EQ_GRID_GAP;
+  const left = center - width / 2;
+  return {
+    key: `g${i}`,
+    label: '',
+    color: bandColorForFreq(freq),
+    left: left.toFixed(2),
+    width: width.toFixed(2),
+    center: center.toFixed(2),
+  };
+});
+
+function sampleCurveDbAt(curve: SpectrumCurve, freq: number): number {
+  const pairs = curve.freqs
+    .map((f, i) => ({ f, db: curve.db[i] }))
+    .filter((p) => Number.isFinite(p.f) && p.f > 0 && Number.isFinite(p.db))
+    .sort((a, b) => a.f - b.f);
+  if (!pairs.length) return -120;
+  if (freq <= pairs[0].f) return pairs[0].db;
+  const last = pairs[pairs.length - 1];
+  if (freq >= last.f) return last.db;
+  for (let i = 1; i < pairs.length; i++) {
+    const hi = pairs[i];
+    if (freq <= hi.f) {
+      const lo = pairs[i - 1];
+      const t = (Math.log10(freq) - Math.log10(lo.f)) / (Math.log10(hi.f) - Math.log10(lo.f) || 1);
+      return lo.db + (hi.db - lo.db) * Math.max(0, Math.min(1, t));
+    }
+  }
+  return last.db;
+}
+
+function sessionEqGridBarsHTML(curve: SpectrumCurve | null, bandDb: number[]): string {
+  const fallback = bandCurveFromDb(bandDb);
+  const src = curve ?? fallback;
+  return SESSION_EQ_GRID_BARS.map((b, i) => {
+    const v = veqBandView(sampleCurveDbAt(src, SESSION_EQ_GRID_FREQS[i]));
+    const cls = 'veq-bar' + (v.dim ? ' dim' : '');
+    return `<div class="${cls}" data-band="${b.key}" style="--veq-bar-bg:${b.color};left:${b.left}%;width:${b.width}%;height:${v.pct.toFixed(2)}%;background:${b.color}"></div>`;
+  }).join('');
+}
+
 // Bucket a fine {freqs, db} curve into 7 BAND_META band levels (mean dB of
 // samples whose freq falls within [lo, hi]) — for contexts that only carry
 // the full-resolution curve (scrub frames, the level-matched target) rather
@@ -411,7 +469,7 @@ export interface AnalyzerStyleOpts {
   uid?: string;
   compact?: boolean;
   className?: string;
-  bandLayout?: 'analyzer' | 'uniform';
+  bandLayout?: 'analyzer' | 'uniform' | 'session';
 }
 
 export function bandCurveFromDb(db: number[], baseDb = 0): SpectrumCurve {
@@ -471,7 +529,8 @@ export function analyzerStyleHTML(opts: AnalyzerStyleOpts): string {
   const curve = opts.curve && hasUsableCurve({ curve: opts.curve }) ? opts.curve : null;
   const loudestIdx = veqLoudestIdx(bandDb);
   const bandCols = opts.bandLayout === 'uniform' ? EQ_COLS : ANALYZER_BANDS;
-  const { bars, labels } = veqBarsAndLabelsHTML(bandCols, bandDb, loudestIdx);
+  const { bars: bandBars, labels } = veqBarsAndLabelsHTML(bandCols, bandDb, loudestIdx);
+  const bars = opts.bandLayout === 'session' ? sessionEqGridBarsHTML(curve, bandDb) : bandBars;
   const targetDb = opts.targetDb && Array.isArray(opts.targetDb) && opts.targetDb.length >= (curve?.db.length ?? 0)
     ? opts.targetDb
     : null;
@@ -489,6 +548,7 @@ export function analyzerStyleHTML(opts: AnalyzerStyleOpts): string {
     compact ? 'sb-analyzer-compact' : '',
     curve ? 'sb-analyzer-curve' : 'sb-analyzer-band-only',
     opts.bandLayout === 'uniform' ? 'sb-analyzer-uniform-bands' : '',
+    opts.bandLayout === 'session' ? 'sb-analyzer-session-eq' : '',
     opts.className || '',
   ]
     .filter(Boolean).join(' ');
