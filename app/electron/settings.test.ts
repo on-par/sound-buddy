@@ -65,6 +65,7 @@ beforeEach(() => {
   delete process.env.SOUND_BUDDY_IDEAL_PROFILE;
   delete process.env.SOUND_BUDDY_STORAGE_DIR;
   delete process.env.SOUND_BUDDY_REPORT_FIRST_UX;
+  delete process.env.SOUND_BUDDY_ADVANCED_FEATURES;
   vi.mocked(logWarn).mockClear();
 });
 
@@ -336,6 +337,42 @@ describe('reportFirstUxEnabled (#538 — report-first-ux epic gate, default off)
     expect(readFile().reportFirstUxEnabled).toBe(false);
     // The env override is still applied on read.
     expect(getSettings().reportFirstUxEnabled).toBe(true);
+  });
+});
+
+describe('advancedFeaturesEnabled (#1421 — opt-in Simple mode gate, default advanced)', () => {
+  it('defaults to true when settings.json is absent', () => {
+    expect(getSettings().advancedFeaturesEnabled).toBe(true);
+  });
+
+  it('defaults to true when the file exists without the key', () => {
+    writeFile({ idealProfile: '' });
+    expect(getSettings().advancedFeaturesEnabled).toBe(true);
+  });
+
+  it('flips on and back off, persisting each boolean value to the raw file', () => {
+    const off = updateSettings({ advancedFeaturesEnabled: false });
+    expect(off.advancedFeaturesEnabled).toBe(false);
+    expect(readFile().advancedFeaturesEnabled).toBe(false);
+
+    const on = updateSettings({ advancedFeaturesEnabled: true });
+    expect(on.advancedFeaturesEnabled).toBe(true);
+    expect(readFile().advancedFeaturesEnabled).toBe(true);
+  });
+
+  it('drops a non-boolean patch and preserves the existing file-layer value', () => {
+    expect(SETTING_SPECS.advancedFeaturesEnabled.sanitizePatch?.('nope')).toBeUndefined();
+  });
+
+  it("SOUND_BUDDY_ADVANCED_FEATURES='1' forces it on over a file-layer false", () => {
+    writeFile({ advancedFeaturesEnabled: false });
+    process.env.SOUND_BUDDY_ADVANCED_FEATURES = '1';
+    expect(getSettings().advancedFeaturesEnabled).toBe(true);
+  });
+
+  it("SOUND_BUDDY_ADVANCED_FEATURES='0' forces it off over the default true", () => {
+    process.env.SOUND_BUDDY_ADVANCED_FEATURES = '0';
+    expect(getSettings().advancedFeaturesEnabled).toBe(false);
   });
 });
 
@@ -894,6 +931,7 @@ describe('SETTING_SPECS — the single owner of every field invariant (#747)', (
     crashReportingEnabled: false,
     liveAdjustmentsEnabled: false,
     reportFirstUxEnabled: false,
+    advancedFeaturesEnabled: true,
     shareChurchName: '',
     weeklyReminderEnabled: false,
     weeklyReminderServiceDay: 0,

@@ -45,6 +45,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   crashReportingEnabled: false,
   liveAdjustmentsEnabled: false,
   reportFirstUxEnabled: false,
+  advancedFeaturesEnabled: true,
   shareChurchName: '',
   weeklyReminderEnabled: false,
   weeklyReminderServiceDay: 0,

@@ -621,6 +621,7 @@ describe('update-settings whitelist exactness (#747)', () => {
       crashReportingEnabled: true,
       liveAdjustmentsEnabled: true,
       reportFirstUxEnabled: true,
+      advancedFeaturesEnabled: false,
       shareChurchName: 'Grace Chapel',
       weeklyReminderEnabled: true,
       weeklyReminderServiceDay: 0,

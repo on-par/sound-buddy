@@ -315,6 +315,12 @@ export const SETTING_SPECS: { [K in keyof AppSettings]: SettingSpec<AppSettings[
     sanitizePatch: (v) => (typeof v === 'boolean' ? v : undefined),
     envRead: (f) => envBool('SOUND_BUDDY_REPORT_FIRST_UX') ?? f,
   },
+  advancedFeaturesEnabled: {
+    default: true,
+    sanitizeFile: (v) => ((v ?? SETTING_SPECS.advancedFeaturesEnabled.default) as boolean),
+    sanitizePatch: (v) => (typeof v === 'boolean' ? v : undefined),
+    envRead: (f) => envBool('SOUND_BUDDY_ADVANCED_FEATURES') ?? f,
+  },
   shareChurchName: {
     default: '',
     sanitizeFile: (v) => (typeof v === 'string' ? v : SETTING_SPECS.shareChurchName.default),

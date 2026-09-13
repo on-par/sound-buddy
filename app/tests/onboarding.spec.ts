@@ -72,4 +72,22 @@ test.describe.serial('First-run onboarding (#69)', () => {
     const ls = await win.evaluate(() => localStorage.getItem('sb-onboarding-seen-v1'));
     expect(ls).toBe('1');
   });
+
+  test('Simple mode hides advanced tabs but leaves their buttons mounted', async () => {
+    fs.rmSync(USER_DATA, { recursive: true, force: true });
+    fs.mkdirSync(USER_DATA, { recursive: true });
+    fs.writeFileSync(path.join(USER_DATA, 'settings.json'), JSON.stringify({ advancedFeaturesEnabled: false }, null, 2));
+    await launch();
+
+    await expect(win.locator('body')).toHaveClass(/simple-mode/);
+    await expect(win.locator('#nav-history')).toBeVisible();
+    await expect(win.locator('.mode-tab[data-mode="reportcard"]')).toBeVisible();
+    await expect(win.locator('#nav-analyze')).toBeHidden();
+
+    for (const mode of ['dir', 'live', 'console', 'recent', 'guide', 'ringout']) {
+      const tab = win.locator(`.mode-tab[data-mode="${mode}"]`);
+      await expect(tab).toHaveCount(1);
+      await expect(tab).toBeHidden();
+    }
+  });
 });

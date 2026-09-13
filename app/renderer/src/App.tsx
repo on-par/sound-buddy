@@ -105,6 +105,7 @@ import { installLiveFrameProbeTestHook } from './live-frame-probe';
 import { sessionClipSelection } from './clip-selection';
 import { sessionTimeSelection } from './time-selection';
 import { sessionLoopRegion } from './loopBrace.render';
+import { installSimpleModeBodyClassSync } from './simple-mode-body';
 import LiveStatusLine from './LiveStatusLine';
 import LiveSessionOffers from './LiveSessionOffers';
 import WindowBadge from './WindowBadge';
@@ -329,6 +330,7 @@ export default function App() {
     // Skill-tree onboarding (#382): hydrates progress after BOOT_SCRIPTS so
     // window.skillTreeState exists — same ordering guarantee as onboarding.
     useSkillTreeStore.getState().init();
+    const unsubscribeSimpleModeBodyClass = installSimpleModeBodyClassSync();
     // #report-card/#spectrum-island now exist (just injected above) —
     // trigger the second render that portals ReportCardIsland/SpectrumPanel
     // onto them (TD-001 slice 4, #422).
@@ -342,8 +344,10 @@ export default function App() {
       hydration: (window as unknown as { rendererHydration?: Promise<unknown> }).rendererHydration ?? Promise.resolve(),
       getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
       getCurrentMode: () => useLiveCaptureStore.getState().appMode,
+      getSettings: () => useSettingsStore.getState().settings,
     });
     setBooted(true);
+    return unsubscribeSimpleModeBodyClass;
   }, []);
 
   // #license-island and #settings-island are static nodes in index.html (see

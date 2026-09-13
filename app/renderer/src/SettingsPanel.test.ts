@@ -128,7 +128,7 @@ describe('SettingsPanel markup', () => {
         idealProfile: '', customIdealProfiles: [], storageDir: '/Volumes/Audio', rigs: [], activeRigId: null,
         usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
         crashReportingEnabled: false, liveAdjustmentsEnabled: false,
-        reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
+        reportFirstUxEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
         liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
         soundcheckBuses: [],
         splCalibrationOffsetDb: null, lastAppMode: '',

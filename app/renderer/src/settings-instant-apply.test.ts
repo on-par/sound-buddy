@@ -26,6 +26,7 @@ const FULL_SETTINGS: AppSettings = {
   crashReportingEnabled: true,
   liveAdjustmentsEnabled: true,
   reportFirstUxEnabled: false,
+  advancedFeaturesEnabled: true,
   shareChurchName: '',
   weeklyReminderEnabled: true,
   weeklyReminderServiceDay: 3,
