@@ -26,8 +26,10 @@ import {
   smoothPath,
   spectrumCurveSVG,
   spectrumLegendHTML,
+  analyzerStyleHTML,
   bandLevelsFromCurve,
   bandDbFromSpectrum,
+  bandCurveFromDb,
   veqBarsAndLabelsHTML,
   eqTargetLineSVG,
   eqCentroidHTML,
@@ -437,6 +439,28 @@ describe('veqBarsAndLabelsHTML', () => {
     // no short on Beta -> abbr falls back to the full label
     expect(labels).toContain('<span class="veq-label-full">Beta</span>');
     expect(labels).toContain('<span class="veq-label-abbr">Beta</span>');
+  });
+});
+
+describe('analyzerStyleHTML', () => {
+  it('keeps analyzer bands log-width by default and can render uniform EQ columns for editable targets', () => {
+    const bandDb = [-42, -38, -30, -24, -28, -32, -36];
+    const analyzer = analyzerStyleHTML({
+      curve: bandCurveFromDb(bandDb),
+      bandDb,
+      uid: 'default-layout',
+    });
+    const uniform = analyzerStyleHTML({
+      curve: bandCurveFromDb(bandDb),
+      bandDb,
+      uid: 'uniform-layout',
+      bandLayout: 'uniform',
+    });
+
+    const widths = (html: string) => [...html.matchAll(/class="veq-bar[^"]*" data-band="[^"]+" style="[^"]*width:([0-9.]+)%/g)].map((m) => m[1]);
+    expect(new Set(widths(analyzer)).size).toBeGreaterThan(1);
+    expect(new Set(widths(uniform))).toEqual(new Set([EQ_COLS[0].width]));
+    expect(uniform).toContain('sb-analyzer-uniform-bands');
   });
 });
 

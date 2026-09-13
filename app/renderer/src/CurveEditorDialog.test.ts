@@ -140,6 +140,19 @@ describe('CurveEditorDialog', () => {
     expect(html).not.toContain('data-icon="x"');
   });
 
+  it('renders the ideal curve preview with uniform EQ band widths', () => {
+    useIdealProfilesStore.setState({
+      editor: { ...CLOSED_EDITOR, open: true, bands: [-3, -1, 0, 2, 3, 1, -2] },
+    });
+
+    const html = renderMarkup();
+    const widths = [...html.matchAll(/class="veq-bar[^"]*" data-band="[^"]+" style="[^"]*width:([0-9.]+)%/g)].map((m) => m[1]);
+
+    expect(html).toContain('sb-analyzer-uniform-bands');
+    expect(widths).toHaveLength(7);
+    expect(new Set(widths).size).toBe(1);
+  });
+
   it('shows a non-blocking live comparison degraded state when no room data is available', () => {
     useIdealProfilesStore.setState({ editor: { ...CLOSED_EDITOR, open: true } });
     useLiveCaptureStore.setState({ isCapturing: true, lastLiveChannels: null });
