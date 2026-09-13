@@ -1068,7 +1068,7 @@ describe('bandBreakdownHTML / buildScoreRows against a baseline', () => {
     const row = buildScoreRowsWithBaseline(src, grading, grading.explainGrade(src)).find((r) => r.name === 'Band Balance')!;
     expect(row.tone).toBe('good');
     expect(row.note).toBe('vs. Worship service');
-    expect(row.detail.measured).toMatch(/vs\. Worship service$/);
+    expect(row.detail.measured).toBe('+0.0 dB');
     expect(row.detail.target).toBe('≤ +15 dB vs. Worship service');
   });
 
@@ -1122,13 +1122,22 @@ describe('bandTargetLevels', () => {
     expect(grading.bandDiffFromOthers({ ...shifted, lowMid: t.lowMid!.quietBelow }, 'lowMid', targets)).toBeCloseTo(-15, 6);
   });
 
-  it('is level-invariant and null for a band with no finite level', () => {
+  it('is level-invariant', () => {
+    const t = bandTargetLevels({ subBass: -60, bass: -50 }, null, cfg);
+    const louder = bandTargetLevels({ subBass: -40, bass: -30 }, null, cfg);
+    expect(t.subBass?.db).toBeCloseTo(-50, 6);
+    expect(louder.subBass!.db - t.subBass!.db).toBeCloseTo(20, 6);
+  });
+
+  it('uses the verdict\'s key set: a -Infinity band makes the other levels unknown (null), exactly as their verdicts read', () => {
     const bands = { subBass: -60, bass: -50, mid: Number.NEGATIVE_INFINITY };
     const t = bandTargetLevels(bands, null, cfg);
-    expect(t.mid).toBeNull();
-    expect(t.subBass?.db).toBeCloseTo(-50, 6);
-    const louder = bandTargetLevels({ subBass: -40, bass: -30 }, null, cfg);
-    expect(louder.subBass!.db - t.subBass!.db).toBeCloseTo(20, 6);
+    // The silent band's own balance level is still real (the mean of the others)…
+    expect(t.mid?.db).toBeCloseTo(-55, 6);
+    // …while every other band's level, like its verdict, is undefined.
+    expect(t.subBass).toBeNull();
+    expect(t.bass).toBeNull();
+    expect(Number.isFinite(grading.bandDiffFromOthers(bands, 'subBass'))).toBe(false);
   });
 
   it('is null when there are no other bands to compare against', () => {
@@ -1144,19 +1153,19 @@ describe('band meter ideal-level overlay', () => {
     const html = bandMeterWithTarget('Mid', '500 Hz–2 kHz', -20, { target: { db: -30, hotAbove: -18, quietBelow: -45 } });
     expect(html).toContain('class="bm-zone"');
     expect(html).toContain('class="bm-target"');
-    expect(html).toContain('title="Ideal level -30.0 dB"');
+    expect(html).toContain('title="Balanced level -30.0 dB (moves with the other bands)"');
   });
 
   it('the breakdown shows a legend naming the baseline, a ±dB deviation per band, and an overlay per row', () => {
     const pink = { subBass: -60, bass: -64.9, lowMid: -69.7, mid: -74, highMid: -78.8, presence: -81, brilliance: -84.8 };
     const baseline: GradeBaseline = { label: 'Worship service', bandTargets: { subBass: 12, bass: 7.1, lowMid: 2.3, mid: -2, highMid: -6.8, presence: -9, brilliance: -12.8 } };
     const html = bandBreakdownWithBaseline(pink, grading, baseline);
-    expect(html).toContain('ideal level vs. Worship service');
+    expect(html).toContain('balanced level vs. Worship service, given the other bands');
     expect(html).toContain('balanced range (-15 to +12 dB)');
     expect(html.match(/class="bm-target"/g)).toHaveLength(7);
     expect(html.match(/rc-band-dev/g)).toHaveLength(7);
     expect(html).toContain('+0.0 dB');
     const flat = bandBreakdownWithBaseline(pink, grading);
-    expect(flat).toContain('ideal level vs. the other bands');
+    expect(flat).toContain('balanced level vs. the other bands');
   });
 });

@@ -18,9 +18,11 @@ const PINK_TARGETS = { subBass: 12, bass: 7.1, lowMid: 2.3, mid: -2, highMid: -6
 const BASELINE = { label: 'Worship service', bandTargets: PINK_TARGETS };
 
 // The crowd-mic live window from the report that motivated this rubric change
-// (window #135) and the worship-service profile's 7-band targets.
+// (window #135) and the worship-service profile's 7-band targets exactly as
+// bandTargetsFromProfile derives them (see grading.golden.json's
+// baseline_worship_live fixture, generated from the engine).
 const CROWD_MIC_BANDS = { subBass: -61.1, bass: -63.0, lowMid: -71.2, mid: -76.6, highMid: -96.0, presence: -92.5, brilliance: -104.1 };
-const WORSHIP_TARGETS = { subBass: 18, bass: 11, lowMid: 5.5, mid: 2, highMid: -10, presence: -14, brilliance: -18 };
+const WORSHIP_TARGETS = { subBass: 16.1, bass: 12.9, lowMid: 6.5, mid: 2.9, highMid: -9.2, presence: -14.3, brilliance: -17.5 };
 
 describe('bandDiffFromOthers with targets', () => {
   it('is byte-identical to the flat reference when no targets are given', () => {
@@ -40,8 +42,8 @@ describe('bandDiffFromOthers with targets', () => {
 
   it('measures excess over the target, not over the other bands', () => {
     const bands = { ...PINK_BANDS, bass: PINK_BANDS.bass + 7 };
-    // 7 dB over target in one of seven bands → that band sits 7 + 7/6 dB above
-    // the mean of the other six deviations (which are all 0).
+    // 7 dB over target in one band; the other six deviations are all 0, so
+    // the diff is exactly the band's own excess.
     expect(grading.bandDiffFromOthers(bands, 'bass', PINK_TARGETS)).toBeCloseTo(7, 6);
   });
 
@@ -74,7 +76,7 @@ describe('grade against an ideal-curve baseline', () => {
     expect(grading.computeGrade(src)).toBe('B');
     const [d] = grading.explainGrade(src).deductions;
     expect(d.rule).toBe('Band imbalance');
-    expect(d.measured).toBe('+16.0 dB vs. Worship service');
+    expect(d.measured).toBe('+16.0 dB');
     expect(d.target).toBe('≤ +15 dB vs. Worship service');
     expect(d.letterImpact).toBe('Drops one letter');
     expect(grading.computeRecommendations(src)).toContain(

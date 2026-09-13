@@ -88,6 +88,24 @@ describe('GradingRubricEditor', () => {
     expect(html).toMatch(/id="rubric-symptoms-thresholdOffsetDb"[^>]*value="0"/);
   });
 
+  it('renders each input with its bounds and points it at the rubric help note', () => {
+    const html = render();
+    expect(html).toMatch(/id="rubric-bandBalance-quietDiff"[^>]*min="-60"[^>]*max="0"/);
+    expect(html).toMatch(/id="rubric-centroid-max"[^>]*max="20000"/);
+    expect(html).toMatch(/id="rubric-rms-acceptableMin"[^>]*aria-describedby="grading-rubric-note"/);
+    expect(html).toContain('id="grading-rubric-fields"');
+  });
+
+  it('spreads the injected help handlers onto the picker and the field block separately', () => {
+    const calls: string[] = [];
+    const handlers = (name: string) => ({
+      onMouseEnter: () => calls.push(name), onMouseLeave: () => calls.push(name), onFocus: () => calls.push(name), onBlur: () => calls.push(name),
+    });
+    const html = renderToString(createElement(GradingRubricEditor, { baselineHelp: handlers('baseline'), rubricHelp: handlers('rubric') }));
+    expect(html).toContain('id="grading-baseline-field"');
+    expect(html).toContain('id="grading-rubric-fields"');
+  });
+
   it('renders every group title', () => {
     const html = render();
     for (const title of ['Level', 'Dynamics', 'Band balance', 'Tonal balance', 'Tonal symptoms']) {

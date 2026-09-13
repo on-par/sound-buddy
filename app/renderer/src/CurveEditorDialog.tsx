@@ -18,7 +18,7 @@ import { BAND_META } from './spectrum-display';
 
 // Editor range: matches ideal-curves.js's clampDb (±24 dB) so a captured live
 // mix's tilt is editable without being clipped by the slider.
-const EDITOR_MAX_ABS_DB = 24;
+export const EDITOR_MAX_ABS_DB = 24;
 
 export default function CurveEditorDialog() {
   const { editor } = useStoreShallow(useIdealProfilesStore, (s) => ({ editor: s.editor }));

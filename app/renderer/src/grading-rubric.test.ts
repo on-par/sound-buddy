@@ -14,6 +14,8 @@ import {
   isOverridden,
   overrideCount,
   rubricInputId,
+  rubricBounds,
+  isCommittableDraft,
 } from './grading-rubric';
 
 const require = createRequire(import.meta.url);
@@ -97,5 +99,23 @@ describe('rubricPatchFor', () => {
 describe('rubricInputId', () => {
   it('dots become dashes', () => {
     expect(rubricInputId('bandBalance.severeHotDiff')).toBe('rubric-bandBalance-severeHotDiff');
+  });
+});
+
+describe('rubricBounds / isCommittableDraft', () => {
+  it('exposes the per-key span the main process enforces', () => {
+    expect(rubricBounds('bandBalance.quietDiff')).toEqual({ min: -60, max: 0 });
+    expect(rubricBounds('centroid.max')).toEqual({ min: 20, max: 20000 });
+  });
+
+  it('accepts blank and in-range numbers, rejects partial tokens and out-of-range values', () => {
+    expect(isCommittableDraft('rms.acceptableMin', '')).toBe(true);
+    expect(isCommittableDraft('rms.acceptableMin', '  ')).toBe(true);
+    expect(isCommittableDraft('rms.acceptableMin', '-30')).toBe(true);
+    expect(isCommittableDraft('rms.acceptableMin', '-')).toBe(false);
+    expect(isCommittableDraft('rms.acceptableMin', '-.')).toBe(false);
+    expect(isCommittableDraft('rms.acceptableMin', '5')).toBe(false);
+    expect(isCommittableDraft('bandBalance.severeHotDiff', '-3')).toBe(false);
+    expect(isCommittableDraft('symptoms.thresholdOffsetDb', '2.5')).toBe(true);
   });
 });

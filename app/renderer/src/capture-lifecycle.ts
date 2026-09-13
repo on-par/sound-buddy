@@ -202,7 +202,12 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): {
       // cross-store subscription and re-derived (clobbered)
       // analysisStore.liveSource from the now-empty rolling buffer. Undo it.
       if (frozenLiveSourceForResume) {
-        deps.getAna().setLiveSource(frozenLiveSourceForResume);
+        // Re-read the grading baseline on restore: the ideal curve may have
+        // changed between stop and resume, and the frozen copy predates it.
+        const restored = deps.gradeBaseline
+          ? { ...frozenLiveSourceForResume, baseline: deps.gradeBaseline() }
+          : frozenLiveSourceForResume;
+        deps.getAna().setLiveSource(restored);
         frozenLiveSourceForResume = null;
       }
     } else {

@@ -22,7 +22,7 @@ import {
   resolveActiveProfile,
   isAutoSelected,
   curveEditorInit,
-  bandOffsetsFromMeasuredBands,
+  captureBandOffsets,
   hasUsableLiveBands,
   CUSTOM_PREFIX,
   type IdealCurvesApi,
@@ -222,7 +222,7 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
               label: name,
               createdAt: existing?.createdAt,
             })
-          : curves.profileFromBands(bandOffsetsFromMeasuredBands(bands), GRID_FREQS, {
+          : curves.profileFromBands(captureBandOffsets(bands, (b) => curves.profileFromBands(b, GRID_FREQS, { label: name })), GRID_FREQS, {
               id: editor.editingId ?? existing?.id,
               label: name,
               description: 'Captured from a live capture',
@@ -255,7 +255,7 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
       async saveMeasuredBands(bands, meta) {
         if (!hasUsableLiveBands(bands)) return false;
         const curves = deps.getCurves();
-        const profile = curves.profileFromBands(bandOffsetsFromMeasuredBands(bands), GRID_FREQS, {
+        const profile = curves.profileFromBands(captureBandOffsets(bands, (b) => curves.profileFromBands(b, GRID_FREQS, { label: meta.label })), GRID_FREQS, {
           ...meta,
           description: meta.description ?? 'Captured from a live capture',
         });

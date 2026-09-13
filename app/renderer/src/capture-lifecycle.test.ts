@@ -252,6 +252,31 @@ describe('createCaptureLifecycle — onCaptureStarting', () => {
     expect(useLiveCaptureStore.getState().sessionOffers).toEqual({ sessionDir: '/tmp/session', reportCard: true, notEnoughData: false });
     expect(useLiveCaptureStore.getState().liveCueVisible).toBe(true);
   });
+
+  it('a resume re-reads the grading baseline for the restored frozen source', () => {
+    let baseline = { label: 'Worship service', isAuto: true, bandTargets: { mid: 0 } };
+    const { lifecycle } = makeLifecycle({ gradeBaseline: () => baseline });
+    useLiveCaptureStore.setState({
+      liveWindows: [windowTick(1), windowTick(2), windowTick(3)],
+      measurementSource: 0,
+      channelConfig: [{ kind: 'mono', a: 0, b: 1 }],
+      isCapturing: true,
+    });
+    lifecycle.onWindowTick(windowTick(1));
+    lifecycle.onWindowTick(windowTick(2));
+    lifecycle.onWindowTick(windowTick(3));
+    lifecycle.runtime.onCaptureStopped({ success: true, sessionDir: '/tmp/session' });
+    expect((useAnalysisStore.getState().liveSource as { baseline?: { label: string } })?.baseline?.label).toBe('Worship service');
+
+    baseline = { label: 'Our room', isAuto: false, bandTargets: { mid: 0 } };
+    lifecycle.runtime.onResumeMonitoringStart?.();
+    useLiveCaptureStore.setState({ isCapturing: true, liveCueVisible: true, resetLapCoaching: vi.fn() });
+    lifecycle.runtime.onCaptureStarting();
+
+    const restored = useAnalysisStore.getState().liveSource as { filename: string; baseline?: { label: string } } | null;
+    expect(restored?.filename).toMatch(/3 windows/);
+    expect(restored?.baseline?.label).toBe('Our room');
+  });
 });
 
 describe('createCaptureLifecycle — onCaptureStarted', () => {

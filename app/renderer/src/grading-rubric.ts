@@ -9,7 +9,7 @@
 // grading.js's CONFIG; this module only knows their paths and how to present
 // them. No store or DOM access — GradingRubricEditor.tsx does the wiring.
 
-import { GRADING_RUBRIC_KEYS, type GradingRubricKey, type GradingRubricOverrides } from '../../electron/ipc/api';
+import { GRADING_RUBRIC_KEYS, GRADING_RUBRIC_BOUNDS, type GradingRubricKey, type GradingRubricOverrides } from '../../electron/ipc/api';
 
 export type RubricGroup = 'level' | 'dynamics' | 'balance' | 'tone' | 'symptoms';
 
@@ -101,6 +101,23 @@ export function rubricPatchFor(
 /** Count of overridden fields — the "N customized" badge. */
 export function overrideCount(overrides: GradingRubricOverrides | null | undefined): number {
   return GRADING_RUBRIC_KEYS.filter((k) => isOverridden(overrides, k)).length;
+}
+
+/** The editor's min/max for a field — the same span the main process enforces. */
+export function rubricBounds(key: GradingRubricKey): { min: number; max: number } {
+  return GRADING_RUBRIC_BOUNDS[key];
+}
+
+/** A draft string is committable when it is blank (clears the override) or a
+ *  finite number inside the field's bounds; a partial token like "-" or an
+ *  out-of-range number is not (the input keeps the draft until it is). */
+export function isCommittableDraft(key: GradingRubricKey, text: string): boolean {
+  const t = text.trim();
+  if (t === '') return true;
+  const n = Number(t);
+  if (!Number.isFinite(n)) return false;
+  const { min, max } = GRADING_RUBRIC_BOUNDS[key];
+  return n >= min && n <= max;
 }
 
 /** Stable element id for a field's input, e.g. "rubric-rms-acceptableMin". */

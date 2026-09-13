@@ -12,8 +12,12 @@ import {
   curveEditorInit,
   bandOffsetsFromMeasuredBands,
   hasUsableLiveBands,
+  captureBandOffsets,
+  fitBandOffsetsToTargets,
+  EDITOR_BAND_KEYS,
   type IdealCurvesApi,
 } from './ideal-profiles';
+import { bandTargetsFromProfile } from '@sound-buddy/audio-engine/dist/profiles/index.js';
 import type { CustomIdealProfile } from '../../electron/ipc/api';
 import type { SpectrumData } from './spectrum-display';
 
@@ -206,5 +210,40 @@ describe('hasUsableLiveBands', () => {
     expect(hasUsableLiveBands({ mid: -20 })).toBe(false);
     expect(hasUsableLiveBands({ mid: -20, bass: Number.NaN })).toBe(false);
     expect(hasUsableLiveBands({ mid: -20, bass: -10 })).toBe(true);
+  });
+});
+
+describe('captureBandOffsets — a captured live mix grades as its own target', () => {
+  const live = { subBass: -61.1, bass: -63.0, lowMid: -71.2, mid: -76.6, highMid: -96.0, presence: -92.5, brilliance: -104.1 };
+  const build = (b: number[]) => curves.profileFromBands(b, GRID_FREQS, { label: 'fit' });
+
+  it('EDITOR_BAND_KEYS matches the curves API band order', () => {
+    expect([...EDITOR_BAND_KEYS]).toEqual((curves as unknown as { BAND_KEYS: string[] }).BAND_KEYS);
+  });
+
+  it('round-trips: the fitted curve reproduces the band SHAPE to within the half-dB quantization (level is free)', () => {
+    const shape = (xs: number[]) => { const m = xs.reduce((a, b) => a + b, 0) / xs.length; return xs.map((x) => x - m); };
+    const wanted = shape(bandOffsetsFromMeasuredBands(live));
+    const asShape = (t: Record<string, number>) => shape(EDITOR_BAND_KEYS.map((k) => t[k]));
+    const plain = asShape(bandTargetsFromProfile(build(wanted)!));
+    const fitted = asShape(bandTargetsFromProfile(build(captureBandOffsets(live, build))!));
+    let plainErr = 0;
+    wanted.forEach((w, i) => {
+      plainErr = Math.max(plainErr, Math.abs(plain[i] - w));
+      expect(Math.abs(fitted[i] - w)).toBeLessThan(0.6);
+    });
+    // The plain (unfitted) capture is measurably off against itself — the reason the fit exists.
+    expect(plainErr).toBeGreaterThan(1);
+  });
+
+  it('the captured mix grades as balanced against its own saved curve', () => {
+    const profile = build(captureBandOffsets(live, build))!;
+    const targets = bandTargetsFromProfile(profile) as unknown as Record<string, number>;
+    const grading = require('../grading.js') as { bandDiffFromOthers(b: Record<string, number>, k: string, t: Record<string, number>): number };
+    for (const k of EDITOR_BAND_KEYS) expect(Math.abs(grading.bandDiffFromOthers(live, k, targets))).toBeLessThan(0.75);
+  });
+
+  it('returns the input offsets unchanged when the profile builder fails', () => {
+    expect(fitBandOffsetsToTargets([1, 2, 3, 4, 5, 6, 7], () => null)).toEqual([1, 2, 3, 4, 5, 6, 7]);
   });
 });

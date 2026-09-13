@@ -4,7 +4,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import CurveEditorDialog from './CurveEditorDialog';
+import CurveEditorDialog, { EDITOR_MAX_ABS_DB } from './CurveEditorDialog';
 import { useIdealProfilesStore } from './stores/idealProfilesStore';
 
 function renderMarkup(): string {
@@ -121,5 +121,12 @@ describe('CurveEditorDialog', () => {
 
     expect(html).not.toContain('data-icon="waveform"');
     expect(html).not.toContain('data-icon="x"');
+  });
+});
+
+describe('editor range', () => {
+  it('matches ideal-curves.js clampDb so the sliders can never clip a value the store accepts', () => {
+    const curves = require('../ideal-curves.js') as { MAX_ABS_DB: number };
+    expect(EDITOR_MAX_ABS_DB).toBe(curves.MAX_ABS_DB);
   });
 });

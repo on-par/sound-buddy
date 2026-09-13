@@ -15,8 +15,9 @@ import {
   GRID_FREQS,
   defaultProfileForContentType as aeDefaultForContentType,
   defaultProfileForLiveCapture as aeDefaultForLiveCapture,
+  bandTargetsFromProfile,
 } from '@sound-buddy/audio-engine/dist/profiles/index.js';
-import { hasUsableCurve, type IdealProfileLike, type SpectrumData } from './spectrum-display';
+import { hasUsableCurve, BAND_META, type IdealProfileLike, type SpectrumData } from './spectrum-display';
 import type { CustomIdealProfile } from '../../electron/ipc/api';
 
 const IP_BY_ID = new Map(AE_PROFILES.map((p) => [p.id, p]));
@@ -78,8 +79,60 @@ export function resolveActiveProfile(
 }
 
 /** The seven legacy band keys in editor order — the order profileFromBands /
- *  bandOffsetsFromProfile use (ideal-curves.js's BAND_KEYS). */
-export const EDITOR_BAND_KEYS = ['subBass', 'bass', 'lowMid', 'mid', 'highMid', 'presence', 'brilliance'] as const;
+ *  bandOffsetsFromProfile use (ideal-curves.js's BAND_KEYS), derived from the
+ *  renderer's one band table rather than re-typed. */
+export const EDITOR_BAND_KEYS: readonly string[] = BAND_META.map((b) => b.key);
+
+/** Fixed-point passes for fitting a captured curve to its band targets. The
+ *  control-point → band-target map is smooth and near-diagonal, so a handful
+ *  of passes converge to the editor's half-dB quantization. */
+const CAPTURE_FIT_PASSES = 8;
+
+/**
+ * Fit the seven editor control values so that the curve profileFromBands
+ * builds from them reproduces the given band targets under
+ * bandTargetsFromProfile — the reduction the grade uses. profileFromBands
+ * samples control points at band centres and log-interpolates; the grade
+ * power-averages the shape uniformly in Hz across each band. Those are not
+ * inverses, so the plain level-matched offsets would leave a captured mix
+ * reading up to ~3 dB off against itself. Iterating on the residual makes
+ * "save this mix as your target" grade that mix as balanced (to within the
+ * half-dB step clampDb quantizes to).
+ */
+export function fitBandOffsetsToTargets(
+  targetOffsets: number[],
+  buildProfile: (bands: number[]) => { freqs: number[]; dbOffsets: number[] } | null,
+): number[] {
+  // Grading is level-invariant (a constant added to every target cancels in
+  // bandDiffFromOthers), so the fit works on the SHAPE — residuals are taken
+  // with the mean removed — and the control values are re-centred on their
+  // midpoint each pass to stay inside clampDb's ±MAX_ABS_DB span (a room-mic
+  // tilt needs most of it).
+  const centred = (xs: number[]) => { const m = mean(xs); return xs.map((x) => x - m); };
+  const midpointCentred = (xs: number[]) => { const mid = (Math.max(...xs) + Math.min(...xs)) / 2; return xs.map((x) => x - mid); };
+  const wanted = centred(targetOffsets);
+  let control = midpointCentred(wanted);
+  for (let pass = 0; pass < CAPTURE_FIT_PASSES; pass++) {
+    const profile = buildProfile(control);
+    if (!profile) return targetOffsets.slice();
+    const got = centred(EDITOR_BAND_KEYS.map((k) => bandTargetsFromProfile(profile)[k as 'mid']));
+    control = midpointCentred(control.map((c, i) => c + (wanted[i] - got[i])));
+  }
+  return control;
+}
+
+function mean(xs: number[]): number {
+  return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
+}
+
+/** Editor control values for capturing a live mix: its level-matched band
+ *  offsets, fitted so the saved curve grades the mix as on-target. */
+export function captureBandOffsets(
+  bands: Record<string, number> | null | undefined,
+  buildProfile: (bands: number[]) => { freqs: number[]; dbOffsets: number[] } | null,
+): number[] {
+  return fitBandOffsetsToTargets(bandOffsetsFromMeasuredBands(bands), buildProfile);
+}
 
 /** Level-matched relative offsets (dB) from a measured 7-band table — the live
  *  capture's equivalent of profileFromMeasuredCurve: subtract the mean of the

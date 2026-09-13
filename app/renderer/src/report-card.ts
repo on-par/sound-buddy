@@ -487,7 +487,7 @@ export function buildScoreRows(
     const tone: PillTone = d ? 'issue' : maxDiff > g.CONFIG.bandBalance.hotDiff ? 'check' : 'good';
     const detail: ScoreRowDetail = d
       ? { measured: d.measured, target: d.target, impact: d.letterImpact }
-      : { measured: fmtDev(maxDiff) + ' vs. ' + vs, target: '≤ +' + g.CONFIG.bandBalance.severeHotDiff + ' dB vs. ' + vs, impact: 'No impact' };
+      : { measured: fmtDev(maxDiff), target: '≤ +' + g.CONFIG.bandBalance.severeHotDiff + ' dB vs. ' + vs, impact: 'No impact' };
     rows.push({ name: 'Band Balance', note: src.baseline?.label ? 'vs. ' + src.baseline.label : null, value, tone, hardFail: false, detail, extra: null });
   }
 
@@ -727,14 +727,16 @@ export interface BandTargetLevel {
 }
 
 /**
- * The ideal level per band, in absolute dB, derived from the exact rule the
+ * The balanced level per band, in absolute dB, derived from the exact rule the
  * verdict uses. The verdict for band k is diff_k = (b_k − t_k) − mean over the
  * other bands of (b_j − t_j) (grading.js's bandDiffFromOthers); solving
  * diff_k = 0 for b_k gives the level at which the band is balanced GIVEN the
- * other six as measured: t_k + meanOtherDeviation. The hot/quiet edges are
- * that level plus hotDiff / quietDiff. With no targets (flat reference) t is
- * 0 everywhere, so the ideal level is simply the mean of the other bands.
- * Bands without a finite level get null.
+ * other six as measured: t_k + meanOtherDeviation. It therefore moves when
+ * the other bands move — it is a balance point, not a fixed target. The
+ * hot/quiet edges are that level plus hotDiff / quietDiff. With no targets
+ * (flat reference) t is 0 everywhere, so the level is the mean of the other
+ * bands. Uses the same key set as the verdict (every band, finite or not) so
+ * the two can never disagree; a band whose level cannot be computed gets null.
  */
 export function bandTargetLevels(
   bands: Record<string, number>,
@@ -745,14 +747,14 @@ export function bandTargetLevels(
     const t = targets ? targets[k] : undefined;
     return typeof t === 'number' && Number.isFinite(t) ? t : 0;
   };
-  const keys = Object.keys(bands).filter((k) => Number.isFinite(bands[k]));
+  const keys = Object.keys(bands);
   const out: Record<string, BandTargetLevel | null> = {};
-  for (const k of Object.keys(bands)) {
+  for (const k of keys) {
     const others = keys.filter((j) => j !== k);
-    if (!Number.isFinite(bands[k]) || others.length === 0) { out[k] = null; continue; }
+    if (others.length === 0) { out[k] = null; continue; }
     const meanOtherDev = others.reduce((sum, j) => sum + (bands[j] - target(j)), 0) / others.length;
     const db = target(k) + meanOtherDev;
-    out[k] = { db, hotAbove: db + cfg.hotDiff, quietBelow: db + cfg.quietDiff };
+    out[k] = Number.isFinite(db) ? { db, hotAbove: db + cfg.hotDiff, quietBelow: db + cfg.quietDiff } : null;
   }
   return out;
 }
@@ -778,7 +780,7 @@ export function bandMeterHTML(label: string, range: string, db: number, opts: Ba
   const t = opts.target;
   const overlay = t
     ? `<span class="bm-zone" style="left:${toPct(t.quietBelow).toFixed(1)}%;width:${Math.max(0, toPct(t.hotAbove) - toPct(t.quietBelow)).toFixed(1)}%" title="Balanced range"></span>` +
-      `<span class="bm-target" style="left:${toPct(t.db).toFixed(1)}%" title="Ideal level ${t.db.toFixed(1)} dB"></span>`
+      `<span class="bm-target" style="left:${toPct(t.db).toFixed(1)}%" title="Balanced level ${t.db.toFixed(1)} dB (moves with the other bands)"></span>`
     : '';
   return `<div class="bm">${scale}
     <div class="bm-row">
@@ -808,9 +810,9 @@ export function bandBreakdownHTML(bands: Record<string, number>, g: BandDiffApi,
   const targets = baseline?.bandTargets ?? null;
   const levels = bandTargetLevels(bands, targets, g.CONFIG.bandBalance);
   const vs = baseline?.label ? escapeHtml(baseline.label) : 'the other bands';
-  const legend = `<div class="rc-band-legend"><span class="rc-band-legend-tick"></span>ideal level vs. ${vs}` +
+  const legend = `<div class="rc-band-legend"><span class="rc-band-legend-tick"></span>balanced level vs. ${vs}, given the other bands` +
     ` · <span class="rc-band-legend-zone"></span>balanced range (${g.CONFIG.bandBalance.quietDiff} to +${g.CONFIG.bandBalance.hotDiff} dB)` +
-    ` · <b>±dB</b> = this band vs. its ideal</div>`;
+    ` · <b>±dB</b> = this band vs. its balanced level</div>`;
   const rows = BAND_META.map((b) => {
     const db = bands[b.key];
     const diff = g.bandDiffFromOthers(bands, b.key, targets);

@@ -74,8 +74,13 @@ The only rubric control was the Casual/Broadcast strictness profile, a fixed
    "Use current mix" and the report card's "save this mix as your target"
    CTA accept the live card's seven band levels
    (`bandOffsetsFromMeasuredBands` → `profileFromBands`), not only a file's
-   fine curve. `clampDb` widens from ±18 to ±24 dB so a captured room-mic
-   tilt is not flattened; the editor sliders match.
+   fine curve. The seven control values are fitted (`captureBandOffsets`)
+   so that `bandTargetsFromProfile` of the saved curve reproduces the mix's
+   band shape — the editor's centre-point interpolation and the grade's
+   uniform-in-Hz power average are not inverses, and without the fit a
+   mix read up to ~3 dB off against itself. `clampDb` widens from ±18 to
+   ±24 dB so a captured room-mic tilt is not flattened; the editor sliders
+   match.
 
 6. **The rubric is a Settings section.** `settings.gradingRubric` is a flat
    map of `GRADING_RUBRIC_KEYS` ("rms.acceptableMin", …,
@@ -84,7 +89,11 @@ The only rubric control was the Casual/Broadcast strictness profile, a fixed
    `setRubricOverrides` on top of the strictness profile
    (`configForProfile(profileId, overrides)`), re-deriving CONFIG from the
    immutable base so nothing compounds; an overridden key ignores the
-   profile shift. Settings ▸ Grading shows the ideal-curve picker (with
+   profile shift. The main process drops values outside each key's
+   `GRADING_RUBRIC_BOUNDS` span (sign included), and `configForProfile`
+   repairs paired-threshold ordering (min ≤ max, check ≤ good, hot ≤
+   severe; score-only edges follow the acceptable band) so no override can
+   make a rule contradict itself. Settings ▸ Grading shows the ideal-curve picker (with
    edit/capture) and one number input per threshold, seeded with the active
    profile's defaults, plus Reset to defaults. The bridge syncs the setting
    to grading.js exactly as it does the profile.

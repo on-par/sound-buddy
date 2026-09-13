@@ -23,7 +23,7 @@ import type {
   SoundcheckBus,
   GradingRubricOverrides,
 } from './ipc/api';
-import { GRADING_RUBRIC_KEYS, GRADING_RUBRIC_MIN_VALUE, GRADING_RUBRIC_MAX_VALUE } from './ipc/api';
+import { GRADING_RUBRIC_KEYS, GRADING_RUBRIC_BOUNDS } from './ipc/api';
 
 // These DTOs are homed in ipc/api.ts (TD-011, #405) — the renderer-safe
 // boundary type both tsc programs share — and re-exported here so existing
@@ -226,9 +226,13 @@ export function sanitizeSoundcheckBuses(value: unknown): SoundcheckBus[] | null 
 
 /**
  * Rubric overrides (Settings ▸ Grading ▸ Rubric): keep only the keys in
- * GRADING_RUBRIC_KEYS whose value is a finite number inside the sane span, drop
- * everything else silently. Returns null for a non-object so the file layer can
- * repair to {} and the patch layer can reject the write.
+ * GRADING_RUBRIC_KEYS whose value is a finite number inside that key's
+ * GRADING_RUBRIC_BOUNDS span (sign included), drop everything else silently.
+ * Ordering between paired keys (min ≤ max, check ≤ good, hot ≤ severe) is
+ * repaired at the effective layer by grading.js's configForProfile, which is
+ * the only place that sees the override next to the profile default it pairs
+ * with. Returns null for a non-object so the file layer can repair to {} and
+ * the patch layer can reject the write.
  */
 export function sanitizeGradingRubric(value: unknown): GradingRubricOverrides | null {
   if (!isPlainObject(value)) return null;
@@ -236,7 +240,8 @@ export function sanitizeGradingRubric(value: unknown): GradingRubricOverrides | 
   for (const key of GRADING_RUBRIC_KEYS) {
     const v = (value as Record<string, unknown>)[key];
     if (typeof v !== 'number' || !Number.isFinite(v)) continue;
-    if (v < GRADING_RUBRIC_MIN_VALUE || v > GRADING_RUBRIC_MAX_VALUE) continue;
+    const { min, max } = GRADING_RUBRIC_BOUNDS[key];
+    if (v < min || v > max) continue;
     clean[key] = v;
   }
   return clean;

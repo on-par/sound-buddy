@@ -216,7 +216,9 @@ function profileDbAt(profile: { freqs: number[]; dbOffsets: number[] }, hz: numb
   const b = dbOffsets[i];
   if (!Number.isFinite(a) || !Number.isFinite(b)) return Number.isFinite(a) ? a : Number.isFinite(b) ? b : null;
   const t = (log2(hz) - log2(freqs[i - 1])) / (log2(freqs[i]) - log2(freqs[i - 1]));
-  return a + (b - a) * t;
+  // A degenerate grid (duplicate or non-positive frequencies) makes t NaN;
+  // hold the lower value rather than poison the band with NaN.
+  return Number.isFinite(t) ? a + (b - a) * t : a;
 }
 
 /**

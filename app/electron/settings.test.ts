@@ -555,6 +555,20 @@ describe('gradingRubric (user rubric overrides, default {})', () => {
     expect(getSettings().gradingRubric).toEqual({ 'rms.acceptableMin': -25, 'symptoms.thresholdOffsetDb': 2.5 });
   });
 
+  it('enforces each key\'s sign: a negative letter-drop threshold or a positive too-quiet threshold is dropped', () => {
+    writeFile({
+      gradingRubric: {
+        'bandBalance.severeHotDiff': -3,
+        'bandBalance.hotDiff': 0,
+        'bandBalance.quietDiff': 5,
+        'rms.acceptableMax': 2,
+        'centroid.min': 0,
+        'symptoms.thresholdOffsetDb': -25,
+      },
+    });
+    expect(getSettings().gradingRubric).toEqual({ 'bandBalance.hotDiff': 0 });
+  });
+
   it.each(['strict', 7, true, null, [1, 2]])('repairs a corrupted gradingRubric value (%p) back to {}', (corrupted) => {
     writeFile({ gradingRubric: corrupted });
     expect(getSettings().gradingRubric).toEqual({});

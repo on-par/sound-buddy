@@ -162,6 +162,12 @@ describe("bandTargetsFromProfile", () => {
     }
   });
 
+  it("stays finite on a degenerate grid (duplicate or zero frequencies)", () => {
+    const t = bandTargetsFromProfile({ freqs: [0, 100, 100, 20000], dbOffsets: [3, 3, 9, 9] });
+    for (const k of KEYS) expect(Number.isFinite(t[k])).toBe(true);
+    expect(t.subBass).toBeCloseTo(3, 6);
+  });
+
   it("skips non-finite offsets rather than poisoning the band", () => {
     const dbOffsets = GRID_FREQS.map((f, i) => (i === 10 ? Number.NaN : f < 250 ? 6 : 0));
     const t = bandTargetsFromProfile({ freqs: GRID_FREQS, dbOffsets });

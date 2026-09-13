@@ -144,6 +144,34 @@
       const [section, key] = path.split('.');
       cfg[section][key] = o[path];
     });
+    return repairConfigOrdering(cfg);
+  }
+
+  // Every paired threshold must stay ordered or a rule contradicts itself
+  // (rms min above max fails every level; hotDiff above severeHotDiff makes
+  // the score row and the letter disagree). A user override is absolute and
+  // may cross its partner's profile default, so the pair is repaired here —
+  // the one place both values are known — by swapping. Pure: mutates only
+  // the fresh copy it is given and returns it.
+  function repairConfigOrdering(cfg) {
+    // Two overridable values that cross: neither is "right", so swap.
+    const order = (obj, lowKey, highKey) => {
+      if (obj[lowKey] > obj[highKey]) { const t = obj[lowKey]; obj[lowKey] = obj[highKey]; obj[highKey] = t; }
+    };
+    // A score-only edge that an override crosses is pushed out to the
+    // override (the acceptable band is what the user set; the edge follows).
+    const pushEdges = (obj) => {
+      obj.quietEdge = Math.min(obj.quietEdge, obj.acceptableMin);
+      obj.hotEdge = Math.max(obj.hotEdge, obj.acceptableMax);
+    };
+    order(cfg.rms, 'acceptableMin', 'acceptableMax');
+    pushEdges(cfg.rms);
+    order(cfg.lufs, 'acceptableMin', 'acceptableMax');
+    pushEdges(cfg.lufs);
+    order(cfg.dynamicRange, 'check', 'good');
+    order(cfg.bandBalance, 'hotDiff', 'severeHotDiff');
+    order(cfg.centroid, 'min', 'max');
+    order(cfg.peak, 'checkAbove', 'issueAbove');
     return cfg;
   }
 
@@ -189,11 +217,6 @@
 
   function getRubricOverrides() {
     return Object.assign({}, rubricOverrides);
-  }
-
-  function getRubricSummary() {
-    const count = Object.keys(rubricOverrides).length;
-    return { customized: count > 0, count: count };
   }
 
   // Band label + frequency metadata used to phrase the "too much energy in X"
@@ -428,12 +451,11 @@
     const deductions = [];
     const recType = analyzeRecordingType(src);
     const maxBandDiff = maxSrcBandDiff(src);
-    // Against an ideal curve the deduction names the curve, so the reason
-    // reads "vs. Worship service" rather than the flat "vs. other bands".
-    const vs = baselineLabel(src) ? ' vs. ' + baselineLabel(src) : '';
+    // Against an ideal curve the deduction's target names the curve, so the
+    // reason reads "vs. Worship service" rather than the flat "vs. other bands".
     const bandImbalanceDeduction = () => ({
       rule: 'Band imbalance',
-      measured: '+' + maxBandDiff.toFixed(1) + ' dB' + vs,
+      measured: '+' + maxBandDiff.toFixed(1) + ' dB',
       target: '≤ +' + CONFIG.bandBalance.severeHotDiff + ' dB vs. ' + (baselineLabel(src) || 'other bands'),
       letterImpact: 'Drops one letter',
     });
@@ -645,10 +667,7 @@
     rubricDefaults: rubricDefaults,
     setRubricOverrides: setRubricOverrides,
     getRubricOverrides: getRubricOverrides,
-    getRubricSummary: getRubricSummary,
     bandDiffFromOthers: bandDiffFromOthers,
-    baselineTargets: baselineTargets,
-    baselineLabel: baselineLabel,
     loudestBandContributor: loudestBandContributor,
     analyzeRecordingType: analyzeRecordingType,
     computeGrade: computeGrade,

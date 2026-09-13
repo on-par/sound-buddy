@@ -253,6 +253,7 @@ describe('contextual help strip (#1007)', () => {
       ['live-adjustments-toggle', 'live-adjustments-note'],
       ['grading-profile-select', 'grading-profile-note'],
       ['grading-baseline-select', 'grading-baseline-note'],
+      ['rubric-rms-acceptableMin', 'grading-rubric-note'],
       ['weekly-reminder-toggle', 'weekly-reminder-note'],
       ['weekly-reminder-day', 'weekly-reminder-note'],
       ['share-church-name-input', 'share-church-name-note'],

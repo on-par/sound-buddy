@@ -359,9 +359,7 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
               </div>
             </label>
             <SettingsNote control="gradingProfile" />
-            <div {...helpFor('gradingBaseline')}>
-              <GradingRubricEditor />
-            </div>
+            <GradingRubricEditor baselineHelp={helpFor('gradingBaseline')} rubricHelp={helpFor('gradingRubric')} />
             <SettingsNote control="gradingBaseline" />
             <SettingsNote control="gradingRubric" />
           </SettingsGroup>

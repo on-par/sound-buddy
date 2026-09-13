@@ -109,10 +109,30 @@ describe('setRubricOverrides', () => {
   });
 });
 
-describe('getRubricSummary', () => {
-  it('reports whether the rubric is customized and by how many fields', () => {
-    expect(grading.getRubricSummary()).toEqual({ customized: false, count: 0 });
-    grading.setRubricOverrides({ 'rms.acceptableMin': -30, 'centroid.max': 6000 });
-    expect(grading.getRubricSummary()).toEqual({ customized: true, count: 2 });
+describe('configForProfile repairs paired-threshold ordering', () => {
+  it('swaps an rms min override that crosses the profile max, so a level rule can never fail every recording', () => {
+    grading.setRubricOverrides({ 'rms.acceptableMin': -10 });
+    expect(grading.CONFIG.rms.acceptableMin).toBe(-14);
+    expect(grading.CONFIG.rms.acceptableMax).toBe(-10);
+    expect(grading.CONFIG.rms.hotEdge).toBe(-10);
+    expect(grading.computeGrade(makeSrc({ rms: -12 }))).toBe('A');
+  });
+
+  it('pushes the score-only edges out to a widened acceptable band instead of fighting the override', () => {
+    grading.setRubricOverrides({ 'rms.acceptableMin': -30, 'lufs.acceptableMax': -8 });
+    expect(grading.CONFIG.rms).toMatchObject({ acceptableMin: -30, quietEdge: -30, acceptableMax: -14, hotEdge: -10 });
+    expect(grading.CONFIG.lufs).toMatchObject({ acceptableMax: -8, hotEdge: -8, acceptableMin: -20, quietEdge: -25 });
+  });
+
+  it('keeps hotDiff ≤ severeHotDiff, check ≤ good, and centroid min ≤ max', () => {
+    grading.setRubricOverrides({ 'bandBalance.hotDiff': 20, 'dynamicRange.check': 9, 'centroid.min': 5000 });
+    expect(grading.CONFIG.bandBalance).toMatchObject({ hotDiff: 15, severeHotDiff: 20 });
+    expect(grading.CONFIG.dynamicRange).toEqual({ good: 9, check: 6 });
+    expect(grading.CONFIG.centroid).toEqual({ min: 4000, max: 5000 });
+  });
+
+  it('leaves an already-ordered config untouched', () => {
+    expect(grading.configForProfile('casual', null)).toEqual(grading.configForProfile('casual', {}));
+    expect(grading.configForProfile('broadcast', null).rms).toEqual({ acceptableMin: -18, acceptableMax: -16, quietEdge: -23, hotEdge: -12 });
   });
 });

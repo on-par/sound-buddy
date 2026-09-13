@@ -9,8 +9,10 @@
 // settings subscription, so a change re-grades the card on screen at once.
 // Pure derivations live in grading-rubric.ts; this file is the wiring.
 
+import { useState } from 'react';
 import type { GradingRubricKey } from '../../electron/ipc/api';
 import { iconSvg } from './report-card';
+import type { SettingsHelpHandlers } from './settings-help';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useSettingsStore } from './stores/settingsStore';
 import { useIdealProfilesStore } from './stores/idealProfilesStore';
@@ -24,6 +26,8 @@ import {
   isOverridden,
   overrideCount,
   rubricInputId,
+  rubricBounds,
+  isCommittableDraft,
   type RubricGroup,
 } from './grading-rubric';
 
@@ -39,8 +43,20 @@ function getRubricGrading(): RubricGradingApi | null {
 
 export const RUBRIC_GROUP_ORDER: readonly RubricGroup[] = ['level', 'dynamics', 'balance', 'tone', 'symptoms'];
 
-export default function GradingRubricEditor() {
+export interface GradingRubricEditorProps {
+  /** Settings help-strip hover/focus handlers for the curve picker and the threshold grid (SettingsPanel's helpFor). */
+  baselineHelp?: SettingsHelpHandlers;
+  rubricHelp?: SettingsHelpHandlers;
+}
+
+export default function GradingRubricEditor({ baselineHelp, rubricHelp }: GradingRubricEditorProps) {
   const { settings } = useStoreShallow(useSettingsStore, (s) => ({ settings: s.settings }));
+  // Per-field draft text while the user is typing. A controlled number input
+  // fed straight from persisted settings cannot take a partial "-" or an
+  // emptied field (the async settings round-trip snaps it back), and every
+  // intermediate keystroke would be persisted and re-grade the card. Drafts
+  // commit on blur / Enter once committable; Escape discards.
+  const [drafts, setDrafts] = useState<Partial<Record<GradingRubricKey, string>>>({});
   const { selectedId, customProfiles } = useStoreShallow(useIdealProfilesStore, (s) => ({
     selectedId: s.selectedId,
     customProfiles: s.customProfiles,
@@ -52,8 +68,21 @@ export default function GradingRubricEditor() {
   const overrides = settings?.gradingRubric ?? {};
   const customized = overrideCount(overrides);
 
-  const commit = (key: GradingRubricKey, raw: string) =>
-    void useSettingsStore.getState().updateSettings({ gradingRubric: rubricPatchFor(overrides, defaults, key, raw) });
+  const setDraft = (key: GradingRubricKey, text: string) => setDrafts((d) => ({ ...d, [key]: text }));
+  const clearDraft = (key: GradingRubricKey) => setDrafts((d) => { const next = { ...d }; delete next[key]; return next; });
+  /* c8 ignore start -- input event glue (onBlur/onKeyDown); this harness
+     renders with react-dom/server, so DOM events never fire. The decision
+     logic is the pure isCommittableDraft/rubricPatchFor, tested in
+     grading-rubric.test.ts. */
+  const commit = (key: GradingRubricKey) => {
+    const raw = drafts[key];
+    if (raw === undefined) return;
+    if (isCommittableDraft(key, raw)) {
+      void useSettingsStore.getState().updateSettings({ gradingRubric: rubricPatchFor(overrides, defaults, key, raw) });
+    }
+    clearDraft(key);
+  };
+  /* c8 ignore stop */
 
   const options = profileSelectOptions(customProfiles);
   const builtin = options.filter((o) => o.group === 'builtin');
@@ -61,7 +90,7 @@ export default function GradingRubricEditor() {
 
   return (
     <>
-      <label className="ai-field" id="grading-baseline-field">
+      <label className="ai-field" id="grading-baseline-field" {...(baselineHelp ?? {})}>
         <span className="ai-field-label">Ideal EQ curve (grading target)</span>
         <div className="grading-baseline-row">
           <div className="select-wrap">
@@ -96,6 +125,7 @@ export default function GradingRubricEditor() {
           </button>
         </div>
       </label>
+      <div className="rubric-fields" id="grading-rubric-fields" {...(rubricHelp ?? {})}>
       <div className="rubric-head" id="grading-rubric-head">
         <span className="ai-field-label">Rubric thresholds</span>
         <span className="rubric-status" id="grading-rubric-status">
@@ -119,6 +149,8 @@ export default function GradingRubricEditor() {
               const value = rubricFieldValue(overrides, defaults, f.key);
               const overridden = isOverridden(overrides, f.key);
               const id = rubricInputId(f.key);
+              const { min, max } = rubricBounds(f.key);
+              const draft = drafts[f.key];
               return (
                 <div className={`rubric-row${overridden ? ' overridden' : ''}`} key={f.key}>
                   <label htmlFor={id} title={f.hint}>{f.label}</label>
@@ -127,11 +159,21 @@ export default function GradingRubricEditor() {
                     className="rubric-num"
                     type="number"
                     step={f.step}
+                    min={min}
+                    max={max}
                     title={f.hint}
                     aria-label={`${f.label} (${f.unit})`}
+                    aria-describedby="grading-rubric-note"
                     data-default={defaults[f.key] ?? ''}
-                    value={value ?? ''}
-                    onChange={(e) => commit(f.key, e.target.value)}
+                    value={draft ?? (value ?? '')}
+                    onChange={(e) => setDraft(f.key, e.target.value)}
+                    /* c8 ignore start -- event glue, see commit() */
+                    onBlur={() => commit(f.key)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                      if (e.key === 'Escape') clearDraft(f.key);
+                    }}
+                    /* c8 ignore stop */
                   />
                   <span className="rubric-unit">{f.unit}</span>
                 </div>
@@ -139,6 +181,7 @@ export default function GradingRubricEditor() {
             })}
           </div>
         ))}
+      </div>
       </div>
     </>
   );

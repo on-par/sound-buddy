@@ -77,10 +77,29 @@ export const GRADING_RUBRIC_KEYS = [
 ] as const;
 export type GradingRubricKey = (typeof GRADING_RUBRIC_KEYS)[number];
 export type GradingRubricOverrides = Partial<Record<GradingRubricKey, number>>;
-/** Every rubric value is a dB / dBFS / LUFS / Hz number; anything outside this
- *  span is a corrupted setting, not a real threshold. */
-export const GRADING_RUBRIC_MIN_VALUE = -120;
-export const GRADING_RUBRIC_MAX_VALUE = 20000;
+/**
+ * Per-key sane span, enforced by the main-process sanitizer and rendered as
+ * the editor's min/max. The signs matter as much as the magnitudes: a
+ * negative "band drops a letter" would fail every recording, a positive
+ * "band too quiet" would flag every band. Anything outside is a corrupted or
+ * nonsensical setting and is dropped, not clamped, so the profile default
+ * applies.
+ */
+export const GRADING_RUBRIC_BOUNDS: Record<GradingRubricKey, { min: number; max: number }> = {
+  'rms.acceptableMin': { min: -60, max: 0 },
+  'rms.acceptableMax': { min: -60, max: 0 },
+  'lufs.acceptableMin': { min: -60, max: 0 },
+  'lufs.acceptableMax': { min: -60, max: 0 },
+  'truePeak.ceiling': { min: -20, max: 0 },
+  'dynamicRange.good': { min: 0, max: 60 },
+  'dynamicRange.check': { min: 0, max: 60 },
+  'bandBalance.hotDiff': { min: 0, max: 60 },
+  'bandBalance.severeHotDiff': { min: 0, max: 60 },
+  'bandBalance.quietDiff': { min: -60, max: 0 },
+  'centroid.min': { min: 20, max: 20000 },
+  'centroid.max': { min: 20, max: 20000 },
+  'symptoms.thresholdOffsetDb': { min: -20, max: 20 },
+};
 
 export interface AnalyzeFileOpts {
   filePath: string;
