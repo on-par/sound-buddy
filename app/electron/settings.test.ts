@@ -36,6 +36,7 @@ import {
   setActiveRig,
   grantConsoleNetworkConsent,
   SETTING_SPECS,
+  deriveAdvancedFeaturesDefault,
   type AppSettings,
   type CaptureRig,
 } from './settings';
@@ -340,14 +341,77 @@ describe('reportFirstUxEnabled (#538 — report-first-ux epic gate, default off)
   });
 });
 
-describe('advancedFeaturesEnabled (#1421 — opt-in Simple mode gate, default advanced)', () => {
-  it('defaults to true when settings.json is absent', () => {
+describe('advancedFeaturesEnabled (#1421/#1425 — Simple mode default with existing-user preservation)', () => {
+  it('defaults to false when settings.json is absent', () => {
+    expect(getSettings().advancedFeaturesEnabled).toBe(false);
+  });
+
+  it('defaults to false when the file exists without the key and has no preservation signal', () => {
+    writeFile({ idealProfile: '' });
+    expect(getSettings().advancedFeaturesEnabled).toBe(false);
+  });
+
+  it('derives true for an existing user with an active rig and no explicit key', () => {
+    writeFile({ activeRigId: 'r1' });
     expect(getSettings().advancedFeaturesEnabled).toBe(true);
   });
 
-  it('defaults to true when the file exists without the key', () => {
-    writeFile({ idealProfile: '' });
+  it('derives true for an existing user with console network consent and no explicit key', () => {
+    writeFile({ consoleNetworkConsentGranted: true });
     expect(getSettings().advancedFeaturesEnabled).toBe(true);
+  });
+
+  it('keeps Simple mode for an existing file with neither preservation signal', () => {
+    writeFile({
+      rigs: [],
+      activeRigId: null,
+      consoleNetworkConsentGranted: false,
+      lastAppMode: 'guide',
+    });
+    expect(getSettings().advancedFeaturesEnabled).toBe(false);
+    expect(getSettings().lastAppMode).toBe('guide');
+  });
+
+  it('lets an explicit value win over an active rig', () => {
+    writeFile({ advancedFeaturesEnabled: false, activeRigId: 'r1' });
+    expect(getSettings().advancedFeaturesEnabled).toBe(false);
+  });
+
+  it('does not rewrite settings.json during derived reads', () => {
+    const raw = { activeRigId: 'r1' };
+    writeFile(raw);
+    const before = fs.readFileSync(settingsFile(), 'utf8');
+    expect(getSettings().advancedFeaturesEnabled).toBe(true);
+    expect(fs.readFileSync(settingsFile(), 'utf8')).toBe(before);
+    expect(readFile()).toEqual(raw);
+  });
+
+  it('persists the derived value on the next settings write', () => {
+    writeFile({ activeRigId: 'r1' });
+    updateSettings({ idealProfile: 'broadcast' });
+    expect(readFile().advancedFeaturesEnabled).toBe(true);
+  });
+
+  it('does not demote an existing user after the active rig is later removed', () => {
+    writeFile({
+      advancedFeaturesEnabled: true,
+      activeRigId: 'r1',
+      rigs: [{ id: 'r1', ...makeRig() }],
+    });
+    deleteRig('r1');
+    expect(getSettings().advancedFeaturesEnabled).toBe(true);
+    expect(readFile().advancedFeaturesEnabled).toBe(true);
+    expect(readFile().activeRigId).toBeNull();
+  });
+
+  it('derives defaults from active rig and console consent signals only', () => {
+    expect(deriveAdvancedFeaturesDefault({})).toBe(false);
+    expect(deriveAdvancedFeaturesDefault({ activeRigId: null })).toBe(false);
+    expect(deriveAdvancedFeaturesDefault({ activeRigId: '' })).toBe(false);
+    expect(deriveAdvancedFeaturesDefault({ activeRigId: 'r1' })).toBe(true);
+    expect(deriveAdvancedFeaturesDefault({ consoleNetworkConsentGranted: false })).toBe(false);
+    expect(deriveAdvancedFeaturesDefault({ consoleNetworkConsentGranted: true })).toBe(true);
+    expect(deriveAdvancedFeaturesDefault({ activeRigId: 'r1', consoleNetworkConsentGranted: true })).toBe(true);
   });
 
   it('flips on and back off, persisting each boolean value to the raw file', () => {
@@ -370,7 +434,8 @@ describe('advancedFeaturesEnabled (#1421 — opt-in Simple mode gate, default ad
     expect(getSettings().advancedFeaturesEnabled).toBe(true);
   });
 
-  it("SOUND_BUDDY_ADVANCED_FEATURES='0' forces it off over the default true", () => {
+  it("SOUND_BUDDY_ADVANCED_FEATURES='0' forces it off over a derived true value", () => {
+    writeFile({ activeRigId: 'r1' });
     process.env.SOUND_BUDDY_ADVANCED_FEATURES = '0';
     expect(getSettings().advancedFeaturesEnabled).toBe(false);
   });
@@ -931,7 +996,7 @@ describe('SETTING_SPECS — the single owner of every field invariant (#747)', (
     crashReportingEnabled: false,
     liveAdjustmentsEnabled: false,
     reportFirstUxEnabled: false,
-    advancedFeaturesEnabled: true,
+    advancedFeaturesEnabled: false,
     shareChurchName: '',
     weeklyReminderEnabled: false,
     weeklyReminderServiceDay: 0,
@@ -959,6 +1024,7 @@ describe('SETTING_SPECS — the single owner of every field invariant (#747)', (
     expect(SETTING_SPECS.activeRigId.default).toBeNull();
     expect(SETTING_SPECS.liveEqPaneWidth.default).toBe(360);
     expect(SETTING_SPECS.gradingProfile.default).toBe('casual');
+    expect(SETTING_SPECS.advancedFeaturesEnabled.default).toBe(false);
     expect(SETTING_SPECS.consoleNetworkConsentGranted.default).toBe(false);
   });
 });
