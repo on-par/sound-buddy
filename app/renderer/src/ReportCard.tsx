@@ -85,8 +85,7 @@ export interface ReportCardProps {
    *  section hidden (no usable curve); [] → calm empty-state message (#863);
    *  non-empty → the rendered item rows. */
   troubleshooting?: TroubleshootingItem[] | null;
-  /** Score-circle expandable metric rows. Non-null → rows replace the metric
-   *  table and "Why This Grade" is dropped; null/omitted → legacy metric table. */
+  /** Score-circle expandable metric rows (#540). Non-null → rows replace the legacy metric table. */
   scoreRows?: ScoreRow[] | null;
   phaseDoubling?: PhaseDoublingView | null;
   feedbackRingout?: FeedbackRingoutView | null;
@@ -258,12 +257,10 @@ export default function ReportCard({
           </table>
         )}
       </div>
-      {!scoreRows && (
-        <div className="rc-section" id="rc-why-section">
-          <h2>Why This Grade</h2>
-          <div className="rc-why" id="rc-why" dangerouslySetInnerHTML={{ __html: whyGradeHTML(grade.explain) }} />
-        </div>
-      )}
+      <div className="rc-section" id="rc-why-section">
+        <h2>Why This Grade</h2>
+        <div className="rc-why" id="rc-why" dangerouslySetInnerHTML={{ __html: whyGradeHTML(grade.explain) }} />
+      </div>
       {bandDiffApi && (
         <div className="rc-section" id="rc-bands-section">
           <h2>Frequency Band Breakdown</h2>

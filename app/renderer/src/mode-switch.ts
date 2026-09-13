@@ -46,7 +46,7 @@ export type ModeSwitchDecision =
 export function resolveModeSwitch(
   requestedMode: string,
   currentMode: string,
-  opts?: { simpleMode?: boolean },
+  _opts?: { simpleMode?: boolean },
 ): ModeSwitchDecision {
   if (requestedMode === 'analyze') return { type: 'chooseFile' };
   if (requestedMode === 'history') return { type: 'redirect', mode: 'recent' };

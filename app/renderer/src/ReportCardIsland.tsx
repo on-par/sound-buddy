@@ -21,7 +21,6 @@ import { useElectron } from './useElectron';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useAnalysisStore, type AnalysisStatus } from './stores/analysisStore';
 import { useSpectrumStore } from './stores/spectrumStore';
-import { useSettingsStore } from './stores/settingsStore';
 import { useSceneDiffStore } from './stores/sceneDiffStore';
 import { usePhaseDoublingStore } from './stores/phaseDoublingStore';
 import { useRingoutStore } from './stores/ringoutStore';
