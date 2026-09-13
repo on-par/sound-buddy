@@ -576,7 +576,9 @@ export default function LiveCapturePanel(): JSX.Element | null {
     if (s.appMode !== 'live') return;
     if (!s.isCapturing) return;
     return registerLiveFrameHook(() => {
-      getDawShellRuntime()?.renderPlayhead?.();
+      const runtime = getDawShellRuntime();
+      runtime?.renderPlayhead?.();
+      followTickRef.current((runtime?.playheadElapsedMs?.() ?? 0) / MS_PER_SECOND);
       patchOverview(document.getElementById('live-island')?.querySelector('.daw-shell') ?? null);
     });
     // sessionWaveforms is a dep (not just appMode/isCapturing) so the hook's
