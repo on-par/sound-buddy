@@ -367,13 +367,14 @@ describe('Audio pane composition (#727)', () => {
     expect(html).not.toContain('id="settings-audio-capture-lock-note"');
   });
 
-  it('shows the capture-lock note while capturing, without claiming measurement source or the secondary device are locked', () => {
+  it('shows the capture-lock note while capturing, without claiming rig, measurement source or the secondary device are locked', () => {
     useLiveCaptureStore.setState({ isCapturing: true });
     const html = renderMarkup(true);
     expect(html).toContain('id="settings-audio-capture-lock-note"');
     const note = html.match(/<p class="ai-dialog-note" id="settings-audio-capture-lock-note">(.*?)<\/p>/)?.[1] ?? '';
+    expect(note).not.toMatch(/rig[^.]*locked/i);
+    expect(note).toMatch(/Rig and input device changes restart capture/i);
     expect(note).not.toMatch(/input device[^.]*locked/i);
-    expect(note).toMatch(/Input device changes restart capture/i);
     expect(note).not.toMatch(/measurement source[^.]*locked/i);
     expect(note).not.toMatch(/secondary measurement[^.]*locked/i);
   });

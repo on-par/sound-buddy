@@ -568,7 +568,7 @@
     .settings-rail-item:hover { background:var(--surface); color:var(--text-primary); }
     .settings-rail-item.active { background:var(--gold-tint); border-color:var(--gold-600); color:var(--gold-text); }
     .settings-panes { display:flex; flex-direction:column; flex:1; min-width:0; min-height:0; }
-    .settings-pane { display:flex; flex-direction:column; flex:1; min-height:0; gap:12px; overflow-y:auto; }
+    .settings-pane { display:flex; flex-direction:column; flex:1; min-height:0; gap:12px; overflow-y:auto; overflow-x:hidden; }
     .settings-footer { display:flex; flex-direction:column; gap:10px; }
     /* Settings row grid (#1009, epic #999) — Ableton-style aligned rows:
        label in column 1, control in column 2 at a fixed width, so a pane can
@@ -583,7 +583,7 @@
     .settings-pane .select-label,
     .settings-pane .ai-enable-row,
     .settings-pane .slider,
-    .settings-pane .record-row { display:grid; grid-template-columns:1fr var(--settings-control-w); align-items:center; column-gap:var(--settings-row-gap); row-gap:6px; width:100%; }
+    .settings-pane .record-row { display:grid; grid-template-columns:minmax(0,1fr) var(--settings-control-w); align-items:center; column-gap:var(--settings-row-gap); row-gap:6px; width:100%; min-width:0; }
     .settings-pane .ai-field-label,
     .settings-pane .settings-row-label,
     .settings-pane .select-label > span,
@@ -594,6 +594,7 @@
     .settings-pane .select-label > .device-hint { grid-column:2; margin:0; }
     .settings-pane .ai-enable-row input[type="checkbox"] { justify-self:start; }
     .settings-pane .slider-head { grid-column:1; }
+    .settings-pane .select-row { min-width:0; }
     .settings-pane .record-row .ghost-btn { order:2; }
     .settings-pane .record-path { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .settings-pane .rig-actions { width:var(--settings-control-w); margin-left:auto; }

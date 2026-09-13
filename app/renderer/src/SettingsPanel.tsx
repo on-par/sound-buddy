@@ -517,10 +517,9 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
           </div>
           {isCapturing && (
             <p className="ai-dialog-note" id="settings-audio-capture-lock-note">
-              A capture is running — the rig, record folder, and meter cadence sliders are
-              locked until it stops. Input device changes restart capture on the selected
-              device. Measurement source and the secondary measurement device can still be
-              changed.
+              A capture is running — record folder and meter cadence sliders are locked until
+              it stops. Rig and input device changes restart capture on the selected setup.
+              Measurement source and the secondary measurement device can still be changed.
             </p>
           )}
           {booted && (
