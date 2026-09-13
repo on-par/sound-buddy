@@ -43,6 +43,10 @@ describe('settingsHelpNoteId', () => {
     expect(settingsHelpNoteId('crashReporting')).toBe('crash-reporting-note');
   });
 
+  it('returns the note id for the Advanced features control', () => {
+    expect(settingsHelpNoteId('advancedFeatures')).toBe('advanced-features-note');
+  });
+
   it('throws an actionable error for a control with no help entry', () => {
     expect(() => settingsHelpNoteId('version')).toThrow(/SETTINGS_HELP_ENTRIES/);
   });
@@ -101,6 +105,12 @@ describe('SETTINGS_HELP_ENTRIES table integrity', () => {
       expect(seen.has(entry.noteId)).toBe(false);
       seen.add(entry.noteId);
     }
+  });
+
+  it('has exactly one Advanced features entry with a unique note id', () => {
+    const entries = SETTINGS_HELP_ENTRIES.filter((entry) => entry.control === 'advancedFeatures');
+    expect(entries).toHaveLength(1);
+    expect(entries[0].noteId).toBe('advanced-features-note');
   });
 
   it('maps every entry control to a real section', () => {
