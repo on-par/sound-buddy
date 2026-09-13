@@ -23,9 +23,21 @@ export const RULER_LABEL_INTERVAL_CHOICES_SECS: readonly number[] = [5, 10, 30, 
 /** 4/4 — the arrangement has no time-signature model, so bars are four beats. */
 export const RULER_BEATS_PER_BAR = 4;
 
-// Absorbs float error in timeSecs * bpm / 60 so a tick can never label one
-// beat early (e.g. 2.4s at 175 BPM evaluates to 6.999999999999999 beats).
-const BEAT_EPSILON = 1e-6;
+/** Four sixteenth-note subdivisions make one beat. */
+export const RULER_SUBDIVISIONS_PER_BEAT = 4;
+
+const SECONDS_PER_MINUTE = 60;
+
+// Absorbs float error in timeSecs * bpm / 60 * 4 so a tick can never label one
+// sixteenth early (e.g. 2.4s at 175 BPM evaluates to 27.999999999999996 units).
+const SUBDIVISION_EPSILON = 1e-6;
+
+/** A 1-based 4/4 musical position for display-only timeline text. */
+export interface MusicalPosition {
+  readonly bar: number;
+  readonly beat: number;
+  readonly subdivision: number;
+}
 
 /** One labelled ruler position: the arrangement time it marks, the shell-local x
  *  for that time from the shared scale, and the two readout strings. Both strings
@@ -51,15 +63,32 @@ export function rulerLabelIntervalSecs(pxPerSecond: number): number {
   return sparsest;
 }
 
-/** Formats an arrangement time as a 1-based 'bar.beat' string at the given
- *  4/4 tempo. Non-finite or negative time resolves to 0s; non-finite or
- *  non-positive bpm falls back to TIMELINE_DEFAULT_BPM. */
-export function barsBeatsAt(timeSecs: number, bpm: number): string {
+/** Converts elapsed real seconds to a 1-based 4/4 musical position. Non-finite
+ *  or negative time resolves to 0s; non-finite or non-positive BPM falls back
+ *  to TIMELINE_DEFAULT_BPM. */
+export function secondsToMusicalPosition(timeSecs: number, bpm: number): MusicalPosition {
   const secs = Number.isFinite(timeSecs) && timeSecs > 0 ? timeSecs : 0;
   const tempo = Number.isFinite(bpm) && bpm > 0 ? bpm : TIMELINE_DEFAULT_BPM;
-  const totalBeats = Math.floor((secs * tempo) / 60 + BEAT_EPSILON);
-  const bar = Math.floor(totalBeats / RULER_BEATS_PER_BAR) + 1;
-  const beat = (totalBeats % RULER_BEATS_PER_BAR) + 1;
+  const totalSubdivisions = Math.floor(
+    ((secs * tempo) / SECONDS_PER_MINUTE) * RULER_SUBDIVISIONS_PER_BEAT + SUBDIVISION_EPSILON,
+  );
+  const subdivisionsPerBar = RULER_BEATS_PER_BAR * RULER_SUBDIVISIONS_PER_BEAT;
+  const bar = Math.floor(totalSubdivisions / subdivisionsPerBar) + 1;
+  const subdivisionsWithinBar = totalSubdivisions % subdivisionsPerBar;
+  const beat = Math.floor(subdivisionsWithinBar / RULER_SUBDIVISIONS_PER_BEAT) + 1;
+  const subdivision = (subdivisionsWithinBar % RULER_SUBDIVISIONS_PER_BEAT) + 1;
+  return { bar, beat, subdivision };
+}
+
+/** Formats a musical position as a conventional 1-based 'bar.beat.subdivision' string. */
+export function formatMusicalPosition(position: MusicalPosition): string {
+  return `${position.bar}.${position.beat}.${position.subdivision}`;
+}
+
+/** Formats an arrangement time as a 1-based 'bar.beat' compatibility string
+ *  at the given 4/4 tempo. */
+export function barsBeatsAt(timeSecs: number, bpm: number): string {
+  const { bar, beat } = secondsToMusicalPosition(timeSecs, bpm);
   return `${bar}.${beat}`;
 }
 
