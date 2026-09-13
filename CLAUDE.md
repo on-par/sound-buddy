@@ -2,7 +2,7 @@
 
 ## Project
 
-Sound Buddy is a Mac (Electron) desktop app for church audio engineers. It analyzes recordings, generates report cards, recommends EQ changes, captures live multi-channel audio, and (in progress) supports virtual soundcheck playback. Currently unsigned, distributed via GitHub releases. Self-contained — bundles sox, ffmpeg, and a Python runtime.
+Sound Buddy is a Mac (Electron) desktop app for church audio engineers. It analyzes recordings, generates report cards, recommends EQ changes, captures live multi-channel audio, and (in progress) supports virtual soundcheck playback. Signed with an Apple Developer ID and notarized (since v0.9.0; CI-only, see `docs/signing-and-notarization.md`), distributed as GitHub releases from `on-par/sound-buddy-releases`. Self-contained — bundles sox, ffmpeg, and a Python runtime.
 
 **UI direction:** [docs/design-reference.md](docs/design-reference.md) — Ableton Live as the interaction model, aimed at measurement rather than authoring. Reference for taste, not a checked standard.
 

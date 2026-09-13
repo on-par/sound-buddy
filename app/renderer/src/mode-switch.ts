@@ -22,6 +22,8 @@ import { SPECTRUM_TITLE } from './spectrum-chrome';
 import { decideLiveAutoStart } from './live-auto-start';
 import { startLiveCapture, runtime } from './LiveControls';
 import { captureOptsFromCadence } from './measurement-device-state';
+import { clampBootMode } from './simple-mode';
+import type { AppSettings } from '../../electron/ipc/api';
 
 export type WorkspaceMode = 'dir' | 'live' | 'console' | 'recent' | 'guide' | 'ringout' | 'reportcard';
 export type ModeSwitchRequest = WorkspaceMode | 'analyze' | 'history';
@@ -35,14 +37,19 @@ export function isWorkspaceMode(mode: string): mode is WorkspaceMode {
 
 export type ModeSwitchDecision =
   | { type: 'noop' }
+  | { type: 'chooseFile' }
   | { type: 'openPicker' }
   | { type: 'redirect'; mode: WorkspaceMode }
   | { type: 'switch'; mode: WorkspaceMode };
 
 // Verbatim port of the special-casing at the top of the old .mode-tab click
 // listener (inline-app.js) — pure, no DOM.
-export function resolveModeSwitch(requestedMode: string, currentMode: string): ModeSwitchDecision {
-  if (requestedMode === 'analyze') return { type: 'openPicker' };
+export function resolveModeSwitch(
+  requestedMode: string,
+  currentMode: string,
+  opts?: { simpleMode?: boolean },
+): ModeSwitchDecision {
+  if (requestedMode === 'analyze') return opts?.simpleMode ? { type: 'chooseFile' } : { type: 'openPicker' };
   if (requestedMode === 'history') return { type: 'redirect', mode: 'recent' };
   if (requestedMode === currentMode) return { type: 'noop' };
   if (!isWorkspaceMode(requestedMode)) return { type: 'noop' };
@@ -200,6 +207,7 @@ export interface RestoreBootModeDeps {
   hydration: Promise<unknown>;
   getLastAppMode: () => string | null | undefined;
   getCurrentMode: () => string;
+  getSettings: () => AppSettings | null;
 }
 
 // #1405: the second half of the boot sequence, paired with App.tsx's
@@ -213,8 +221,9 @@ export async function restoreBootMode(deps: RestoreBootModeDeps): Promise<void> 
   await deps.hydration;
   const lastMode = deps.getLastAppMode();
   const currentMode = deps.getCurrentMode();
-  if (lastMode && isWorkspaceMode(lastMode) && lastMode !== currentMode) {
-    switchMode(lastMode);
+  const restoredMode = lastMode ? clampBootMode(lastMode, deps.getSettings()) : lastMode;
+  if (restoredMode && isWorkspaceMode(restoredMode) && restoredMode !== currentMode) {
+    switchMode(restoredMode);
     return;
   }
   if (currentMode === 'live') maybeAutoStartLive();

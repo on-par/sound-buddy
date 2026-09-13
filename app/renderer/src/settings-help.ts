@@ -27,6 +27,11 @@ export interface SettingsHelpHandlers {
 
 export const SETTINGS_HELP_ENTRIES: readonly SettingsHelpEntry[] = [
   {
+    control: 'advancedFeatures',
+    noteId: 'advanced-features-note',
+    text: 'On: every workspace tab - Directory, Session, Console, Recent, Build Guide, Ring Out. Off: Analyze, History, and Report Card. Nothing is removed either way; turn it back on anytime.',
+  },
+  {
     control: 'gradingProfile',
     noteId: 'grading-profile-note',
     text: "Casual / volunteer grades against today's thresholds. Broadcast-ready tightens every level, dynamic-range, and balance target — the same recording may grade lower. The report card always shows which profile graded it.",
@@ -74,7 +79,7 @@ export const SETTINGS_HELP_ENTRIES: readonly SettingsHelpEntry[] = [
 ];
 
 export const SETTINGS_SECTION_HELP: Record<SettingsSection, string> = {
-  general: 'Grading strictness, weekly reminders, and what appears on shared images.',
+  general: 'Workspace tabs, grading strictness, weekly reminders, and what appears on shared images.',
   audio: 'Rig, input device, measurement source, and meter cadence for live capture.',
   console: 'Read-only network access to your Midas M32R console.',
   storage: 'Where recordings and reports are saved on this Mac.',

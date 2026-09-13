@@ -37,6 +37,7 @@ export interface UpdateSettingsPatch {
   crashReportingEnabled?: boolean;
   liveAdjustmentsEnabled?: boolean;
   reportFirstUxEnabled?: boolean;
+  advancedFeaturesEnabled?: boolean;
   shareChurchName?: string;
   weeklyReminderEnabled?: boolean;
   weeklyReminderServiceDay?: number;
@@ -317,6 +318,14 @@ export interface AppSettings {
    * time without shipping a Settings toggle.
    */
   reportFirstUxEnabled: boolean;
+  /**
+   * Opt-in Advanced shell gate (#1421). Default true in the first Simple-mode
+   * slice so shipped behavior is unchanged; false hides advanced workspace
+   * tabs while leaving their routes/components in place. Has an env layer
+   * (SOUND_BUDDY_ADVANCED_FEATURES) so e2e and development launches can force
+   * the full shell without mutating settings.json.
+   */
+  advancedFeaturesEnabled: boolean;
   /**
    * Optional church name (#265) shown on the "Share Image" report-card
    * export. Default '' (blank) — an empty value means the shared image

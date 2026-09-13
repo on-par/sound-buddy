@@ -6,6 +6,8 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import OnboardingDialog from './OnboardingDialog';
 import { useOnboardingStore } from './stores/onboardingStore';
+import { useSettingsStore } from './stores/settingsStore';
+import type { AppSettings } from '../../electron/ipc/api';
 
 function renderMarkup(): string {
   return renderToString(createElement(OnboardingDialog));
@@ -17,10 +19,21 @@ const DEFAULT_STATE = {
   copyOverride: null as string | null,
   runButtonLabel: 'Run your first analysis',
 };
+const DEFAULT_COPY_PREFIX = 'Sound Buddy scores your mix';
+const SIMPLE_COPY = 'Drop last Sunday&#x27;s recording on the Report Card panel - or click Analyze - and Sound Buddy hands back a report card telling you what to fix.';
+
+function settings(overrides: Partial<AppSettings> = {}): AppSettings {
+  return {
+    reportFirstUxEnabled: false,
+    advancedFeaturesEnabled: true,
+    ...overrides,
+  } as AppSettings;
+}
 
 describe('OnboardingDialog', () => {
   afterEach(() => {
     useOnboardingStore.setState(DEFAULT_STATE);
+    useSettingsStore.setState({ settings: null, settingsError: null });
   });
 
   it('is hidden (display:none) when the dialog is closed', () => {
@@ -39,22 +52,64 @@ describe('OnboardingDialog', () => {
 
     expect(html).toContain('display:flex');
     expect(html).toContain('Welcome to Sound Buddy');
-    expect(html).toContain('Sound Buddy scores your mix');
+    expect(html).toContain(DEFAULT_COPY_PREFIX);
     expect(html).toContain('Run your first analysis');
   });
 
-  it('shows the copyOverride and "Try again" label after a failed analysis', () => {
+  it('uses the one-sentence Simple mode copy when advanced features are off', () => {
+    useOnboardingStore.setState({ ...DEFAULT_STATE, dialogOpen: true });
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false }) });
+
+    const html = renderMarkup();
+
+    expect(html).toContain(SIMPLE_COPY);
+    expect(html).not.toContain(DEFAULT_COPY_PREFIX);
+    expect(html).toContain('id="onboarding-skip"');
+    expect(html).toContain('id="onboarding-run"');
+  });
+
+  it('keeps the default copy in Advanced mode', () => {
+    useOnboardingStore.setState({ ...DEFAULT_STATE, dialogOpen: true });
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: true }) });
+
+    const html = renderMarkup();
+
+    expect(html).toContain(DEFAULT_COPY_PREFIX);
+    expect(html).not.toContain(SIMPLE_COPY);
+    expect(html).toContain('id="onboarding-skip"');
+    expect(html).toContain('id="onboarding-run"');
+  });
+
+  it('shows the copyOverride and "Try again" label after a failed analysis in Advanced mode', () => {
     useOnboardingStore.setState({
       ...DEFAULT_STATE,
       dialogOpen: true,
       copyOverride: 'That didn’t work — try again.',
       runButtonLabel: 'Try again',
     });
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: true }) });
 
     const html = renderMarkup();
 
     expect(html).toContain('That didn’t work — try again.');
-    expect(html).not.toContain('Sound Buddy scores your mix');
+    expect(html).not.toContain(DEFAULT_COPY_PREFIX);
+    expect(html).toContain('Try again');
+  });
+
+  it('lets copyOverride win over the Simple mode copy after a failed analysis', () => {
+    useOnboardingStore.setState({
+      ...DEFAULT_STATE,
+      dialogOpen: true,
+      copyOverride: 'That didn’t work — try again.',
+      runButtonLabel: 'Try again',
+    });
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false }) });
+
+    const html = renderMarkup();
+
+    expect(html).toContain('That didn’t work — try again.');
+    expect(html).not.toContain(SIMPLE_COPY);
+    expect(html).not.toContain(DEFAULT_COPY_PREFIX);
     expect(html).toContain('Try again');
   });
 

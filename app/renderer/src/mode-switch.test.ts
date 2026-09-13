@@ -101,7 +101,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null,
     usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
     crashReportingEnabled: false, liveAdjustmentsEnabled: false,
-    reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false,
+    reportFirstUxEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false,
     weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
     measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
@@ -121,6 +121,14 @@ describe('resolveModeSwitch', () => {
   });
 
   it('opens the source picker for "analyze"', () => {
+    expect(resolveModeSwitch('analyze', 'reportcard')).toEqual({ type: 'openPicker' });
+  });
+
+  it('bypasses the source picker for "analyze" in Simple mode', () => {
+    expect(resolveModeSwitch('analyze', 'reportcard', { simpleMode: true })).toEqual({ type: 'chooseFile' });
+  });
+
+  it('keeps opening the source picker when the Simple-mode option is absent', () => {
     expect(resolveModeSwitch('analyze', 'reportcard')).toEqual({ type: 'openPicker' });
   });
 
@@ -454,6 +462,7 @@ describe('restoreBootMode', () => {
       hydration,
       getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
       getCurrentMode: () => useLiveCaptureStore.getState().appMode,
+      getSettings: () => useSettingsStore.getState().settings,
     });
 
     expect(spy).not.toHaveBeenCalled();
@@ -469,6 +478,7 @@ describe('restoreBootMode', () => {
       hydration: Promise.resolve(),
       getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
       getCurrentMode: () => 'reportcard',
+      getSettings: () => useSettingsStore.getState().settings,
     });
 
     expect(useLiveCaptureStore.getState().appMode).toBe('live');
@@ -483,6 +493,7 @@ describe('restoreBootMode', () => {
       hydration: Promise.resolve(),
       getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
       getCurrentMode: () => useLiveCaptureStore.getState().appMode,
+      getSettings: () => useSettingsStore.getState().settings,
     });
 
     expect(logSpy).toHaveBeenCalledWith('live-auto-start', expect.anything());
@@ -496,6 +507,7 @@ describe('restoreBootMode', () => {
       hydration: Promise.resolve(),
       getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
       getCurrentMode: () => 'reportcard',
+      getSettings: () => useSettingsStore.getState().settings,
     });
 
     expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');
@@ -509,6 +521,20 @@ describe('restoreBootMode', () => {
       hydration: Promise.resolve(),
       getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
       getCurrentMode: () => 'reportcard',
+      getSettings: () => useSettingsStore.getState().settings,
+    });
+
+    expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');
+  });
+
+  it('clamps a saved hidden mode to reportcard in Simple mode', async () => {
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false, lastAppMode: 'live' }) });
+
+    await restoreBootMode({
+      hydration: Promise.resolve(),
+      getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+      getCurrentMode: () => 'reportcard',
+      getSettings: () => useSettingsStore.getState().settings,
     });
 
     expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');

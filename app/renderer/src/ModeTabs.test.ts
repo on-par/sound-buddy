@@ -6,13 +6,29 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import ModeTabs from './ModeTabs';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useSettingsStore } from './stores/settingsStore';
+import type { AppSettings } from '../../electron/ipc/api';
 
 afterEach(() => {
   useLiveCaptureStore.setState({ appMode: 'reportcard' });
+  useSettingsStore.setState({ settings: null, settingsError: null });
 });
 
 function renderMarkup(): string {
   return renderToString(createElement(ModeTabs));
+}
+
+function settings(overrides: Partial<AppSettings> = {}): AppSettings {
+  return {
+    idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null,
+    usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
+    crashReportingEnabled: false, liveAdjustmentsEnabled: false,
+    reportFirstUxEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '',
+    weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
+    measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
+    soundcheckBuses: [], splCalibrationOffsetDb: null, lastAppMode: '',
+    ...overrides,
+  };
 }
 
 describe('ModeTabs', () => {
@@ -58,5 +74,37 @@ describe('ModeTabs', () => {
     const html = renderMarkup();
     expect(html).toContain('id="nav-history" data-mode="history"');
     expect(html).not.toContain('class="mode-tab active" id="nav-history"');
+  });
+
+  it('keeps every tab unhidden while settings are still loading', () => {
+    const html = renderMarkup();
+    expect(html).not.toContain('hidden=""');
+  });
+
+  it('marks advanced tabs hidden in Simple mode without removing them from the DOM', () => {
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false }) });
+    const html = renderMarkup();
+
+    for (const mode of ['dir', 'live', 'console', 'recent', 'guide', 'ringout']) {
+      const marker = `data-mode="${mode}"`;
+      const start = html.indexOf(marker);
+      const end = html.indexOf('</button>', start);
+      const button = html.slice(start, end);
+      expect(start).toBeGreaterThanOrEqual(0);
+      expect(button).toContain('hidden=""');
+    }
+    const analyzeStart = html.indexOf('id="nav-analyze"');
+    const analyzeEnd = html.indexOf('</button>', analyzeStart);
+    const analyzeButton = html.slice(analyzeStart, analyzeEnd);
+    expect(analyzeStart).toBeGreaterThanOrEqual(0);
+    expect(analyzeButton).not.toContain('hidden=""');
+    expect(html).toContain('id="nav-history" data-mode="history"');
+    expect(html).toContain('data-mode="reportcard"');
+  });
+
+  it('does not hide tabs when report-first-ux has precedence', () => {
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false, reportFirstUxEnabled: true }) });
+    const html = renderMarkup();
+    expect(html).not.toContain('hidden=""');
   });
 });

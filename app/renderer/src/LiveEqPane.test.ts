@@ -42,7 +42,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null,
     usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
     crashReportingEnabled: false, liveAdjustmentsEnabled: false,
-    reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false,
+    reportFirstUxEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false,
     weeklyReminderServiceDay: 0, liveEqPaneWidth: 400,
     measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
