@@ -948,6 +948,8 @@ import {
   symptomThresholdOffsetFrom,
   targetMetaForSource,
   reportCardSourceFromAnalysis as sourceFromAnalysisWithCtx,
+  bandTargetLevels,
+  bandMeterHTML as bandMeterWithTarget,
   bandBreakdownHTML as bandBreakdownWithBaseline,
   buildScoreRows as buildScoreRowsWithBaseline,
   type GradeBaseline,
@@ -1058,7 +1060,7 @@ describe('bandBreakdownHTML / buildScoreRows against a baseline', () => {
     const relative = bandBreakdownWithBaseline(pink, grading, baseline);
     expect(relative).not.toContain('Too Hot');
     expect(relative).not.toContain('Too Quiet');
-    expect(relative.match(/Balanced/g)).toHaveLength(7);
+    expect(relative.match(/rc-band-verdict ok/g)).toHaveLength(7);
   });
 
   it('names the baseline in the Band Balance score row and reads "good"', () => {
@@ -1095,5 +1097,66 @@ describe('targetMetaForSource', () => {
       .toBe(targetMetaForSource({ filename: 'Live capture — Crowd Mic (window #136)' }).id);
     expect(targetMetaForSource({ filename: 'Live capture — Crowd Mic (12 windows)' }).label).toBe('Target from Live capture — Crowd Mic');
     expect(targetMetaForSource({ filename: 'service.wav' })).toEqual(strongMixTargetMeta('service.wav'));
+  });
+});
+
+describe('bandTargetLevels', () => {
+  const cfg = { hotDiff: 12, quietDiff: -15 };
+
+  it('with no targets, the ideal level is the mean of the other bands and the edges sit hotDiff/quietDiff away', () => {
+    const bands = { ...flatBands(-30), mid: -18 };
+    const t = bandTargetLevels(bands, null, cfg);
+    expect(t.mid?.db).toBeCloseTo(-30, 6);
+    expect(t.mid?.hotAbove).toBeCloseTo(-18, 6);
+    expect(t.mid?.quietBelow).toBeCloseTo(-45, 6);
+    expect(t.bass?.db).toBeCloseTo(-28, 6); // the others average -28 because mid is hot
+  });
+
+  it('agrees exactly with bandDiffFromOthers: a band placed at its ideal level reads 0 dB, at hotAbove reads hotDiff', () => {
+    const pink = { subBass: -60, bass: -64.9, lowMid: -69.7, mid: -74, highMid: -78.8, presence: -81, brilliance: -84.8 };
+    const targets = { subBass: 12, bass: 7.1, lowMid: 2.3, mid: -2, highMid: -6.8, presence: -9, brilliance: -12.8 };
+    const shifted = { ...pink, lowMid: pink.lowMid + 9 };
+    const t = bandTargetLevels(shifted, targets, cfg);
+    expect(grading.bandDiffFromOthers({ ...shifted, lowMid: t.lowMid!.db }, 'lowMid', targets)).toBeCloseTo(0, 6);
+    expect(grading.bandDiffFromOthers({ ...shifted, lowMid: t.lowMid!.hotAbove }, 'lowMid', targets)).toBeCloseTo(12, 6);
+    expect(grading.bandDiffFromOthers({ ...shifted, lowMid: t.lowMid!.quietBelow }, 'lowMid', targets)).toBeCloseTo(-15, 6);
+  });
+
+  it('is level-invariant and null for a band with no finite level', () => {
+    const bands = { subBass: -60, bass: -50, mid: Number.NEGATIVE_INFINITY };
+    const t = bandTargetLevels(bands, null, cfg);
+    expect(t.mid).toBeNull();
+    expect(t.subBass?.db).toBeCloseTo(-50, 6);
+    const louder = bandTargetLevels({ subBass: -40, bass: -30 }, null, cfg);
+    expect(louder.subBass!.db - t.subBass!.db).toBeCloseTo(20, 6);
+  });
+
+  it('is null when there are no other bands to compare against', () => {
+    expect(bandTargetLevels({ mid: -20 }, null, cfg).mid).toBeNull();
+  });
+});
+
+describe('band meter ideal-level overlay', () => {
+  it('draws the balanced zone and the ideal tick when a target is given, nothing otherwise', () => {
+    const plain = bandMeterWithTarget('Mid', '500 Hz–2 kHz', -20);
+    expect(plain).not.toContain('bm-zone');
+    expect(plain).not.toContain('bm-target');
+    const html = bandMeterWithTarget('Mid', '500 Hz–2 kHz', -20, { target: { db: -30, hotAbove: -18, quietBelow: -45 } });
+    expect(html).toContain('class="bm-zone"');
+    expect(html).toContain('class="bm-target"');
+    expect(html).toContain('title="Ideal level -30.0 dB"');
+  });
+
+  it('the breakdown shows a legend naming the baseline, a ±dB deviation per band, and an overlay per row', () => {
+    const pink = { subBass: -60, bass: -64.9, lowMid: -69.7, mid: -74, highMid: -78.8, presence: -81, brilliance: -84.8 };
+    const baseline: GradeBaseline = { label: 'Worship service', bandTargets: { subBass: 12, bass: 7.1, lowMid: 2.3, mid: -2, highMid: -6.8, presence: -9, brilliance: -12.8 } };
+    const html = bandBreakdownWithBaseline(pink, grading, baseline);
+    expect(html).toContain('ideal level vs. Worship service');
+    expect(html).toContain('balanced range (-15 to +12 dB)');
+    expect(html.match(/class="bm-target"/g)).toHaveLength(7);
+    expect(html.match(/rc-band-dev/g)).toHaveLength(7);
+    expect(html).toContain('+0.0 dB');
+    const flat = bandBreakdownWithBaseline(pink, grading);
+    expect(flat).toContain('ideal level vs. the other bands');
   });
 });

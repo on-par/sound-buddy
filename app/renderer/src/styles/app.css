@@ -1262,6 +1262,9 @@
     .bm-grid { position:absolute; top:0; bottom:0; width:1px; background:var(--gridline); }
     .bm-fill { position:absolute; left:0; top:0; bottom:0; border-radius:var(--radius-sm); transition:var(--transition-meter); }
     .bm-fill.loud { box-shadow:0 0 8px -1px var(--gold-glow); }
+    /* Ideal-level overlay on the report-card band meters (bandTargetLevels) */
+    .bm-zone { position:absolute; top:0; bottom:0; background:var(--good-text); opacity:0.14; pointer-events:none; }
+    .bm-target { position:absolute; top:-1px; bottom:-1px; width:2px; margin-left:-1px; background:var(--good-text); box-shadow:0 0 4px var(--good-text); pointer-events:none; }
     .bm-val { width:52px; flex-shrink:0; text-align:right; font:var(--fw-medium) var(--fs-data-sm)/1 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-muted); }
     .bm-val.hot { color:var(--text-primary); }
 
@@ -1509,6 +1512,12 @@
     .rc-bands { background:var(--surface); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); padding:16px 20px; box-shadow:var(--elevation-card); }
     .rc-band-row { display:flex; align-items:center; gap:8px; }
     .rc-band-row .bm { flex:1; min-width:0; }
+    .rc-band-dev { width:48px; flex-shrink:0; text-align:right; font:var(--fw-medium) 10px/1 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-muted); }
+    .rc-band-dev.hot { color:var(--check-text); } .rc-band-dev.ok { color:var(--good-text); }
+    .rc-band-legend { display:flex; align-items:center; flex-wrap:wrap; gap:4px; margin:0 0 8px; font:var(--fw-medium) 10px/1.3 var(--font-sans); color:var(--text-tertiary); }
+    .rc-band-legend b { color:var(--text-secondary); }
+    .rc-band-legend-tick { display:inline-block; width:2px; height:11px; background:var(--good-text); box-shadow:0 0 4px var(--good-text); margin-right:4px; }
+    .rc-band-legend-zone { display:inline-block; width:18px; height:10px; background:var(--good-text); opacity:0.25; border-radius:2px; margin-right:4px; }
     .rc-band-verdict { width:74px; flex-shrink:0; text-align:right; font:var(--fw-medium) 10px/1 var(--font-sans); }
     .rc-band-verdict.hot { color:var(--check-text); } .rc-band-verdict.quiet { color:var(--text-muted); } .rc-band-verdict.ok { color:var(--good-text); }
 

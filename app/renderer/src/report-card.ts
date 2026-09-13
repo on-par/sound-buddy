@@ -712,6 +712,49 @@ export interface BandMeterOpts {
   colorBy?: 'band' | 'level';
   color?: string;
   loudest?: boolean;
+  /** Ideal level for this band (absolute dB) and the balanced range around
+   *  it — drawn as a tick and a shaded zone on the track (see bandTargetLevels). */
+  target?: BandTargetLevel | null;
+}
+
+/** Where a band SHOULD sit, in the same absolute dB as its meter: the level
+ *  at which its verdict reads exactly on-target, plus the edges beyond which
+ *  it reads Too Hot / Too Quiet. */
+export interface BandTargetLevel {
+  db: number;
+  hotAbove: number;
+  quietBelow: number;
+}
+
+/**
+ * The ideal level per band, in absolute dB, derived from the exact rule the
+ * verdict uses. The verdict for band k is diff_k = (b_k − t_k) − mean over the
+ * other bands of (b_j − t_j) (grading.js's bandDiffFromOthers); solving
+ * diff_k = 0 for b_k gives the level at which the band is balanced GIVEN the
+ * other six as measured: t_k + meanOtherDeviation. The hot/quiet edges are
+ * that level plus hotDiff / quietDiff. With no targets (flat reference) t is
+ * 0 everywhere, so the ideal level is simply the mean of the other bands.
+ * Bands without a finite level get null.
+ */
+export function bandTargetLevels(
+  bands: Record<string, number>,
+  targets: Record<string, number> | null | undefined,
+  cfg: { hotDiff: number; quietDiff: number },
+): Record<string, BandTargetLevel | null> {
+  const target = (k: string) => {
+    const t = targets ? targets[k] : undefined;
+    return typeof t === 'number' && Number.isFinite(t) ? t : 0;
+  };
+  const keys = Object.keys(bands).filter((k) => Number.isFinite(bands[k]));
+  const out: Record<string, BandTargetLevel | null> = {};
+  for (const k of Object.keys(bands)) {
+    const others = keys.filter((j) => j !== k);
+    if (!Number.isFinite(bands[k]) || others.length === 0) { out[k] = null; continue; }
+    const meanOtherDev = others.reduce((sum, j) => sum + (bands[j] - target(j)), 0) / others.length;
+    const db = target(k) + meanOtherDev;
+    out[k] = { db, hotAbove: db + cfg.hotDiff, quietBelow: db + cfg.quietDiff };
+  }
+  return out;
 }
 
 export function levelColor(db: number): string {
@@ -729,10 +772,18 @@ export function bandMeterHTML(label: string, range: string, db: number, opts: Ba
   const scale = opts.showScale
     ? `<div class="bm-scale">${GRID.map((g) => `<span style="left:${toPct(g)}%">${g}</span>`).join('')}</div>` : '';
   const rangeHTML = range ? `<div class="bm-range">${range}</div>` : '';
+  // Ideal-level overlay: the balanced zone (quiet edge → hot edge) shaded on
+  // the track and a tick at the on-target level, so "Too Hot" is read
+  // against something visible.
+  const t = opts.target;
+  const overlay = t
+    ? `<span class="bm-zone" style="left:${toPct(t.quietBelow).toFixed(1)}%;width:${Math.max(0, toPct(t.hotAbove) - toPct(t.quietBelow)).toFixed(1)}%" title="Balanced range"></span>` +
+      `<span class="bm-target" style="left:${toPct(t.db).toFixed(1)}%" title="Ideal level ${t.db.toFixed(1)} dB"></span>`
+    : '';
   return `<div class="bm">${scale}
     <div class="bm-row">
       <div class="bm-labelcol"><div class="bm-name${loud ? ' loud' : ''}">${label}</div>${rangeHTML}</div>
-      <div class="bm-track">${grid}<div class="bm-fill${loud ? ' loud' : ''}" style="width:${pct}%;background:${fill};opacity:${dim ? 0.5 : 1}"></div></div>
+      <div class="bm-track">${grid}<div class="bm-fill${loud ? ' loud' : ''}" style="width:${pct}%;background:${fill};opacity:${dim ? 0.5 : 1}"></div>${overlay}</div>
       <div class="bm-val${db > HOT_DB ? ' hot' : ''}">${isFinite(db) ? db.toFixed(1) : '-∞'}</div>
     </div>
   </div>`;
@@ -755,15 +806,22 @@ export interface BandDiffApi {
 
 export function bandBreakdownHTML(bands: Record<string, number>, g: BandDiffApi, baseline?: GradeBaseline | null): string {
   const targets = baseline?.bandTargets ?? null;
-  return BAND_META.map((b) => {
+  const levels = bandTargetLevels(bands, targets, g.CONFIG.bandBalance);
+  const vs = baseline?.label ? escapeHtml(baseline.label) : 'the other bands';
+  const legend = `<div class="rc-band-legend"><span class="rc-band-legend-tick"></span>ideal level vs. ${vs}` +
+    ` · <span class="rc-band-legend-zone"></span>balanced range (${g.CONFIG.bandBalance.quietDiff} to +${g.CONFIG.bandBalance.hotDiff} dB)` +
+    ` · <b>±dB</b> = this band vs. its ideal</div>`;
+  const rows = BAND_META.map((b) => {
     const db = bands[b.key];
     const diff = g.bandDiffFromOthers(bands, b.key, targets);
     let vc: 'ok' | 'hot' | 'quiet' = 'ok';
     let vt = 'Balanced';
     if (diff > g.CONFIG.bandBalance.hotDiff) { vc = 'hot'; vt = 'Too Hot'; }
     else if (diff < g.CONFIG.bandBalance.quietDiff) { vc = 'quiet'; vt = 'Too Quiet'; }
-    return `<div class="rc-band-row">${bandMeterHTML(b.label, b.range, db, { colorBy: 'level' })}<span class="rc-band-verdict ${vc}">${vt}</span></div>`;
+    const dev = Number.isFinite(diff) ? `<span class="rc-band-dev ${vc}">${fmtDev(diff)}</span>` : '';
+    return `<div class="rc-band-row">${bandMeterHTML(b.label, b.range, db, { colorBy: 'level', target: levels[b.key] })}${dev}<span class="rc-band-verdict ${vc}">${vt}</span></div>`;
   }).join('');
+  return legend + rows;
 }
 
 /* ── "Spectrum Over Time" report-card section ──
