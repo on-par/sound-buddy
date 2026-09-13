@@ -10,8 +10,14 @@ import {
   profileSelectOptions,
   selectedCustomProfile,
   curveEditorInit,
+  bandOffsetsFromMeasuredBands,
+  hasUsableLiveBands,
+  captureBandOffsets,
+  fitBandOffsetsToTargets,
+  EDITOR_BAND_KEYS,
   type IdealCurvesApi,
 } from './ideal-profiles';
+import { bandTargetsFromProfile } from '@sound-buddy/audio-engine/dist/profiles/index.js';
 import type { CustomIdealProfile } from '../../electron/ipc/api';
 import type { SpectrumData } from './spectrum-display';
 
@@ -80,8 +86,13 @@ describe('resolveActiveProfile', () => {
     expect(result.id).toBe('broadcast');
   });
 
-  it('falls back to flat when there is no spectrum and no selection', () => {
-    expect(resolveActiveProfile('', [], null).id).toBe('flat');
+  it('resolves Auto to the live default (worship service) when there is no spectrum — a live capture has no content type', () => {
+    expect(resolveActiveProfile('', [], null).id).toBe('worship-service');
+  });
+
+  it('still honours an explicit pick with no spectrum', () => {
+    expect(resolveActiveProfile('flat', [], null).id).toBe('flat');
+    expect(resolveActiveProfile('speech-podcast', [], null).id).toBe('speech-podcast');
   });
 });
 
@@ -130,8 +141,13 @@ describe('curveEditorInit', () => {
     expect(init.bands).toHaveLength(7);
   });
 
-  it('starts a new curve named "Copy of Flat / neutral" with no spectrum and no selection', () => {
+  it('starts a new curve named after the live default ("Copy of Worship service") with no spectrum and no selection', () => {
     const init = curveEditorInit('', [], null, curves);
+    expect(init.name).toBe('Copy of Worship service');
+  });
+
+  it('starts a new curve named "Copy of Flat / neutral" when flat is explicitly selected', () => {
+    const init = curveEditorInit('flat', [], null, curves);
     expect(init.name).toBe('Copy of Flat / neutral');
   });
 
@@ -157,5 +173,77 @@ describe('curveEditorInit', () => {
   it('blocks capture when the spectrum has no usable curve', () => {
     const init = curveEditorInit('', [], { contentType: 'speech' }, curves);
     expect(init.canCapture).toBe(false);
+  });
+
+  it('allows capture from live-capture band levels when there is no file spectrum', () => {
+    const live = { subBass: -61, bass: -63, lowMid: -71, mid: -77, highMid: -96, presence: -93, brilliance: -104 };
+    expect(curveEditorInit('', [], null, curves, live).canCapture).toBe(true);
+    expect(curveEditorInit('', [], null, curves, { subBass: -61 }).canCapture).toBe(false);
+    expect(curveEditorInit('', [], null, curves, null).canCapture).toBe(false);
+  });
+});
+
+describe('bandOffsetsFromMeasuredBands', () => {
+  it('returns level-matched offsets in editor band order, summing to zero', () => {
+    const live = { subBass: -61, bass: -63, lowMid: -71, mid: -77, highMid: -96, presence: -93, brilliance: -104 };
+    const offsets = bandOffsetsFromMeasuredBands(live);
+    expect(offsets).toHaveLength(7);
+    expect(offsets.reduce((a, b) => a + b, 0)).toBeCloseTo(0, 1);
+    expect(offsets[0]).toBeCloseTo(-61 - (-80.714), 1);
+    expect(offsets[0]).toBeGreaterThan(offsets[6]);
+    // Level-invariant: the same shape 20 dB louder yields the same offsets.
+    const louder = Object.fromEntries(Object.entries(live).map(([k, v]) => [k, v + 20]));
+    expect(bandOffsetsFromMeasuredBands(louder)).toEqual(offsets);
+  });
+
+  it('treats a missing or non-finite band as on-mean and an empty table as flat', () => {
+    expect(bandOffsetsFromMeasuredBands({ subBass: -10, bass: -20, mid: Number.NaN })).toEqual([5, -5, 0, 0, 0, 0, 0]);
+    expect(bandOffsetsFromMeasuredBands(null)).toEqual([0, 0, 0, 0, 0, 0, 0]);
+    expect(bandOffsetsFromMeasuredBands({})).toEqual([0, 0, 0, 0, 0, 0, 0]);
+  });
+});
+
+describe('hasUsableLiveBands', () => {
+  it('needs at least two finite bands', () => {
+    expect(hasUsableLiveBands(null)).toBe(false);
+    expect(hasUsableLiveBands({})).toBe(false);
+    expect(hasUsableLiveBands({ mid: -20 })).toBe(false);
+    expect(hasUsableLiveBands({ mid: -20, bass: Number.NaN })).toBe(false);
+    expect(hasUsableLiveBands({ mid: -20, bass: -10 })).toBe(true);
+  });
+});
+
+describe('captureBandOffsets — a captured live mix grades as its own target', () => {
+  const live = { subBass: -61.1, bass: -63.0, lowMid: -71.2, mid: -76.6, highMid: -96.0, presence: -92.5, brilliance: -104.1 };
+  const build = (b: number[]) => curves.profileFromBands(b, GRID_FREQS, { label: 'fit' });
+
+  it('EDITOR_BAND_KEYS matches the curves API band order', () => {
+    expect([...EDITOR_BAND_KEYS]).toEqual((curves as unknown as { BAND_KEYS: string[] }).BAND_KEYS);
+  });
+
+  it('round-trips: the fitted curve reproduces the band SHAPE to within the half-dB quantization (level is free)', () => {
+    const shape = (xs: number[]) => { const m = xs.reduce((a, b) => a + b, 0) / xs.length; return xs.map((x) => x - m); };
+    const wanted = shape(bandOffsetsFromMeasuredBands(live));
+    const asShape = (t: Record<string, number>) => shape(EDITOR_BAND_KEYS.map((k) => t[k]));
+    const plain = asShape(bandTargetsFromProfile(build(wanted)!));
+    const fitted = asShape(bandTargetsFromProfile(build(captureBandOffsets(live, build))!));
+    let plainErr = 0;
+    wanted.forEach((w, i) => {
+      plainErr = Math.max(plainErr, Math.abs(plain[i] - w));
+      expect(Math.abs(fitted[i] - w)).toBeLessThan(0.6);
+    });
+    // The plain (unfitted) capture is measurably off against itself — the reason the fit exists.
+    expect(plainErr).toBeGreaterThan(1);
+  });
+
+  it('the captured mix grades as balanced against its own saved curve', () => {
+    const profile = build(captureBandOffsets(live, build))!;
+    const targets = bandTargetsFromProfile(profile) as unknown as Record<string, number>;
+    const grading = require('../grading.js') as { bandDiffFromOthers(b: Record<string, number>, k: string, t: Record<string, number>): number };
+    for (const k of EDITOR_BAND_KEYS) expect(Math.abs(grading.bandDiffFromOthers(live, k, targets))).toBeLessThan(0.75);
+  });
+
+  it('returns the input offsets unchanged when the profile builder fails', () => {
+    expect(fitBandOffsetsToTargets([1, 2, 3, 4, 5, 6, 7], () => null)).toEqual([1, 2, 3, 4, 5, 6, 7]);
   });
 });

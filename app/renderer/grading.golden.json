@@ -22,7 +22,9 @@
     "expected": {
       "grade": "A",
       "score": 99,
-      "recommendations": ["Great job! No major issues detected — levels and balance are solid."],
+      "recommendations": [
+        "Great job! No major issues detected — levels and balance are solid."
+      ],
       "deductions": [],
       "notMeasured": []
     }
@@ -50,7 +52,9 @@
     "expected": {
       "grade": "F",
       "score": 55,
-      "recommendations": ["CRITICAL: Clipping detected. Reduce input gain immediately."],
+      "recommendations": [
+        "CRITICAL: Clipping detected. Reduce input gain immediately."
+      ],
       "deductions": [
         {
           "rule": "Clipping",
@@ -85,7 +89,9 @@
     "expected": {
       "grade": "B",
       "score": 89,
-      "recommendations": ["Great job! No major issues detected — levels and balance are solid."],
+      "recommendations": [
+        "Great job! No major issues detected — levels and balance are solid."
+      ],
       "deductions": [
         {
           "rule": "RMS out of band",
@@ -120,7 +126,9 @@
     "expected": {
       "grade": "B",
       "score": 89,
-      "recommendations": ["Great job! No major issues detected — levels and balance are solid."],
+      "recommendations": [
+        "Great job! No major issues detected — levels and balance are solid."
+      ],
       "deductions": [
         {
           "rule": "Dynamic range too low",
@@ -155,7 +163,9 @@
     "expected": {
       "grade": "B",
       "score": 86,
-      "recommendations": ["Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range."],
+      "recommendations": [
+        "Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range."
+      ],
       "deductions": [
         {
           "rule": "Band imbalance",
@@ -190,7 +200,9 @@
     "expected": {
       "grade": "A",
       "score": 99,
-      "recommendations": ["Mix is fine but USB record level is low. Raise console USB output toward -18 dBFS RMS."],
+      "recommendations": [
+        "Mix is fine but USB record level is low. Raise console USB output toward -18 dBFS RMS."
+      ],
       "deductions": [],
       "notMeasured": []
     }
@@ -218,7 +230,9 @@
     "expected": {
       "grade": "A",
       "score": 99,
-      "recommendations": ["Great job! No major issues detected — levels and balance are solid."],
+      "recommendations": [
+        "Great job! No major issues detected — levels and balance are solid."
+      ],
       "deductions": [],
       "notMeasured": [
         {
@@ -256,7 +270,9 @@
     "expected": {
       "grade": "A",
       "score": 99,
-      "recommendations": ["Great job! No major issues detected — levels and balance are solid."],
+      "recommendations": [
+        "Great job! No major issues detected — levels and balance are solid."
+      ],
       "deductions": [],
       "notMeasured": []
     }
@@ -286,7 +302,9 @@
     "expected": {
       "grade": "B",
       "score": 89,
-      "recommendations": ["Great job! No major issues detected — levels and balance are solid."],
+      "recommendations": [
+        "Great job! No major issues detected — levels and balance are solid."
+      ],
       "deductions": [
         {
           "rule": "Integrated loudness out of band",
@@ -323,7 +341,9 @@
     "expected": {
       "grade": "B",
       "score": 89,
-      "recommendations": ["Great job! No major issues detected — levels and balance are solid."],
+      "recommendations": [
+        "Great job! No major issues detected — levels and balance are solid."
+      ],
       "deductions": [
         {
           "rule": "True peak over ceiling",
@@ -360,7 +380,9 @@
     "expected": {
       "grade": "A",
       "score": 99,
-      "recommendations": ["Great job! No major issues detected — levels and balance are solid."],
+      "recommendations": [
+        "Great job! No major issues detected — levels and balance are solid."
+      ],
       "deductions": [],
       "notMeasured": []
     }
@@ -397,7 +419,9 @@
     "expected": {
       "grade": "B",
       "score": 89,
-      "recommendations": ["Muddy: Highpass below ~100 Hz and cut ~250 Hz"],
+      "recommendations": [
+        "Muddy: Highpass below ~100 Hz and cut ~250 Hz"
+      ],
       "deductions": [
         {
           "rule": "Tonal symptom: Muddy",
@@ -407,6 +431,56 @@
         }
       ],
       "notMeasured": []
+    }
+  },
+  {
+    "name": "Crowd-mic live window graded against the worship-service ideal curve (baseline band balance)",
+    "case": "baseline_worship_live",
+    "source": {
+      "filename": "Live capture — Crowd Mic (window #135)",
+      "rms": -37.6,
+      "peak": -26.2,
+      "dynamicRange": null,
+      "clipping": false,
+      "centroid": 153,
+      "contentType": null,
+      "bands": {
+        "subBass": -61.1,
+        "bass": -63,
+        "lowMid": -71.2,
+        "mid": -76.6,
+        "highMid": -96,
+        "presence": -92.5,
+        "brilliance": -104.1
+      },
+      "baseline": {
+        "label": "Worship service",
+        "bandTargets": {
+          "subBass": 16.1,
+          "bass": 12.9,
+          "lowMid": 6.5,
+          "mid": 2.9,
+          "highMid": -9.2,
+          "presence": -14.3,
+          "brilliance": -17.5
+        }
+      }
+    },
+    "expected": {
+      "grade": "A",
+      "score": 99,
+      "recommendations": [
+        "Peak and RMS are very low. Increase the USB recording output level."
+      ],
+      "deductions": [],
+      "notMeasured": [
+        {
+          "rule": "Dynamic range",
+          "measured": "Not measured",
+          "note": "Live capture — dynamic range needs a finished file",
+          "letterImpact": "Rule skipped — graded on fewer metrics"
+        }
+      ]
     }
   }
 ]

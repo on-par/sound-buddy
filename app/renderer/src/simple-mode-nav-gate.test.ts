@@ -22,10 +22,10 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     crashReportingEnabled: false, liveAdjustmentsEnabled: false,
     advancedFeaturesEnabled: true, shareChurchName: '',
     weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
-    measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
+    measurementDeviceName: '', gradingProfile: 'casual', gradingRubric: {}, consoleNetworkConsentGranted: false,
     soundcheckBuses: [], splCalibrationOffsetDb: null, lastAppMode: '',
     ...overrides,
-  };
+  } as AppSettings;
 }
 
 describe('Simple-mode nav invariant', () => {

@@ -22,9 +22,12 @@ import { useDirectoryStore } from './directoryStore';
 import { liveReportCardSource } from '../live-capture-panel';
 import { roomFeed } from '../measurement-device-state';
 import { spectrumTransport, type SpectrumTransport } from '../spectrum-transport';
+import { gradeContext } from './gradeContext';
+import type { GradingRubricOverrides } from '../../../electron/ipc/api';
 
 interface GradingProfileSyncApi {
   setGradingProfile(id: string): void;
+  setRubricOverrides(overrides: GradingRubricOverrides | null | undefined): void;
 }
 function getGradingForProfileSync(): GradingProfileSyncApi {
   return (window as unknown as { grading: GradingProfileSyncApi }).grading;
@@ -95,6 +98,9 @@ export function installStoreBridge(
     // the same Room feed as the badge/stats row (roomFeed(), inline-app.js's
     // secondaryMeasurementActive()) — the secondary mic when active, the
     // board strip otherwise (byte-identical to #423 when the flag is off).
+    // The live source carries the ideal-curve baseline its band rules grade
+    // against (gradeContext.liveBaseline(): the Ideal selector's pick, or the
+    // live default on Auto) — see report-card.ts's GradeBaseline.
     useLiveCaptureStore.subscribe((state, prevState) => {
       if (state.liveWindows !== prevState.liveWindows
         || state.measurementSource !== prevState.measurementSource
@@ -111,7 +117,7 @@ export function installStoreBridge(
           state.channelConfig,
         );
         useAnalysisStore.getState().setLiveSource(
-          liveReportCardSource(feed.windows, feed.source, feed.config));
+          liveReportCardSource(feed.windows, feed.source, feed.config, gradeContext.liveBaseline()));
       }
     });
     // Clearing the audio analysis (#264) also clears any scene-file
@@ -158,6 +164,12 @@ export function installStoreBridge(
     useIdealProfilesStore.subscribe((state, prevState) => {
       if (state.selectedId !== prevState.selectedId || state.customProfiles !== prevState.customProfiles) {
         useIdealProfilesStore.getState().syncActiveProfile();
+        // A new ideal curve re-baselines whichever live card is showing — the
+        // rolling window preview or a frozen session card — in place, so the
+        // grade follows the selector without rebuilding the source from
+        // liveWindows (which would clobber a frozen session card, #776).
+        const live = useAnalysisStore.getState().liveSource;
+        if (live) useAnalysisStore.getState().setLiveSource({ ...live, baseline: gradeContext.liveBaseline() });
       }
     });
 
@@ -169,6 +181,18 @@ export function installStoreBridge(
     useSettingsStore.subscribe((state, prevState) => {
       if (state.settings?.gradingProfile !== prevState.settings?.gradingProfile) {
         getGradingForProfileSync().setGradingProfile(state.settings?.gradingProfile ?? 'casual');
+      }
+    });
+    // User rubric overrides (Settings ▸ Grading ▸ Rubric): same single
+    // mutation point as the profile — grading.js re-derives CONFIG from the
+    // active profile plus these overrides, and every consumer reads CONFIG
+    // fresh. Compared by value: settings saves for unrelated keys return a new
+    // settings object with the same rubric, and must not re-apply it.
+    useSettingsStore.subscribe((state, prevState) => {
+      const next = state.settings?.gradingRubric;
+      const prev = prevState.settings?.gradingRubric;
+      if (JSON.stringify(next ?? null) !== JSON.stringify(prev ?? null)) {
+        getGradingForProfileSync().setRubricOverrides(next ?? {});
       }
     });
 

@@ -26,7 +26,9 @@ const curves = require('../../ideal-curves.js') as IdealCurvesApi;
 const grading = require('../../grading.js') as {
   getGradingProfile(): { id: string; label: string };
   setGradingProfile(id: string): void;
-  CONFIG: { rms: { acceptableMin: number } };
+  setRubricOverrides(overrides: unknown): void;
+  getRubricOverrides(): Record<string, number>;
+  CONFIG: { rms: { acceptableMin: number }; bandBalance: { severeHotDiff: number } };
 };
 
 // installStoreBridge()'s cross-store subscription install (guarded by the
@@ -82,6 +84,7 @@ afterEach(() => {
   // #266 — reset grading.js's shared CONFIG singleton so a profile switch in
   // one test never leaks into the next.
   grading.setGradingProfile('casual');
+  grading.setRubricOverrides(null);
 });
 
 describe('installStoreBridge', () => {
@@ -289,7 +292,7 @@ describe('installStoreBridge', () => {
     weeklyReminderServiceDay: 0,
     liveEqPaneWidth: 360,
     measurementDeviceName: '',
-    gradingProfile: 'casual',
+    gradingProfile: 'casual', gradingRubric: {},
     consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
     splCalibrationOffsetDb: null, lastAppMode: '',
@@ -325,6 +328,57 @@ describe('installStoreBridge', () => {
 
     expect(grading.getGradingProfile().id).toBe('casual');
     expect(grading.CONFIG.rms.acceptableMin).toBe(-20);
+  });
+
+  it('syncs grading.js rubric overrides from settings.gradingRubric, and {} clears them', () => {
+    installStoreBridge({});
+    useSettingsStore.setState({ settings: { ...APP_SETTINGS, gradingRubric: { 'bandBalance.severeHotDiff': 22 } } });
+
+    expect(grading.CONFIG.bandBalance.severeHotDiff).toBe(22);
+    expect(grading.getRubricOverrides()).toEqual({ 'bandBalance.severeHotDiff': 22 });
+
+    useSettingsStore.setState({ settings: { ...APP_SETTINGS, gradingRubric: {} } });
+
+    expect(grading.CONFIG.bandBalance.severeHotDiff).toBe(15);
+  });
+
+  it('rubric overrides survive a strictness-profile switch and vice versa', () => {
+    installStoreBridge({});
+    useSettingsStore.setState({ settings: { ...APP_SETTINGS, gradingRubric: { 'rms.acceptableMin': -30 } } });
+    useSettingsStore.setState({ settings: { ...APP_SETTINGS, gradingRubric: { 'rms.acceptableMin': -30 }, gradingProfile: 'broadcast' } });
+
+    expect(grading.getGradingProfile().id).toBe('broadcast');
+    expect(grading.CONFIG.rms.acceptableMin).toBe(-30);
+    expect(grading.CONFIG.bandBalance.severeHotDiff).toBe(13);
+  });
+
+  it('attaches the live grading baseline (worship service on Auto) to the derived live source', () => {
+    installStoreBridge({});
+    useLiveCaptureStore.setState({
+      liveWindows: [{
+        type: 'window', window: 1, ts: 0, masking: [],
+        channels: [{ index: 0, name: 'Main', rms: -18, peak: -6, clipping: false, centroid: 1800, rolloff: 8000,
+          bands: { sub_bass: -50, bass: -20, low_mid: -22, mid: -14, high_mid: -24, presence: -30, brilliance: -60 } }],
+      }],
+    });
+
+    const source = useAnalysisStore.getState().liveSource as { baseline?: { label: string; isAuto?: boolean } } | null;
+    expect(source?.baseline?.label).toBe('Worship service');
+    expect(source?.baseline?.isAuto).toBe(true);
+  });
+
+  it('re-baselines the live source in place when the ideal-curve selection changes, keeping the source otherwise intact', () => {
+    installStoreBridge({});
+    useAnalysisStore.getState().setLiveSource({
+      filename: 'Live capture — Main (3 windows)', rms: -18, peak: -6, dynamicRange: null, clipping: false, centroid: 1800, bands: {},
+    });
+
+    useIdealProfilesStore.setState({ selectedId: 'flat' });
+
+    const source = useAnalysisStore.getState().liveSource as { filename: string; baseline?: { label: string; isAuto?: boolean } } | null;
+    expect(source?.filename).toBe('Live capture — Main (3 windows)');
+    expect(source?.baseline?.label).toBe('Flat / neutral');
+    expect(source?.baseline?.isAuto).toBe(false);
   });
 
   it('#460/#724 — seeds liveCaptureStore.secondaryMeasurement.deviceName from persisted measurementDeviceName on first settings load, while idle', () => {

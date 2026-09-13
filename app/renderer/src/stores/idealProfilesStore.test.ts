@@ -162,7 +162,7 @@ describe('createIdealProfilesStore', () => {
       expect(store.getState().editor.open).toBe(true);
       expect(store.getState().editor.editingId).toBeNull();
       expect(store.getState().editor.title).toBe('Create Ideal Curve');
-      expect(store.getState().editor.name).toBe('Copy of Flat / neutral');
+      expect(store.getState().editor.name).toBe('Copy of Worship service');
       expect(store.getState().editor.bands).toHaveLength(7);
       expect(store.getState().editor.canCapture).toBe(false);
       expect(store.getState().editor.canDelete).toBe(false);
@@ -210,7 +210,7 @@ describe('createIdealProfilesStore', () => {
 
       store.getState().setEditorBand(0, 100);
 
-      expect(store.getState().editor.bands[0]).toBe(18);
+      expect(store.getState().editor.bands[0]).toBe(24);
     });
 
     it('resets every band to 0', () => {
@@ -293,7 +293,7 @@ describe('createIdealProfilesStore', () => {
 
       await store.getState().capture();
 
-      expect(store.getState().editor.status).toEqual({ text: 'Analyze a file with spectrum data first.', kind: 'err' });
+      expect(store.getState().editor.status).toEqual({ text: 'Analyze a file or start a live capture first.', kind: 'err' });
       expect(store.getState().editor.open).toBe(true);
     });
 
@@ -345,6 +345,79 @@ describe('createIdealProfilesStore', () => {
 
       expect(store.getState().editor.status).toEqual({ text: 'This analysis cannot be used as a target.', kind: 'err' });
       expect(store.getState().editor.open).toBe(true);
+    });
+  });
+
+  describe('capture from a live capture (no file analysis)', () => {
+    const liveBands = { subBass: -61, bass: -63, lowMid: -71, mid: -77, highMid: -96, presence: -93, brilliance: -104 };
+    const withLive = (bands: Record<string, number> | null) => {
+      const fake = createFakeDeps();
+      const deps: IdealProfilesDeps = { ...fake.deps, getCurrentLiveBands: () => bands };
+      return { ...fake, deps };
+    };
+
+    it('openEditor enables capture when live band levels are available', () => {
+      const { deps } = withLive(liveBands);
+      const store = createIdealProfilesStore(deps);
+      store.getState().openEditor();
+      expect(store.getState().editor.canCapture).toBe(true);
+    });
+
+    it('captures the live bands as a level-matched 7-band curve, persists it, and closes the editor', async () => {
+      const { deps, settingsCalls } = withLive(liveBands);
+      const store = createIdealProfilesStore(deps);
+      store.getState().openEditor();
+      store.getState().setEditorName('');
+
+      await store.getState().capture();
+
+      expect(store.getState().editor.open).toBe(false);
+      const [profile] = store.getState().customProfiles;
+      expect(profile.label).toBe('Live capture target');
+      expect(profile.description).toBe('Captured from a live capture');
+      expect(profile.dbOffsets).toHaveLength(GRID_FREQS.length);
+      expect(profile.dbOffsets[0]).toBeGreaterThan(profile.dbOffsets[GRID_FREQS.length - 1]);
+      expect(settingsCalls[0]).toMatchObject({ idealProfile: `custom:${profile.id}` });
+    });
+
+    it('prefers the file curve when both a file analysis and live bands exist', async () => {
+      const { deps, setSpectrum } = withLive(liveBands);
+      setSpectrum(usableSpectrum());
+      const store = createIdealProfilesStore(deps);
+      store.getState().openEditor();
+      await store.getState().capture();
+      expect(store.getState().customProfiles[0].source).toBe('analysis');
+    });
+
+    it('errors when the live bands are unusable', async () => {
+      const { deps } = withLive({ mid: -20 });
+      const store = createIdealProfilesStore(deps);
+      store.getState().openEditor();
+      await store.getState().capture();
+      expect(store.getState().editor.status).toEqual({ text: 'Analyze a file or start a live capture first.', kind: 'err' });
+    });
+  });
+
+  describe('saveMeasuredBands', () => {
+    const liveBands = { subBass: -61, bass: -63, lowMid: -71, mid: -77, highMid: -96, presence: -93, brilliance: -104 };
+
+    it('saves the live bands under the given meta and selects the new curve', async () => {
+      const { deps, settingsCalls } = createFakeDeps();
+      const store = createIdealProfilesStore(deps);
+      const ok = await store.getState().saveMeasuredBands(liveBands, { id: 'strongmix-live', label: 'Target from Live capture — Crowd Mic' });
+      expect(ok).toBe(true);
+      expect(store.getState().selectedId).toBe('custom:strongmix-live');
+      expect(store.getState().customProfiles[0].label).toBe('Target from Live capture — Crowd Mic');
+      expect(store.getState().customProfiles[0].description).toBe('Captured from a live capture');
+      expect(settingsCalls).toHaveLength(1);
+    });
+
+    it('returns false without touching settings when the bands are unusable', async () => {
+      const { deps, settingsCalls } = createFakeDeps();
+      const store = createIdealProfilesStore(deps);
+      expect(await store.getState().saveMeasuredBands(null, { label: 'x' })).toBe(false);
+      expect(await store.getState().saveMeasuredBands({ mid: -1 }, { label: 'x' })).toBe(false);
+      expect(settingsCalls).toHaveLength(0);
     });
   });
 

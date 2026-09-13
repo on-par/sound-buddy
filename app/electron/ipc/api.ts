@@ -44,10 +44,62 @@ export interface UpdateSettingsPatch {
   measurementDeviceName?: string;
   lastAppMode?: string;
   gradingProfile?: 'casual' | 'broadcast';
+  gradingRubric?: GradingRubricOverrides;
   consoleNetworkConsentGranted?: boolean;
   soundcheckBuses?: SoundcheckBus[];
   splCalibrationOffsetDb?: number | null;
 }
+
+/**
+ * The user-editable grading rubric (Settings ▸ Grading ▸ Rubric). Each key is a
+ * grading.js CONFIG leaf path ("section.key") — the graded thresholds the
+ * Settings editor exposes — plus `symptoms.thresholdOffsetDb`, a uniform dB
+ * shift applied to every rules-engine symptom threshold (the rules engine keeps
+ * owning the per-rule numbers, per ADR-0098). Values are ABSOLUTE thresholds
+ * layered over the active strictness profile; an absent key means "use the
+ * profile's default". The list is the single source both the main-process
+ * sanitizer and the renderer editor iterate, so the two can never drift.
+ */
+export const GRADING_RUBRIC_KEYS = [
+  'rms.acceptableMin',
+  'rms.acceptableMax',
+  'lufs.acceptableMin',
+  'lufs.acceptableMax',
+  'truePeak.ceiling',
+  'dynamicRange.good',
+  'dynamicRange.check',
+  'bandBalance.hotDiff',
+  'bandBalance.severeHotDiff',
+  'bandBalance.quietDiff',
+  'centroid.min',
+  'centroid.max',
+  'symptoms.thresholdOffsetDb',
+] as const;
+export type GradingRubricKey = (typeof GRADING_RUBRIC_KEYS)[number];
+export type GradingRubricOverrides = Partial<Record<GradingRubricKey, number>>;
+/**
+ * Per-key sane span, enforced by the main-process sanitizer and rendered as
+ * the editor's min/max. The signs matter as much as the magnitudes: a
+ * negative "band drops a letter" would fail every recording, a positive
+ * "band too quiet" would flag every band. Anything outside is a corrupted or
+ * nonsensical setting and is dropped, not clamped, so the profile default
+ * applies.
+ */
+export const GRADING_RUBRIC_BOUNDS: Record<GradingRubricKey, { min: number; max: number }> = {
+  'rms.acceptableMin': { min: -60, max: 0 },
+  'rms.acceptableMax': { min: -60, max: 0 },
+  'lufs.acceptableMin': { min: -60, max: 0 },
+  'lufs.acceptableMax': { min: -60, max: 0 },
+  'truePeak.ceiling': { min: -20, max: 0 },
+  'dynamicRange.good': { min: 0, max: 60 },
+  'dynamicRange.check': { min: 0, max: 60 },
+  'bandBalance.hotDiff': { min: 0, max: 60 },
+  'bandBalance.severeHotDiff': { min: 0, max: 60 },
+  'bandBalance.quietDiff': { min: -60, max: 0 },
+  'centroid.min': { min: 20, max: 20000 },
+  'centroid.max': { min: 20, max: 20000 },
+  'symptoms.thresholdOffsetDb': { min: -20, max: 20 },
+};
 
 export interface AnalyzeFileOpts {
   filePath: string;
@@ -363,6 +415,12 @@ export interface AppSettings {
    * measurementDeviceName.
    */
   gradingProfile: 'casual' | 'broadcast';
+  /**
+   * User rubric overrides layered over `gradingProfile` (see
+   * GradingRubricOverrides). Default {} (= every threshold at the profile's
+   * default). No env layer — pure persisted preference, like gradingProfile.
+   */
+  gradingRubric: GradingRubricOverrides;
   /**
    * Tier 2 (console-network / OSC-UDP) consent (#378). Default false (off).
    * Can only ever be set to `true` by the first-run

@@ -2,6 +2,7 @@ import type { ElectronApplication, Page, Locator } from '@playwright/test';
 import * as path from 'path';
 import { LICENSE_ENV, seedProLicense } from '../license-fixture';
 import { launchElectron } from '../launch-electron';
+import { getProfile } from '@sound-buddy/audio-engine/dist/profiles/index.js';
 
 // Shared fixtures + launch helper for the e2e.spec.ts split (#225 — the
 // original 1693-line file was split by user flow into app/tests/e2e/*.spec.ts).
@@ -21,18 +22,21 @@ import { launchElectron } from '../launch-electron';
 // symptom: Muddy" deduction. At 16 dB the excess is ~4.5 dB — comfortably
 // under every RULE_TABLE threshold (verified against harsh/edgy/muddy/cymbal)
 // while the curve is still visibly bass-heavy for the bar/overlay tests.
-export const CURVE = (() => {
-  const N = 48;
-  const freqs: number[] = [];
-  const db: number[] = [];
-  for (let i = 0; i < N; i++) {
-    const f = 20 * Math.pow(20000 / 20, i / (N - 1));
-    freqs.push(Math.round(f));
-    // ~ -18 dB at 20 Hz sloping down to ~ -34 dB at 20 kHz, with a little ripple.
-    db.push(-18 - 16 * (i / (N - 1)) + Math.sin(i / 2) * 1.5);
-  }
-  return { freqs, db };
-})();
+// Fixture fine curves FOLLOW the ideal curve Auto picks for their content
+// type (level-shifted), so a "clean" fixture fires no tonal symptom against
+// the baseline the grade actually uses (ADR-0138: symptoms and band balance
+// are judged against the active ideal curve, not a flat reference). The old
+// synthetic slope passed a flat reference but read as Muddy against the
+// speech-podcast target and as Harsh against the worship target. The 7-band
+// tables stay hand-authored (mid loudest, nothing dimmed — the spectrum
+// specs key off that) and sit inside the band-balance tolerance either way.
+function curveFollowing(profileId: string, levelDb: number): { freqs: number[]; db: number[] } {
+  const profile = getProfile(profileId)!;
+  return { freqs: profile.freqs.map((f) => Math.round(f)), db: profile.dbOffsets.map((v) => v + levelDb) };
+}
+
+export const CURVE = curveFollowing('speech-podcast', -30);
+const WORSHIP_CURVE = curveFollowing('worship-service', -45);
 
 // Six time-sampled frames on the same 48-point grid as CURVE (PRD 03), so the
 // heatmap renders >1 column and the scrubber has frames to select.
@@ -121,6 +125,7 @@ export const WORSHIP_SERVICE_ANALYSIS = {
   },
   spectrum: {
     ...FAKE_ANALYSIS.spectrum,
+    curve: WORSHIP_CURVE,
     contentType: 'mixed',
   },
 };

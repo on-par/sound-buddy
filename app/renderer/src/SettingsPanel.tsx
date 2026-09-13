@@ -70,6 +70,7 @@ import {
   chooseStorageFolder,
 } from './storage-settings';
 import { instantSettingValues, commitInstantSetting } from './settings-instant-apply';
+import GradingRubricEditor from './GradingRubricEditor';
 import { createChurchNameCommitter, type ChurchNameCommitter } from './church-name-debounce';
 import { MAX_CHURCH_NAME_LEN } from './share-card';
 import { iconSvg } from './report-card';
@@ -107,6 +108,8 @@ const SECTION_LABELS: Record<SettingsSection, string> = {
 export type SettingsControl =
   | 'advancedFeatures'
   | 'gradingProfile'
+  | 'gradingBaseline'
+  | 'gradingRubric'
   | 'weeklyReminder'
   | 'weeklyReminderServiceDay'
   | 'shareChurchName'
@@ -130,6 +133,8 @@ export type SettingsControl =
 const SETTING_SECTION_TARGETS: readonly { setting: SettingsControl; section: SettingsSection }[] = [
   { setting: 'advancedFeatures', section: 'general' },
   { setting: 'gradingProfile', section: 'general' },
+  { setting: 'gradingBaseline', section: 'general' },
+  { setting: 'gradingRubric', section: 'general' },
   { setting: 'weeklyReminder', section: 'general' },
   { setting: 'weeklyReminderServiceDay', section: 'general' },
   { setting: 'shareChurchName', section: 'general' },
@@ -369,6 +374,9 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
               </div>
             </label>
             <SettingsNote control="gradingProfile" />
+            <GradingRubricEditor baselineHelp={helpFor('gradingBaseline')} rubricHelp={helpFor('gradingRubric')} />
+            <SettingsNote control="gradingBaseline" />
+            <SettingsNote control="gradingRubric" />
           </SettingsGroup>
           <SettingsGroup title="Reminders">
             <label className="ai-enable-row" {...helpFor('weeklyReminder')}>

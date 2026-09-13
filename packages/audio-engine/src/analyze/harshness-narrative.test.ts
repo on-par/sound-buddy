@@ -26,6 +26,7 @@ const HARSH_HIT: FiredRule = {
   measuredDb: -20,
   referenceDb: -30,
   excessDb: 10,
+  thresholdDb: 6,
 };
 
 const MUDDY_HIT: FiredRule = {
@@ -49,6 +50,7 @@ const MUDDY_HIT: FiredRule = {
   measuredDb: -10,
   referenceDb: -30,
   excessDb: 20,
+  thresholdDb: 6,
 };
 
 const FRACTIONAL_KHZ_HIT: FiredRule = {
@@ -72,6 +74,7 @@ const FRACTIONAL_KHZ_HIT: FiredRule = {
   measuredDb: -20,
   referenceDb: -30,
   excessDb: 10,
+  thresholdDb: 8,
 };
 
 describe("renderHarshnessNarrative registration", () => {
@@ -88,6 +91,11 @@ describe("renderHarshnessNarrative registration", () => {
 });
 
 describe("harshnessNarrativeData", () => {
+  it("renders the threshold the rule actually fired against (rubric offset applied), not the table value", () => {
+    const data = harshnessNarrativeData({ ...HARSH_HIT, thresholdDb: 8 });
+    expect(data.thresholdDb).toBe("8");
+  });
+
   it("maps a FiredRule hit to the flat RuleNarrativeData record", () => {
     expect(harshnessNarrativeData(HARSH_HIT)).toEqual({
       symptom: "Quacky/harsh",

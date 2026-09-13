@@ -10,6 +10,8 @@
 // Image click handler).
 
 import { useAnalysisStore } from './stores/analysisStore';
+import { extractSpectrum } from './stores/spectrumStore';
+import { gradeContext } from './stores/gradeContext';
 import { getSoundBuddy } from './useElectron';
 import {
   reportCardSourceFromAnalysis,
@@ -60,7 +62,7 @@ export function resolveReportCardChromeSource(
 ): { isHistoryCard: boolean; chromeSource: ReportCardSource | null } {
   const isHistoryCard = !!state.historySummary && !state.currentAnalysis && !state.liveSource;
   const chromeSource = state.currentAnalysis
-    ? reportCardSourceFromAnalysis(state.currentAnalysis)
+    ? reportCardSourceFromAnalysis(state.currentAnalysis, gradeContext.forSpectrum(extractSpectrum(state.currentAnalysis)))
     : (state.liveSource || null);
   return { isHistoryCard, chromeSource };
 }
@@ -72,7 +74,9 @@ export function resolveReportCardChromeSource(
 // phase-doubling dialog's open() call — resolveReportCardChromeSource above
 // supersedes it for chrome.
 export function getReportCardSource(currentAnalysis: AnalysisPayload | null, liveSource: ReportCardSource | null): ReportCardSource | null {
-  return currentAnalysis ? reportCardSourceFromAnalysis(currentAnalysis) : liveSource;
+  return currentAnalysis
+    ? reportCardSourceFromAnalysis(currentAnalysis, gradeContext.forSpectrum(extractSpectrum(currentAnalysis)))
+    : liveSource;
 }
 
 // The single source both ReportCardToolbar.tsx and UpgradeMomentum.tsx

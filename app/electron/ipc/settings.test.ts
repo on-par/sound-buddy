@@ -599,7 +599,7 @@ describe('update-settings whitelist exactness (#747)', () => {
       weeklyReminderServiceDay: 0,
       liveEqPaneWidth: 360,
       measurementDeviceName: 'USB Mic',
-      gradingProfile: 'casual',
+      gradingProfile: 'casual', gradingRubric: {},
       consoleNetworkConsentGranted: false,
       lastAppMode: 'live',
     };

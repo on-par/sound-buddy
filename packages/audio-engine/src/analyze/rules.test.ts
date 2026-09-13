@@ -289,3 +289,82 @@ describe("RULE_TABLE integrity", () => {
     }
   });
 });
+describe("evaluateRules — baseline-relative evaluation", () => {
+  // A pink-like tilt: the 60–250 Hz bins sit 8 dB above the 500 Hz–2 kHz body,
+  // which is normal for a full-range music mix but reads as "Muddy" against a
+  // flat reference.
+  const TILTED = [-22, -22, -26, -30, -30, -34, -36, -36, -40, -40];
+  const baseline = { freqs: FREQS, dbOffsets: [8, 8, 4, 0, 0, -4, -6, -6, -10, -10] };
+
+  it("fires muddy on a normal tilt with no baseline (the flat-reference behaviour)", () => {
+    expect(firedFor(evaluateRules(curve(TILTED)), "muddy").excessDb).toBeCloseTo(8);
+  });
+
+  it("does not fire when the measured curve matches the baseline shape", () => {
+    expect(evaluateRules(curve(TILTED), undefined, { baseline })).toEqual([]);
+  });
+
+  it("fires on the excess OVER the baseline, reporting baseline-relative dB", () => {
+    const db = TILTED.map((v, i) => (i < 2 ? v + 7 : v)); // bass 7 dB above the target shape
+    const hit = firedFor(evaluateRules(curve(db), undefined, { baseline }), "muddy");
+    expect(hit.excessDb).toBeCloseTo(7);
+    expect(hit.measuredDb).toBeCloseTo(-30 + 7);
+    expect(hit.referenceDb).toBeCloseTo(-30);
+  });
+
+  it("ignores a baseline whose grid length does not match the curve", () => {
+    const hits = evaluateRules(curve(TILTED), undefined, { baseline: { freqs: [100, 1000], dbOffsets: [8, 0] } });
+    expect(hits.map((h) => h.rule.id)).toContain("muddy");
+  });
+
+  it("treats a null/undefined baseline as flat", () => {
+    expect(evaluateRules(curve(TILTED), undefined, { baseline: null }).map((h) => h.rule.id)).toContain("muddy");
+    expect(evaluateRules(curve(TILTED), undefined, {}).map((h) => h.rule.id)).toContain("muddy");
+  });
+
+  it("still scopes per instrument when options are given", () => {
+    const db = TILTED.map((v, i) => (i === 2 ? v + 9 : v)); // low-mid bump → kick-boxy
+    const hits = evaluateRules(curve(db), "kick", { baseline });
+    expect(hits.map((h) => h.rule.id)).toContain("kick-boxy");
+    expect(evaluateRules(curve(db), undefined, { baseline }).map((h) => h.rule.id)).not.toContain("kick-boxy");
+  });
+});
+
+describe("evaluateRules — thresholdOffsetDb (rubric sensitivity)", () => {
+  const harsh7 = [-30, -30, -30, -30, -30, -23, -30, -30, -30, -30]; // 7 dB harsh excess
+
+  it("fires at the table threshold with no offset and reports that threshold", () => {
+    const hit = firedFor(evaluateRules(curve(harsh7)), "harsh");
+    expect(hit.thresholdDb).toBe(6);
+  });
+
+  it("a positive offset raises every threshold (7 dB no longer clears 6 + 2)", () => {
+    expect(evaluateRules(curve(harsh7), undefined, { thresholdOffsetDb: 2 })).toEqual([]);
+  });
+
+  it("a negative offset lowers every threshold and the fired rule reports the effective one", () => {
+    const harsh4 = [-30, -30, -30, -30, -30, -26, -30, -30, -30, -30];
+    expect(evaluateRules(curve(harsh4)).map((h) => h.rule.id)).not.toContain("harsh");
+    const hit = firedFor(evaluateRules(curve(harsh4), undefined, { thresholdOffsetDb: -3 }), "harsh");
+    expect(hit.thresholdDb).toBe(3);
+    expect(hit.excessDb).toBeCloseTo(4);
+  });
+
+  it("never lets the effective threshold drop below zero", () => {
+    const flat = curve(FREQS.map(() => FLAT_DB));
+    const hits = evaluateRules(flat, undefined, { thresholdOffsetDb: -50 });
+    for (const h of hits) expect(h.thresholdDb).toBe(0);
+  });
+
+  it("ignores a non-finite offset", () => {
+    expect(firedFor(evaluateRules(curve(harsh7), undefined, { thresholdOffsetDb: Number.NaN }), "harsh").thresholdDb).toBe(6);
+  });
+
+  it("gradeSymptoms carries the effective threshold as minExcessDb", () => {
+    const harsh9 = [-30, -30, -30, -30, -30, -21, -30, -30, -30, -30];
+    const [sym] = gradeSymptoms(evaluateRules(curve(harsh9), undefined, { thresholdOffsetDb: 2 }));
+    expect(sym.ruleId).toBe("harsh");
+    expect(sym.minExcessDb).toBe(8);
+    expect(sym.excessDb).toBeCloseTo(9);
+  });
+});

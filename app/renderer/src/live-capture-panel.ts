@@ -31,7 +31,7 @@ import {
   type SpectrumCurve,
   type SpectrumCurvePaths,
 } from './spectrum-display';
-import { fmt, type ReportCardSource } from './report-card';
+import { fmt, type ReportCardSource, type GradeBaseline } from './report-card';
 import { soundcheckChannelOptions, type SessionManifestTrack } from './soundcheck-panel';
 import type {
   LiveEvent,
@@ -827,10 +827,15 @@ export function liveChannelContributors(
   }));
 }
 
+// `baseline` is the resolved ideal-curve baseline for live capture (the Ideal
+// selector's pick, or the live default when on Auto), attached so the live
+// card's band rules grade against it — see report-card.ts's GradeBaseline.
+// Omitted/null keeps the source shape byte-identical (flat reference).
 export function liveReportCardSource(
   liveWindows: LiveEvent[],
   measurementSource: number | null = null,
   config: StripConfig[] = [],
+  baseline: GradeBaseline | null = null,
 ): ReportCardSource | null {
   if (liveWindows.length === 0) return null;
   const win = liveWindows[liveWindows.length - 1];
@@ -848,6 +853,7 @@ export function liveReportCardSource(
     centroid: ch.centroid,
     bands: liveBandsToCamel(ch.bands),
     channels: liveChannelContributors(win.channels, config),
+    ...(baseline ? { baseline } : {}),
   };
 }
 
@@ -887,6 +893,7 @@ export function liveSessionReportCardSource(
   liveWindows: LiveEvent[],
   measurementSource: number | null = null,
   config: StripConfig[] = [],
+  baseline: GradeBaseline | null = null,
 ): ReportCardSource | null {
   if (!hasEnoughSessionData(liveWindows)) return null;
 
@@ -923,5 +930,6 @@ export function liveSessionReportCardSource(
     centroid,
     bands,
     channels: liveChannelContributors(last.win.channels, config),
+    ...(baseline ? { baseline } : {}),
   };
 }

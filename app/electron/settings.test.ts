@@ -36,6 +36,7 @@ import {
   setActiveRig,
   grantConsoleNetworkConsent,
   SETTING_SPECS,
+  sanitizeGradingRubric,
   deriveAdvancedFeaturesDefault,
   type AppSettings,
   type CaptureRig,
@@ -567,6 +568,74 @@ describe('gradingProfile (#266 — grading-strictness profile, default casual)',
   );
 });
 
+describe('gradingRubric (user rubric overrides, default {})', () => {
+  it('defaults to {} when settings.json is absent or lacks the key', () => {
+    expect(getSettings().gradingRubric).toEqual({});
+    writeFile({ idealProfile: '' });
+    expect(getSettings().gradingRubric).toEqual({});
+  });
+
+  it('round-trips accepted keys through updateSettings, the raw file, and a fresh read', () => {
+    const updated = updateSettings({ gradingRubric: { 'rms.acceptableMin': -30, 'bandBalance.severeHotDiff': 20 } });
+    expect(updated.gradingRubric).toEqual({ 'rms.acceptableMin': -30, 'bandBalance.severeHotDiff': 20 });
+    expect(readFile().gradingRubric).toEqual({ 'rms.acceptableMin': -30, 'bandBalance.severeHotDiff': 20 });
+    expect(getSettings().gradingRubric).toEqual({ 'rms.acceptableMin': -30, 'bandBalance.severeHotDiff': 20 });
+  });
+
+  it('{} is the explicit reset: it replaces every stored override', () => {
+    updateSettings({ gradingRubric: { 'centroid.max': 6000 } });
+    expect(updateSettings({ gradingRubric: {} }).gradingRubric).toEqual({});
+    expect(readFile().gradingRubric).toEqual({});
+  });
+
+  it('drops unknown keys, non-finite numbers, strings, and out-of-span values from a stored object', () => {
+    writeFile({
+      gradingRubric: {
+        'rms.acceptableMin': -25,
+        'rms.quietEdge': -40,
+        'made.up': 3,
+        'centroid.max': '6000',
+        'centroid.min': Number.NaN,
+        'dynamicRange.good': -500,
+        'truePeak.ceiling': 99999,
+        'symptoms.thresholdOffsetDb': 2.5,
+      },
+    });
+    expect(getSettings().gradingRubric).toEqual({ 'rms.acceptableMin': -25, 'symptoms.thresholdOffsetDb': 2.5 });
+  });
+
+  it('enforces each key\'s sign: a negative letter-drop threshold or a positive too-quiet threshold is dropped', () => {
+    writeFile({
+      gradingRubric: {
+        'bandBalance.severeHotDiff': -3,
+        'bandBalance.hotDiff': 0,
+        'bandBalance.quietDiff': 5,
+        'rms.acceptableMax': 2,
+        'centroid.min': 0,
+        'symptoms.thresholdOffsetDb': -25,
+      },
+    });
+    expect(getSettings().gradingRubric).toEqual({ 'bandBalance.hotDiff': 0 });
+  });
+
+  it.each(['strict', 7, true, null, [1, 2]])('repairs a corrupted gradingRubric value (%p) back to {}', (corrupted) => {
+    writeFile({ gradingRubric: corrupted });
+    expect(getSettings().gradingRubric).toEqual({});
+  });
+
+  it('returns a fresh object each read so callers cannot mutate the default', () => {
+    const a = getSettings().gradingRubric;
+    (a as Record<string, number>)['rms.acceptableMin'] = -99;
+    expect(getSettings().gradingRubric).toEqual({});
+  });
+
+  it('sanitizeGradingRubric returns null for a non-object and an empty map for an object with nothing usable', () => {
+    expect(sanitizeGradingRubric('x')).toBeNull();
+    expect(sanitizeGradingRubric(null)).toBeNull();
+    expect(sanitizeGradingRubric({ nope: 1 })).toEqual({});
+  });
+});
+
 describe('customIdealProfiles', () => {
   const curve = {
     id: 'sunday',
@@ -933,7 +1002,7 @@ describe('SETTING_SPECS — the single owner of every field invariant (#747)', (
     weeklyReminderServiceDay: 0,
     liveEqPaneWidth: 360,
     measurementDeviceName: '',
-    gradingProfile: 'casual',
+    gradingProfile: 'casual', gradingRubric: {},
     consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
     splCalibrationOffsetDb: null, lastAppMode: '',

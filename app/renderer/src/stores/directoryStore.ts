@@ -14,7 +14,9 @@
 
 import { create } from 'zustand';
 import { getSoundBuddy } from '../useElectron';
-import { reportCardSourceFromAnalysis, buildAnalysisSummaryInput, type SummaryGradingApi } from '../report-card';
+import { reportCardSourceFromAnalysis, buildAnalysisSummaryInput, type SummaryGradingApi, type GradeContext } from '../report-card';
+import { extractSpectrum } from './spectrumStore';
+import { gradeContext } from './gradeContext';
 import type { AnalysisPayload } from '@sound-buddy/shared';
 import type { SoundBuddyApi, DialogApi, AnalysisSummaryInput } from '../../../electron/ipc/api';
 
@@ -84,7 +86,13 @@ function getGrading(): GradingApi {
   return (window as unknown as { grading: GradingApi }).grading;
 }
 
-export function createDirectoryStore(getApi: () => DirectoryApi) {
+// `resolveGradeContext` is injected so the store stays testable without the
+// ideal-profile/settings stores; the app default grades each batch file
+// against the same baseline the Report Card would (Auto → its content type).
+export function createDirectoryStore(
+  getApi: () => DirectoryApi,
+  resolveGradeContext: (spectrum: { contentType?: string } | null) => GradeContext | null = (spectrum) => gradeContext.forSpectrum(spectrum),
+) {
   return create<DirectoryState>()((set, get) => ({
     path: '',
     files: [],
@@ -131,7 +139,7 @@ export function createDirectoryStore(getApi: () => DirectoryApi) {
           toSummaryInput: (data, _fp) => {
             // Mirrors analysisStore's cast: analyze-file's DTO is the mirrored
             // renderer shape of @sound-buddy/shared's AnalysisPayload.
-            const src = reportCardSourceFromAnalysis(data as AnalysisPayload);
+            const src = reportCardSourceFromAnalysis(data as AnalysisPayload, resolveGradeContext(extractSpectrum(data)));
             return src ? buildAnalysisSummaryInput(src, getGrading(), 'file') : null;
           },
           saveSummary: (input) => getApi().saveAnalysisSummary(input),

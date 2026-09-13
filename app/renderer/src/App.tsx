@@ -79,6 +79,7 @@ import WhatsNewBanner from './WhatsNewBanner';
 import OnboardingDialog from './OnboardingDialog';
 import SkillTreeDialog from './SkillTreeDialog';
 import { useOnboardingStore } from './stores/onboardingStore';
+import { gradeContext } from './stores/gradeContext';
 import { useSkillTreeStore } from './stores/skillTreeStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
@@ -301,6 +302,7 @@ export default function App() {
       liveSetupState: () => (window as unknown as { liveSetupState: LiveSetupStepsApi }).liveSetupState,
       storage: window.localStorage,
       liveCapturePanelApi: liveCapturePanel,
+      gradeBaseline: () => gradeContext.liveBaseline(),
       reportCardChrome,
       dawShell: () => (window as unknown as { dawShellRuntime?: DawShellSeam }).dawShellRuntime ?? null,
       doc: document,

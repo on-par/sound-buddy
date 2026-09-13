@@ -154,6 +154,24 @@ describe('ReportCard', () => {
     expect(html).toContain('seg-music');
   });
 
+  it('renders the grading-baseline pill only when a baseline label is given', () => {
+    const src: ReportCardSource = { ...makeSrc(), filename: 'service.wav' };
+    const without = renderMarkup({ analysis: src, grade: buildGrade(src), dateText: 'now' });
+    expect(without).not.toContain('id="rc-grade-baseline"');
+    const html = renderMarkup({ analysis: src, grade: { ...buildGrade(src), baselineLabel: 'Target: Worship service (auto)' }, dateText: 'now' });
+    expect(html).toContain('id="rc-grade-baseline"');
+    expect(html).toContain('Target: Worship service (auto)');
+  });
+
+  it('passes the source baseline into the band breakdown so verdicts are baseline-relative', () => {
+    const pink = { subBass: -60, bass: -64.9, lowMid: -69.7, mid: -74, highMid: -78.8, presence: -81, brilliance: -84.8 };
+    const baseline = { label: 'Worship service', bandTargets: { subBass: 12, bass: 7.1, lowMid: 2.3, mid: -2, highMid: -6.8, presence: -9, brilliance: -12.8 } };
+    const src: ReportCardSource = { ...makeSrc({ bands: pink, baseline }), filename: 'service.wav' };
+    const html = renderMarkup({ analysis: src, grade: buildGrade(src), dateText: 'now', bandDiffApi: grading });
+    expect(html).toContain(bandBreakdownHTML(src.bands, grading, baseline));
+    expect(html).not.toContain('Too Hot');
+  });
+
   it('renders the band breakdown section from bandDiffApi', () => {
     const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
     const grade = buildGrade(src);

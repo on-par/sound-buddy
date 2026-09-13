@@ -32,7 +32,7 @@ const SEED_SETTINGS: AppSettings = {
   usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
   crashReportingEnabled: false, liveAdjustmentsEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false,
   weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '',
-  gradingProfile: 'casual', consoleNetworkConsentGranted: false, soundcheckBuses: [], splCalibrationOffsetDb: null, lastAppMode: '',
+  gradingProfile: 'casual', gradingRubric: {}, consoleNetworkConsentGranted: false, soundcheckBuses: [], splCalibrationOffsetDb: null, lastAppMode: '',
 };
 
 function makeStore(overrides: Partial<Parameters<typeof createMockSoundBuddy>[0]> = {}) {

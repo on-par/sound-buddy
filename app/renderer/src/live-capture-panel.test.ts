@@ -1629,3 +1629,24 @@ describe('app.css: single-row EQ band labels (#666)', () => {
     expect(block).toContain('.veq-label-abbr { display:inline; }');
   });
 });
+
+describe('liveReportCardSource / liveSessionReportCardSource — grading baseline', () => {
+  const baseline = { label: 'Worship service', isAuto: true, bandTargets: { subBass: 16, bass: 13, lowMid: 6, mid: 3, highMid: -9, presence: -14, brilliance: -17 } };
+  const ch = (name: string) => ({
+    index: 0, name, rms: -18, peak: -6, clipping: false, centroid: 1800, rolloff: 8000,
+    bands: { sub_bass: -50, bass: -20, low_mid: -22, mid: -14, high_mid: -24, presence: -30, brilliance: -60 },
+  });
+  const win = (n: number): LiveEvent => ({ type: 'window', window: n, ts: n, masking: [], channels: [ch('Main')] });
+
+  it('attaches the baseline to the rolling live source when given, and omits the key when not', () => {
+    expect(liveReportCardSource([win(1)], null, [], baseline)?.baseline).toEqual(baseline);
+    expect('baseline' in (liveReportCardSource([win(1)]) as object)).toBe(false);
+    expect('baseline' in (liveReportCardSource([win(1)], null, [], null) as object)).toBe(false);
+  });
+
+  it('attaches the baseline to the session source when given, and omits the key when not', () => {
+    const windows = [win(1), win(2), win(3)];
+    expect(liveSessionReportCardSource(windows, null, [], baseline)?.baseline).toEqual(baseline);
+    expect('baseline' in (liveSessionReportCardSource(windows) as object)).toBe(false);
+  });
+});

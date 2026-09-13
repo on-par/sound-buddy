@@ -31,6 +31,10 @@ import {
 } from './spectrum-display';
 import type { IdealCurvesApi } from './ideal-profiles';
 
+// Editor range: matches ideal-curves.js's clampDb (±24 dB) so a captured live
+// mix's tilt is editable without being clipped by the slider.
+export const EDITOR_MAX_ABS_DB = 24;
+
 function getIdealCurves(): Pick<IdealCurvesApi, 'profileFromBands'> | null {
   if (typeof window === 'undefined') return null;
   const curves = (window as unknown as { idealCurves?: Pick<IdealCurvesApi, 'profileFromBands'> }).idealCurves;
@@ -85,6 +89,7 @@ function CurveEditorLiveComparison({ editor }: { editor: CurveEditorState }) {
     </div>
   );
 }
+
 export default function CurveEditorDialog() {
   const { editor } = useStoreShallow(useIdealProfilesStore, (s) => ({ editor: s.editor }));
   const previewDb = editor.bands.map((db) => -36 + (Number.isFinite(db) ? db : 0));
@@ -132,7 +137,7 @@ export default function CurveEditorDialog() {
     >
       <div className="rig-dialog-card curve-dialog-card">
         <div className="rig-dialog-title" id="curve-dialog-title">{editor.title}</div>
-        <div className="ai-dialog-sub">Shape the target Sound Buddy compares this file against. Values are relative dB offsets, not loudness.</div>
+        <div className="ai-dialog-sub">Shape the target Sound Buddy grades and compares against. Values are relative dB offsets, not loudness.</div>
         <label className="ai-field">
           <span className="ai-field-label">Name</span>
           <input
@@ -164,8 +169,8 @@ export default function CurveEditorDialog() {
                 className="sb-slider curve-band-range"
                 data-i={i}
                 type="range"
-                min={-12}
-                max={12}
+                min={-EDITOR_MAX_ABS_DB}
+                max={EDITOR_MAX_ABS_DB}
                 step={0.5}
                 value={editor.bands[i] ?? 0}
                 onChange={(e) => useIdealProfilesStore.getState().setEditorBand(i, Number(e.target.value))}
@@ -174,8 +179,8 @@ export default function CurveEditorDialog() {
                 className="curve-band-num"
                 data-i={i}
                 type="number"
-                min={-12}
-                max={12}
+                min={-EDITOR_MAX_ABS_DB}
+                max={EDITOR_MAX_ABS_DB}
                 step={0.5}
                 aria-label={`${b.label} offset dB`}
                 value={(editor.bands[i] ?? 0).toFixed(1)}
@@ -194,7 +199,7 @@ export default function CurveEditorDialog() {
             onClick={() => void useIdealProfilesStore.getState().capture()}
           >
             <span dangerouslySetInnerHTML={{ __html: iconSvg('waveform', 16) }} />
-            Use current analysis
+            Use current mix
           </button>
           <span className={'ai-status' + (editor.status.kind ? ` ${editor.status.kind}` : '')} id="curve-status" role="status">
             {editor.status.text}

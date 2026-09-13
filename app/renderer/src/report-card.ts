@@ -19,6 +19,7 @@
 import { MAX_NOTE_LENGTH } from '../../electron/ipc/api';
 import type { AnalysisPayload } from '@sound-buddy/shared';
 import { evaluateRules, gradeSymptoms, type GradeSymptom } from '@sound-buddy/audio-engine/dist/analyze/rules.js';
+import { bandTargetsFromProfile, GRID_FREQS } from '@sound-buddy/audio-engine/dist/profiles/index.js';
 import {
   escapeHtml, toPct, DIM_DB, HOT_DB, GRID, BAND_META,
   heatmapSVG, miniCurveSVG, fmtDur, classLabel, pickRepresentativeFrames,
@@ -77,6 +78,86 @@ export interface ProfileComparison {
   topUnder?: ProfileRegion | null;
 }
 
+/* ── Grading baseline (ideal EQ curve) ──
+   The band-balance rule, the Too Hot / Too Quiet verdicts, the "too much
+   energy in X" recommendations, and the rules-engine tonal symptoms are all
+   measured against the ACTIVE IDEAL CURVE (the Ideal selector: Auto, a
+   built-in, or a user-captured/edited custom curve) instead of a flat
+   reference. A real music mix's band levels fall ~30–40 dB from sub-bass to
+   brilliance (power density), so the flat reference read every full-range mix
+   as bass-heavy and docked it a letter. The baseline rides on the source
+   object because four call sites derive a grade from a ReportCardSource
+   (ReportCardIsland, ReportCardToolbar, report-card-chrome,
+   buildAnalysisSummaryInput) — attached anywhere else, the displayed grade and
+   the persisted history score would drift apart (same reasoning as
+   `symptoms`, ADR-0098). */
+export interface GradeBaseline {
+  /** The ideal profile's label, rendered in the deduction ("vs. Worship service"). */
+  label: string;
+  profileId?: string;
+  /** True when the profile was auto-picked (content type / live default), not chosen by the user. */
+  isAuto?: boolean;
+  /** Relative target level per legacy 7-band key (dB), from bandTargetsFromProfile. */
+  bandTargets: Record<string, number>;
+}
+
+/** What a source builder needs from the app to grade against the user's rubric:
+ *  the resolved ideal profile (null = flat reference) and the rubric's symptom
+ *  sensitivity offset. Pure data — callers (the stores) resolve it. */
+export interface GradeContext {
+  /** The resolved ideal profile (IdealProfileLike shape: `freqs` may be absent
+   *  on the renderer's slimmed profile objects — a 48-point shape is then read
+   *  on the engine's GRID_FREQS). */
+  idealProfile?: { id?: string; label: string; freqs?: number[]; dbOffsets: number[] } | null;
+  isAutoProfile?: boolean;
+  symptomThresholdOffsetDb?: number;
+}
+
+/** A context's profile on an explicit grid, or null when it has none / is unusable. */
+function profileCurve(ctx: GradeContext | null | undefined): { freqs: number[]; dbOffsets: number[] } | null {
+  const profile = ctx?.idealProfile;
+  if (!profile || !Array.isArray(profile.dbOffsets) || profile.dbOffsets.length === 0) return null;
+  const freqs = Array.isArray(profile.freqs) && profile.freqs.length === profile.dbOffsets.length
+    ? profile.freqs
+    : profile.dbOffsets.length === GRID_FREQS.length ? GRID_FREQS : null;
+  return freqs ? { freqs, dbOffsets: profile.dbOffsets } : null;
+}
+
+/** The baseline for a context, or null when there is no profile (flat reference). */
+export function gradeBaselineFor(ctx: GradeContext | null | undefined): GradeBaseline | null {
+  const curve = profileCurve(ctx);
+  const profile = ctx?.idealProfile;
+  if (!curve || !profile) return null;
+  return {
+    label: profile.label,
+    profileId: profile.id,
+    isAuto: !!ctx?.isAutoProfile,
+    bandTargets: bandTargetsFromProfile(curve),
+  };
+}
+
+/** The evaluateRules options for a context — baseline-relative symptoms with the rubric's sensitivity offset. */
+export function symptomOptionsFor(ctx: GradeContext | null | undefined): { baseline: { freqs: number[]; dbOffsets: number[] } | null; thresholdOffsetDb: number } {
+  const offset = ctx?.symptomThresholdOffsetDb;
+  return {
+    baseline: profileCurve(ctx),
+    thresholdOffsetDb: typeof offset === 'number' && Number.isFinite(offset) ? offset : 0,
+  };
+}
+
+/** The rubric's symptom sensitivity offset (dB) from persisted settings — 0 when unset. */
+export function symptomThresholdOffsetFrom(settings: { gradingRubric?: Record<string, number> | null } | null | undefined): number {
+  const v = settings?.gradingRubric?.['symptoms.thresholdOffsetDb'];
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
+
+/** "Target: Worship service (auto)" — the baseline pill text, or null without one. */
+export function gradeBaselineLabel(src: { baseline?: GradeBaseline | null } | null | undefined): string | null {
+  const b = src?.baseline;
+  if (!b || !b.label) return null;
+  return `Target: ${b.label}${b.isAuto ? ' (auto)' : ''}`;
+}
+
 // The getReportCardSource() shape (inline-app.js:2414–2446).
 export interface ReportCardSource {
   filename: string;
@@ -99,6 +180,10 @@ export interface ReportCardSource {
   // live-capture sources and on history entries predating this feature, which
   // simply take no symptom deduction.
   symptoms?: GradeSymptom[];
+  // The ideal-curve baseline the band rules were judged against. Absent (or
+  // null) on history entries predating this feature and on any source built
+  // without a GradeContext, which grade against the flat reference as before.
+  baseline?: GradeBaseline | null;
   contentType?: string | null;
   segments?: unknown;
   frames?: unknown;
@@ -389,16 +474,19 @@ export function buildScoreRows(
     rows.push({ name: 'Dynamic Range', note: null, value, tone, hardFail: false, detail, extra: null });
   }
 
-  // 4. Band Balance
+  // 4. Band Balance — measured against the source's ideal-curve baseline when
+  // it has one (the same targets grading.js's deduction used), else flat.
   {
-    const maxDiff = Object.keys(src.bands).reduce((m, k) => Math.max(m, g.bandDiffFromOthers(src.bands, k)), 0);
+    const targets = src.baseline?.bandTargets ?? null;
+    const vs = src.baseline?.label || 'other bands';
+    const maxDiff = Object.keys(src.bands).reduce((m, k) => Math.max(m, g.bandDiffFromOthers(src.bands, k, targets)), 0);
     const value = fmtDev(maxDiff);
     const d = ded(DEDUCTION_RULES.bandImbalance);
     const tone: PillTone = d ? 'issue' : maxDiff > g.CONFIG.bandBalance.hotDiff ? 'check' : 'good';
     const detail: ScoreRowDetail = d
       ? { measured: d.measured, target: d.target, impact: d.letterImpact }
-      : { measured: fmtDev(maxDiff) + ' vs. other bands', target: '≤ +' + g.CONFIG.bandBalance.severeHotDiff + ' dB vs. other bands', impact: 'No impact' };
-    rows.push({ name: 'Band Balance', note: null, value, tone, hardFail: false, detail, extra: null });
+      : { measured: fmtDev(maxDiff), target: '≤ +' + g.CONFIG.bandBalance.severeHotDiff + ' dB vs. ' + vs, impact: 'No impact' };
+    rows.push({ name: 'Band Balance', note: src.baseline?.label ? 'vs. ' + src.baseline.label : null, value, tone, hardFail: false, detail, extra: null });
   }
 
   // 5. Clipping
@@ -537,7 +625,7 @@ export function recListHTML(recs: string[], escapeText: boolean): string {
 // below are runtime-only defense against producer/disk drift now that the
 // param is typed — the analyzer never emits null here, but a stale payload on
 // disk or a future producer change still can.
-export function reportCardSourceFromAnalysis(analysis: AnalysisPayload): ReportCardSource | null {
+export function reportCardSourceFromAnalysis(analysis: AnalysisPayload, ctx?: GradeContext | null): ReportCardSource | null {
   if (typeof analysis !== 'object' || analysis === null) return null;
   if (!analysis.sox || !analysis.spectrum) return null;
   const { sox, spectrum, ffprobe, loudness } = analysis;
@@ -550,7 +638,8 @@ export function reportCardSourceFromAnalysis(analysis: AnalysisPayload): ReportC
     centroid: spectrum.spectralCentroid,
     bands: { ...(spectrum.bands || {}) },
     curve: spectrum.curve || null,
-    symptoms: gradeSymptoms(evaluateRules(spectrum.curve)),
+    symptoms: gradeSymptoms(evaluateRules(spectrum.curve, undefined, symptomOptionsFor(ctx))),
+    baseline: gradeBaselineFor(ctx),
     contentType: spectrum.contentType || null,
     segments: spectrum.segments || null,
     frames: spectrum.frames,
@@ -621,6 +710,51 @@ export interface BandMeterOpts {
   colorBy?: 'band' | 'level';
   color?: string;
   loudest?: boolean;
+  /** Ideal level for this band (absolute dB) and the balanced range around
+   *  it — drawn as a tick and a shaded zone on the track (see bandTargetLevels). */
+  target?: BandTargetLevel | null;
+}
+
+/** Where a band SHOULD sit, in the same absolute dB as its meter: the level
+ *  at which its verdict reads exactly on-target, plus the edges beyond which
+ *  it reads Too Hot / Too Quiet. */
+export interface BandTargetLevel {
+  db: number;
+  hotAbove: number;
+  quietBelow: number;
+}
+
+/**
+ * The balanced level per band, in absolute dB, derived from the exact rule the
+ * verdict uses. The verdict for band k is diff_k = (b_k − t_k) − mean over the
+ * other bands of (b_j − t_j) (grading.js's bandDiffFromOthers); solving
+ * diff_k = 0 for b_k gives the level at which the band is balanced GIVEN the
+ * other six as measured: t_k + meanOtherDeviation. It therefore moves when
+ * the other bands move — it is a balance point, not a fixed target. The
+ * hot/quiet edges are that level plus hotDiff / quietDiff. With no targets
+ * (flat reference) t is 0 everywhere, so the level is the mean of the other
+ * bands. Uses the same key set as the verdict (every band, finite or not) so
+ * the two can never disagree; a band whose level cannot be computed gets null.
+ */
+export function bandTargetLevels(
+  bands: Record<string, number>,
+  targets: Record<string, number> | null | undefined,
+  cfg: { hotDiff: number; quietDiff: number },
+): Record<string, BandTargetLevel | null> {
+  const target = (k: string) => {
+    const t = targets ? targets[k] : undefined;
+    return typeof t === 'number' && Number.isFinite(t) ? t : 0;
+  };
+  const keys = Object.keys(bands);
+  const out: Record<string, BandTargetLevel | null> = {};
+  for (const k of keys) {
+    const others = keys.filter((j) => j !== k);
+    if (others.length === 0) { out[k] = null; continue; }
+    const meanOtherDev = others.reduce((sum, j) => sum + (bands[j] - target(j)), 0) / others.length;
+    const db = target(k) + meanOtherDev;
+    out[k] = Number.isFinite(db) ? { db, hotAbove: db + cfg.hotDiff, quietBelow: db + cfg.quietDiff } : null;
+  }
+  return out;
 }
 
 export function levelColor(db: number): string {
@@ -638,10 +772,18 @@ export function bandMeterHTML(label: string, range: string, db: number, opts: Ba
   const scale = opts.showScale
     ? `<div class="bm-scale">${GRID.map((g) => `<span style="left:${toPct(g)}%">${g}</span>`).join('')}</div>` : '';
   const rangeHTML = range ? `<div class="bm-range">${range}</div>` : '';
+  // Ideal-level overlay: the balanced zone (quiet edge → hot edge) shaded on
+  // the track and a tick at the on-target level, so "Too Hot" is read
+  // against something visible.
+  const t = opts.target;
+  const overlay = t
+    ? `<span class="bm-zone" style="left:${toPct(t.quietBelow).toFixed(1)}%;width:${Math.max(0, toPct(t.hotAbove) - toPct(t.quietBelow)).toFixed(1)}%" title="Balanced range"></span>` +
+      `<span class="bm-target" style="left:${toPct(t.db).toFixed(1)}%" title="Balanced level ${t.db.toFixed(1)} dB (moves with the other bands)"></span>`
+    : '';
   return `<div class="bm">${scale}
     <div class="bm-row">
       <div class="bm-labelcol"><div class="bm-name${loud ? ' loud' : ''}">${label}</div>${rangeHTML}</div>
-      <div class="bm-track">${grid}<div class="bm-fill${loud ? ' loud' : ''}" style="width:${pct}%;background:${fill};opacity:${dim ? 0.5 : 1}"></div></div>
+      <div class="bm-track">${grid}<div class="bm-fill${loud ? ' loud' : ''}" style="width:${pct}%;background:${fill};opacity:${dim ? 0.5 : 1}"></div>${overlay}</div>
       <div class="bm-val${db > HOT_DB ? ' hot' : ''}">${isFinite(db) ? db.toFixed(1) : '-∞'}</div>
     </div>
   </div>`;
@@ -654,29 +796,40 @@ export function bandMeterHTML(label: string, range: string, db: number, opts: Ba
    a threshold change moves the verdict with the grade — injected via the
    narrow BandDiffApi rather than importing grading.js globally. */
 export interface BandDiffApi {
-  bandDiffFromOthers(bands: Record<string, number>, key: string): number;
+  /** `targets` (the baseline's 7-band relative targets) makes the diff baseline-relative; omitted = flat reference. */
+  bandDiffFromOthers(bands: Record<string, number>, key: string, targets?: Record<string, number> | null): number;
   // severeHotDiff (#540) is the ceiling the score-circle Band Balance row's
   // clean-target string reads — type-only widening, runtime window.grading
   // already carries it (grading.js's CONFIG.bandBalance).
   CONFIG: { bandBalance: { hotDiff: number; quietDiff: number; severeHotDiff: number } };
 }
 
-export function bandBreakdownHTML(bands: Record<string, number>, g: BandDiffApi): string {
+export function bandBreakdownHTML(bands: Record<string, number>, g: BandDiffApi, baseline?: GradeBaseline | null): string {
+  const targets = baseline?.bandTargets ?? null;
+  const levels = bandTargetLevels(bands, targets, g.CONFIG.bandBalance);
+  const bandDb = bandDbFromSpectrum({ bands });
+  const targetBandDb = BAND_META.map((b, i) => levels[b.key]?.db ?? bandDb[i]);
   const analyzer = analyzerStyleHTML({
-    bandDb: bandDbFromSpectrum({ bands }),
+    bandDb,
+    curve: bandCurveFromDb(bandDb),
+    targetDb: bandCurveFromDb(targetBandDb).db,
     uid: 'rc-band-breakdown',
     className: 'sb-analyzer-band-breakdown',
   });
+  const vs = baseline?.label ? escapeHtml(baseline.label) : 'the other bands';
+  const legend = `<div class="rc-band-legend"><span class="rc-band-legend-tick"></span>balanced level vs. ${vs}, given the other bands` +
+    ` · <b>±dB</b> = this band vs. its balanced level</div>`;
   const verdicts = BAND_META.map((b) => {
     const db = bands[b.key];
-    const diff = g.bandDiffFromOthers(bands, b.key);
+    const diff = g.bandDiffFromOthers(bands, b.key, targets);
     let vc: 'ok' | 'hot' | 'quiet' = 'ok';
     let vt = 'Balanced';
     if (diff > g.CONFIG.bandBalance.hotDiff) { vc = 'hot'; vt = 'Too Hot'; }
     else if (diff < g.CONFIG.bandBalance.quietDiff) { vc = 'quiet'; vt = 'Too Quiet'; }
-    return `<span class="rc-band-verdict ${vc}" data-band="${b.key}">${b.short} · ${vt} · ${fmt(db)}</span>`;
+    const dev = Number.isFinite(diff) ? ` · ${fmtDev(diff)}` : '';
+    return `<span class="rc-band-verdict ${vc}" data-band="${b.key}">${b.short} · ${vt} · ${fmt(db)}${dev}</span>`;
   }).join('');
-  return `${analyzer}<div class="rc-band-verdicts">${verdicts}</div>`;
+  return `${analyzer}${legend}<div class="rc-band-verdicts">${verdicts}</div>`;
 }
 
 /* ── "Spectrum Over Time" report-card section ──
@@ -815,6 +968,13 @@ export function strongMixTargetMeta(filename: string): StrongMixTargetMeta {
     label: `Target from ${name}`.slice(0, 60),
     description: 'Saved from a strong-grading mix',
   };
+}
+
+// The live card's filename carries a per-window / per-session suffix
+// ("Live capture — Crowd Mic (window #135)"); strip it so re-saving the same
+// channel's mix as a target upserts one profile instead of one per window.
+export function targetMetaForSource(src: { filename: string }): StrongMixTargetMeta {
+  return strongMixTargetMeta(String(src.filename || '').replace(/\s*\((window #\d+|\d+ windows)\)\s*$/, ''));
 }
 
 /* ── Handoff note (#267) ──
