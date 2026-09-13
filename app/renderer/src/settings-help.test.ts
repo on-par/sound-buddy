@@ -111,6 +111,7 @@ describe('SETTINGS_HELP_ENTRIES table integrity', () => {
     const entries = SETTINGS_HELP_ENTRIES.filter((entry) => entry.control === 'advancedFeatures');
     expect(entries).toHaveLength(1);
     expect(entries[0].noteId).toBe('advanced-features-note');
+    expect(entries[0].text).toContain('Analyze, History, and Report Card');
   });
 
   it('maps every entry control to a real section', () => {

@@ -29,7 +29,7 @@ export const SETTINGS_HELP_ENTRIES: readonly SettingsHelpEntry[] = [
   {
     control: 'advancedFeatures',
     noteId: 'advanced-features-note',
-    text: 'On: every workspace tab - Directory, Session, Console, Recent, Build Guide, Ring Out. Off: just History and Report Card. Nothing is removed either way; turn it back on anytime.',
+    text: 'On: every workspace tab - Directory, Session, Console, Recent, Build Guide, Ring Out. Off: Analyze, History, and Report Card. Nothing is removed either way; turn it back on anytime.',
   },
   {
     control: 'gradingProfile',

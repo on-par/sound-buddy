@@ -2,6 +2,7 @@ import { test, expect, type ElectronApplication, type Page } from '@playwright/t
 import { launchElectron } from './launch-electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import { FAKE_ANALYSIS } from './e2e/e2e-helpers';
 
 // First-run onboarding (#69), run for REAL against a throwaway --user-data-dir:
 // a brand-new user sees the welcome overlay, one click analyzes the bundled demo
@@ -118,73 +119,23 @@ test.describe.serial('First-run onboarding (#69)', () => {
     fs.mkdirSync(USER_DATA, { recursive: true });
     fs.writeFileSync(path.join(USER_DATA, 'settings.json'), JSON.stringify({ advancedFeaturesEnabled: false }, null, 2));
     await launchWithAdvancedEnvOverrideCleared();
-    await app.evaluate(({ ipcMain }, fixturePath) => {
+    await app.evaluate(({ ipcMain }, payload) => {
+      const { fixturePath, analysis } = payload;
       ipcMain.removeHandler('open-file-dialog');
       ipcMain.handle('open-file-dialog', () => fixturePath);
       ipcMain.removeHandler('analyze-file');
       ipcMain.handle('analyze-file', () => ({
         success: true,
         data: {
+          ...analysis,
           filePath: fixturePath,
-          sox: {
-            samplesRead: 96000,
-            lengthSeconds: 1,
-            scaledBy: 2147483647,
-            maximumAmplitude: 0.5,
-            minimumAmplitude: -0.5,
-            midlineAmplitude: 0,
-            meanNorm: 0.1,
-            meanAmplitude: 0,
-            rmsAmplitude: 0.1,
-            maximumDelta: 0.01,
-            minimumDelta: -0.01,
-            meanDelta: 0,
-            rmsDelta: 0.005,
-            roughFrequency: 440,
-            volumeAdjustment: 1,
-            rmsDbfs: -18,
-            peakDbfs: -6,
-            dynamicRangeDb: 12,
-            clipping: false,
-          },
           ffprobe: {
-            format: {
-              filename: fixturePath,
-              formatName: 'wav',
-              formatLongName: 'WAV / WAVE (Waveform Audio)',
-              durationSeconds: 1,
-              sizeBytes: 192044,
-              bitRate: 1536000,
-              tags: {},
-            },
-            stream: {
-              codecName: 'pcm_s16le',
-              codecLongName: 'PCM signed 16-bit little-endian',
-              channels: 2,
-              channelLayout: 'stereo',
-              sampleRate: 48000,
-              bitDepth: 16,
-              bitRate: 1536000,
-              durationSeconds: 1,
-            },
-          },
-          spectrum: {
-            bands: {
-              subBass: -20,
-              bass: -18,
-              lowMid: -22,
-              mid: -16,
-              highMid: -25,
-              presence: -30,
-              brilliance: -35,
-            },
-            spectralCentroid: 1200,
-            spectralRolloff85: 4000,
-            dynamicRange: 12,
+            ...analysis.ffprobe,
+            format: { ...analysis.ffprobe.format, filename: fixturePath },
           },
         },
       }));
-    }, SILENCE);
+    }, { fixturePath: SILENCE, analysis: FAKE_ANALYSIS });
 
     await expect(win.locator('body')).toHaveClass(/simple-mode/);
     await win.locator('#onboarding-skip').click();
