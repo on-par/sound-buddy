@@ -76,18 +76,19 @@ describe('CurveEditorDialog', () => {
     expect(html).toContain('value="Sanctuary reference"');
   });
 
-  it('renders one row per BAND_META entry, with the current bands reflected in both inputs', () => {
+  it('renders draggable EQ curve nodes instead of horizontal faders', () => {
     useIdealProfilesStore.setState({
       editor: { ...CLOSED_EDITOR, open: true, bands: [-3, -1, 0, 2, 3, 1, -2] },
     });
 
     const html = renderMarkup();
+    const nodes = html.match(/class="curve-editor-eq-node"/g) || [];
 
-    expect(html).toContain('id="curve-band-0"');
-    expect(html).toContain('id="curve-band-6"');
-    expect(html).toContain('value="-3"');
-    expect(html).toContain('value="-3.0"');
-    expect(html).toContain('aria-label="Sub Bass offset dB"');
+    expect(html).not.toContain('curve-editor-grid');
+    expect(html).not.toContain('type="range"');
+    expect(html).not.toContain('curve-band-num');
+    expect(nodes).toHaveLength(7);
+    expect(html).toContain('Sub Bass ideal curve -3.0 dB');
   });
 
   it('disables Use current mix when canCapture is false, and Delete when canDelete is false', () => {

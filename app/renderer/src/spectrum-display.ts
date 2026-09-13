@@ -470,6 +470,7 @@ export interface AnalyzerStyleOpts {
   compact?: boolean;
   className?: string;
   bandLayout?: 'analyzer' | 'uniform' | 'session';
+  fixedRange?: boolean;
 }
 
 export function bandCurveFromDb(db: number[], baseDb = 0): SpectrumCurve {
@@ -539,8 +540,8 @@ export function analyzerStyleHTML(opts: AnalyzerStyleOpts): string {
     ? spectrumCurveSVG(curve, opts.centroid, targetDb, {
       uid,
       vbH: compact ? 250 : ANALYZER_VB_H,
-      yMin: compact ? undefined : DB_MIN,
-      yMax: compact ? undefined : DB_MAX,
+      yMin: compact && !opts.fixedRange ? undefined : DB_MIN,
+      yMax: compact && !opts.fixedRange ? undefined : DB_MAX,
     })
     : analyzerGridSVG(uid, compact);
   const cls = [
