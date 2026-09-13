@@ -208,7 +208,7 @@
        asserts every such line is flag-scoped). */
     #nav-analyze, #nav-history { display:none; }
     body.report-first-ux #nav-analyze, body.report-first-ux #nav-history { display:inline-flex; }
-    body.simple-mode #nav-history { display:inline-flex; }
+    body.simple-mode #nav-analyze, body.simple-mode #nav-history { display:inline-flex; }
     body.not-pro #tab-live > :not(.pro-gate),
     body.not-pro #settings-pane-audio > :not(.pro-gate) { display:none !important; }
     body.not-pro #tab-live .pro-gate,

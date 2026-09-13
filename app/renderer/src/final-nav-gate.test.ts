@@ -36,6 +36,7 @@ describe('Final nav consolidation gate (#547)', () => {
   it('app.css hides the new entries by default and shows them only flag-on', () => {
     expect(appCss).toContain('#nav-analyze, #nav-history { display:none; }');
     expect(appCss).toContain('body.report-first-ux #nav-analyze, body.report-first-ux #nav-history { display:inline-flex; }');
+    expect(appCss).toContain('body.simple-mode #nav-analyze, body.simple-mode #nav-history { display:inline-flex; }');
     const hideIdx = appCss.indexOf('#nav-analyze, #nav-history { display:none; }');
     const showIdx = appCss.indexOf('body.report-first-ux #nav-analyze, body.report-first-ux #nav-history { display:inline-flex; }');
     expect(showIdx).toBeGreaterThan(hideIdx);

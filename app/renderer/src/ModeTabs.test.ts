@@ -93,6 +93,11 @@ describe('ModeTabs', () => {
       expect(start).toBeGreaterThanOrEqual(0);
       expect(button).toContain('hidden=""');
     }
+    const analyzeStart = html.indexOf('id="nav-analyze"');
+    const analyzeEnd = html.indexOf('</button>', analyzeStart);
+    const analyzeButton = html.slice(analyzeStart, analyzeEnd);
+    expect(analyzeStart).toBeGreaterThanOrEqual(0);
+    expect(analyzeButton).not.toContain('hidden=""');
     expect(html).toContain('id="nav-history" data-mode="history"');
     expect(html).toContain('data-mode="reportcard"');
   });

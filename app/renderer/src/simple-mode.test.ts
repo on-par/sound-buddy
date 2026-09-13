@@ -26,7 +26,7 @@ describe('simple-mode', () => {
 
   it('is Simple mode only when advanced features are disabled', () => {
     expect(isSimpleMode(settings({ advancedFeaturesEnabled: false }))).toBe(true);
-    expect(visibleTabModes(settings({ advancedFeaturesEnabled: false }))).toEqual(['history', 'reportcard']);
+    expect(visibleTabModes(settings({ advancedFeaturesEnabled: false }))).toEqual(['analyze', 'history', 'reportcard']);
   });
 
   it('keeps the report-first-ux experiment in precedence over Simple mode', () => {
@@ -41,6 +41,7 @@ describe('simple-mode', () => {
 
   it('leaves visible and programmatic modes unchanged', () => {
     const s = settings({ advancedFeaturesEnabled: false });
+    expect(clampBootMode('analyze', s)).toBe('analyze');
     expect(clampBootMode('history', s)).toBe('history');
     expect(clampBootMode('reportcard', s)).toBe('reportcard');
     expect(clampBootMode('guide', settings())).toBe('guide');

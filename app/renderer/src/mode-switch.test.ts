@@ -124,6 +124,14 @@ describe('resolveModeSwitch', () => {
     expect(resolveModeSwitch('analyze', 'reportcard')).toEqual({ type: 'openPicker' });
   });
 
+  it('bypasses the source picker for "analyze" in Simple mode', () => {
+    expect(resolveModeSwitch('analyze', 'reportcard', { simpleMode: true })).toEqual({ type: 'chooseFile' });
+  });
+
+  it('keeps opening the source picker when the Simple-mode option is absent', () => {
+    expect(resolveModeSwitch('analyze', 'reportcard')).toEqual({ type: 'openPicker' });
+  });
+
   it('redirects "history" to "recent"', () => {
     expect(resolveModeSwitch('history', 'reportcard')).toEqual({ type: 'redirect', mode: 'recent' });
   });
