@@ -411,6 +411,7 @@ export interface AnalyzerStyleOpts {
   uid?: string;
   compact?: boolean;
   className?: string;
+  bandLayout?: 'analyzer' | 'uniform';
 }
 
 export function bandCurveFromDb(db: number[], baseDb = 0): SpectrumCurve {
@@ -469,7 +470,8 @@ export function analyzerStyleHTML(opts: AnalyzerStyleOpts): string {
   const bandDb = BAND_META.map((_, i) => Number.isFinite(opts.bandDb[i]) ? opts.bandDb[i] : -120);
   const curve = opts.curve && hasUsableCurve({ curve: opts.curve }) ? opts.curve : null;
   const loudestIdx = veqLoudestIdx(bandDb);
-  const { bars, labels } = veqBarsAndLabelsHTML(ANALYZER_BANDS, bandDb, loudestIdx);
+  const bandCols = opts.bandLayout === 'uniform' ? EQ_COLS : ANALYZER_BANDS;
+  const { bars, labels } = veqBarsAndLabelsHTML(bandCols, bandDb, loudestIdx);
   const targetDb = opts.targetDb && Array.isArray(opts.targetDb) && opts.targetDb.length >= (curve?.db.length ?? 0)
     ? opts.targetDb
     : null;
@@ -482,7 +484,13 @@ export function analyzerStyleHTML(opts: AnalyzerStyleOpts): string {
       yMax: compact ? undefined : DB_MAX,
     })
     : analyzerGridSVG(uid, compact);
-  const cls = ['sb-analyzer', compact ? 'sb-analyzer-compact' : '', curve ? 'sb-analyzer-curve' : 'sb-analyzer-band-only', opts.className || '']
+  const cls = [
+    'sb-analyzer',
+    compact ? 'sb-analyzer-compact' : '',
+    curve ? 'sb-analyzer-curve' : 'sb-analyzer-band-only',
+    opts.bandLayout === 'uniform' ? 'sb-analyzer-uniform-bands' : '',
+    opts.className || '',
+  ]
     .filter(Boolean).join(' ');
   return `<div class="${cls}" data-eq-style="live-analyzer">
     <div class="sb-analyzer-plot">
