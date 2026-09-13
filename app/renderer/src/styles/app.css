@@ -1562,6 +1562,17 @@
     .curve-row label { font:var(--fw-medium) var(--fs-label)/1.25 var(--font-sans); color:var(--text-secondary); }
     .curve-row input[type="number"] { height:28px; padding:0 8px; background:var(--surface); color:var(--text-primary); border:1px solid var(--border-default); border-radius:var(--radius-md); font:var(--fw-medium) var(--fs-label)/1 var(--font-mono); outline:none; }
     .curve-row input[type="number"]:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); }
+    .curve-live-compare { display:flex; flex-direction:column; gap:8px; margin-top:4px; padding:10px 12px; background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-md); }
+    .curve-live-compare.muted { background:var(--surface); }
+    .curve-live-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+    .curve-live-title { font:var(--fw-semibold) var(--fs-label)/1.2 var(--font-sans); color:var(--text-primary); }
+    .curve-live-state { flex-shrink:0; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); }
+    .curve-live-chart { display:flex; gap:8px; min-width:0; }
+    .curve-live-chart .eq-yaxis { height:150px; }
+    .curve-live-chart .eq-plot { height:150px; }
+    .curve-live-compare .spectrum-legend { flex-wrap:wrap; gap:10px 14px; margin-top:2px; padding:0; }
+    .curve-live-compare .spectrum-legend .sl-score { margin-left:0; }
+    .curve-live-note, .curve-live-empty { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-muted); }
     .curve-dialog-actions { display:flex; justify-content:space-between; align-items:center; gap:8px; }
     .curve-dialog-actions .right { display:flex; gap:8px; }
     #curve-capture-btn:disabled, #curve-delete-btn:disabled { opacity:0.45; cursor:not-allowed; }
