@@ -560,6 +560,14 @@ export interface SpectrumChartModel {
   centroidHTML: string;
 }
 
+export interface LiveCurveComparisonModel {
+  kind: 'curve' | 'bands';
+  chartHTML: string;
+  legendHTML: string;
+  note: string;
+  matchScore: number | null;
+}
+
 // Single pure source for <SpectrumDisplay>'s chart/legend/centroid HTML —
 // lifted verbatim from SpectrumDisplay.tsx's render body, with one addition:
 // when `selectedFrame` is set, the measured bars come from that frame
@@ -595,6 +603,29 @@ export function spectrumChartModel(opts: {
   }
   const centroidHTML = eqCentroidHTML(spectrum);
   return { chartHTML, legendHTML, centroidHTML };
+}
+
+// Curve-editor live comparison: measured room data is always shown against
+// the unsaved editor target. Full analyzer curves get the normal profile
+// match score; 7-band fallback data gets the same bar/target overlay without
+// pretending it has enough resolution for the 48-point score.
+export function liveCurveComparisonModel(opts: {
+  curve: SpectrumCurve;
+  targetProfile: IdealProfileLike;
+}): LiveCurveComparisonModel {
+  const { curve, targetProfile } = opts;
+  const measuredBandDb = bandLevelsFromCurve(curve);
+  const target = levelMatchedTarget(curve, targetProfile);
+  const targetBandDb = bandLevelsFromCurve({ freqs: curve.freqs, db: target });
+  const canScore = curve.db.length >= 8 && targetProfile.dbOffsets.length === curve.db.length;
+  const cmp = canScore ? compareToProfile(curve, targetProfile as IdealProfile) : null;
+  return {
+    kind: canScore ? 'curve' : 'bands',
+    chartHTML: eqBarsHTML(measuredBandDb, targetBandDb),
+    legendHTML: spectrumLegendHTML(targetProfile, cmp, false),
+    note: canScore ? '' : 'Using 7-band live meters; match score appears when analyzer data is available.',
+    matchScore: cmp ? cmp.matchScore : null,
+  };
 }
 
 // Per-band presentation state, shared by the build and patch paths so they
