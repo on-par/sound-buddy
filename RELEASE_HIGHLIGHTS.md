@@ -1,4 +1,3 @@
 <!-- Edit before each release; contents become the "## What's new" section of the release notes. -->
 
-- **Safer rig changes while recording:** Switching saved audio rigs stays available in Settings, restarts live monitoring immediately, and asks for confirmation before interrupting an active recording.
-- **Audio Settings fits cleanly:** The Audio pane is wider and its control grid now avoids horizontal side scrolling.
+- **EQ views match the analyzer:** Ideal curves, the curve editor, report-card spectra, band breakdowns, and report-card thumbnails now use the same dark analyzer-style EQ display.
