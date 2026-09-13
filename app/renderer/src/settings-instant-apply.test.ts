@@ -25,7 +25,6 @@ const FULL_SETTINGS: AppSettings = {
   inputInstrumentProfiles: {},
   crashReportingEnabled: true,
   liveAdjustmentsEnabled: true,
-  reportFirstUxEnabled: false,
   advancedFeaturesEnabled: true,
   shareChurchName: '',
   weeklyReminderEnabled: true,

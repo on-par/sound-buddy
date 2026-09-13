@@ -73,7 +73,6 @@ beforeEach(() => {
     soundBuddy: createMockSoundBuddy().api,
     liveAdjustmentsState,
     singleColumnState: { isSingleColumn: () => false },
-    reportFirstUxState: { isEnabled: () => false },
     print: printSpy,
   };
 });
@@ -215,4 +214,3 @@ describe('loadHistoryEntry', () => {
     expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');
   });
 });
-

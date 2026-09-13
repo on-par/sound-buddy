@@ -12,7 +12,6 @@ import { useState, type JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
-import { useAnalyzeSourceStore } from './stores/analyzeSourceStore';
 import { resolveModeSwitch, switchMode, type ModeSwitchRequest } from './mode-switch';
 import { isSimpleMode, visibleTabModes } from './simple-mode';
 import { iconSvg } from './report-card';
@@ -55,10 +54,9 @@ export default function ModeTabs(): JSX.Element {
   const [historyActive, setHistoryActive] = useState(false);
 
   /* c8 ignore start -- click dispatch; needs a real DOM click event to
-     exercise (no jsdom in this harness). Covered by
-     tests/e2e/report-first-ux.spec.ts and tests/e2e/momentum.spec.ts, which
-     both drive the .mode-tab click idiom. resolveModeSwitch/switchMode
-     themselves are exhaustively unit-tested in mode-switch.test.ts. */
+     exercise (no jsdom in this harness). Covered by e2e specs that drive the
+     .mode-tab click idiom. resolveModeSwitch/switchMode themselves are
+     exhaustively unit-tested in mode-switch.test.ts. */
   function handleClick(mode: ModeSwitchRequest): void {
     const decision = resolveModeSwitch(
       mode,
@@ -67,9 +65,6 @@ export default function ModeTabs(): JSX.Element {
     );
     if (decision.type === 'noop') return;
     if (decision.type === 'chooseFile') { void chooseAndAnalyzeFile(); return; }
-    // TD-001 slice 6h (#711): the picker is analyzeSourceStore-owned now —
-    // open() replaces the deleted window.analyzeSourcePicker bridge.
-    if (decision.type === 'openPicker') { useAnalyzeSourceStore.getState().open(); return; }
     if (decision.type === 'redirect') {
       handleClick(decision.mode);
       setHistoryActive(true);

@@ -62,14 +62,21 @@ test.describe('Sound Buddy E2E — report card grading', () => {
     const grade = (await window.locator('#rc-ring .letter').textContent())?.trim();
     expect(['A', 'B', 'C', 'D', 'F']).toContain(grade);
 
-    const metricRows = window.locator('#rc-metric-rows');
-    await expect(metricRows).toContainText('RMS Level');
-    await expect(metricRows).toContainText('Peak Level');
-    await expect(metricRows).toContainText('Dynamic Range');
-    await expect(metricRows).toContainText('Clipping');
-    await expect(metricRows).toContainText('Spectral Centroid');
-    await expect(metricRows).toContainText('-18.0 dBFS');
-    await expect(metricRows).toContainText('No clipping');
+    // Peak Level leads the score rows in the redesign (clipping is the headline metric).
+    const metricRows = window.locator('#rc-metric-rows .metric-row');
+    await expect(metricRows).toHaveCount(6);
+    await expect(window.locator('#rc-metric-rows')).toContainText('Peak Level');
+    await expect(window.locator('#rc-metric-rows')).toContainText('RMS Level');
+    await expect(window.locator('#rc-metric-rows')).toContainText('Dynamic Range');
+    await expect(window.locator('#rc-metric-rows')).toContainText('Band Balance');
+    await expect(window.locator('#rc-metric-rows')).toContainText('Clipping');
+    await expect(window.locator('#rc-metric-rows')).toContainText('Spectral Centroid');
+
+    // Each row shows its config-sourced target beside the value (#132). RMS reads
+    // the acceptable band; Clipping has no config target so it renders an em dash.
+    await expect(metricRows.nth(0)).toContainText('Target -20 to -14 dBFS'); // RMS Level
+    await expect(metricRows.nth(4)).toContainText('Target No clipping'); // Clipping
+    await expect(window.locator('#rc-metric-rows')).toContainText('-18.0 dBFS');
 
     const recCount = await window.locator('#rc-recommendations .rc-rec').count();
     expect(recCount).toBeGreaterThanOrEqual(1);
@@ -79,6 +86,7 @@ test.describe('Sound Buddy E2E — report card grading', () => {
     // The default fixture grades an A (in-band RMS, healthy DR, balanced bands),
     // so the breakdown is the explicit positive state — never a blank box.
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await loadAndAnalyze(window, fixturePath());
     await expect(window.locator('#rc-content')).toBeVisible();
     await expect(window.locator('#rc-why .rc-why-none')).toBeVisible();
     await expect(window.locator('#rc-why')).toContainText('No deductions');

@@ -36,7 +36,6 @@ export interface UpdateSettingsPatch {
   inputInstrumentProfiles?: Record<string, Record<string, string>>;
   crashReportingEnabled?: boolean;
   liveAdjustmentsEnabled?: boolean;
-  reportFirstUxEnabled?: boolean;
   advancedFeaturesEnabled?: boolean;
   shareChurchName?: string;
   weeklyReminderEnabled?: boolean;
@@ -309,15 +308,6 @@ export interface AppSettings {
    * layer: enabling an experiment must be an explicit user action.
    */
   liveAdjustmentsEnabled: boolean;
-  /**
-   * Opt-in report-first-ux epic gate (#538, epic e17). Default false (off).
-   * Pure UI gate — when false the existing tab/pane UI renders unchanged;
-   * when true the renderer takes the report-first-ux branch (e17-00 onward).
-   * It has an env layer
-   * (SOUND_BUDDY_REPORT_FIRST_UX), so the epic can be dogfooded at launch
-   * time without shipping a Settings toggle.
-   */
-  reportFirstUxEnabled: boolean;
   /**
    * Opt-in Advanced shell gate (#1421). Default true in the first Simple-mode
    * slice so shipped behavior is unchanged; false hides advanced workspace

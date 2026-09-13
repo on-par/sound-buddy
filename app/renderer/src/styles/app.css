@@ -154,24 +154,6 @@
     .pro-gate .pg-link { background:none; border:none; padding:0; cursor:pointer; color:var(--gold-text); font:var(--fw-medium) var(--fs-label)/1.3 var(--font-sans); text-decoration:underline; text-underline-offset:2px; }
     .pro-gate .pg-link:hover { filter:brightness(1.1); }
 
-    /* Unified "Analyze" source picker (#543, epic e17): the two answers to
-       "where's the audio coming from?", offered as an overlay dialog at the
-       moment a new analysis starts. Same layout language as .pro-gate as a
-       centered modal panel. Gated behind report-first-ux; `hidden` in the
-       markup already prevents a flag-off flash, this is belt-and-braces
-       (see the rule below). */
-    .source-picker { position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.55); }
-    .source-picker[hidden] { display:none; }
-    .sp-panel { display:flex; flex-direction:column; gap:8px; width:min(420px,calc(100vw - 48px)); padding:22px; background:var(--bg-panel); border:1px solid var(--border-default); border-radius:var(--radius-lg); box-shadow:0 12px 40px rgba(0,0,0,0.5); }
-    .sp-title { margin:0 0 6px; font:var(--fw-semibold) var(--fs-body)/1.3 var(--font-sans); color:var(--text-primary); text-align:center; }
-    .sp-choice { display:flex; flex-direction:column; align-items:flex-start; gap:2px; padding:12px 14px; background:var(--surface-raised); border:1px solid var(--border-subtle); border-radius:var(--radius-md); cursor:pointer; text-align:left; transition:var(--transition-control); }
-    .sp-choice:hover { border-color:var(--gold-500); background:var(--surface-inset); }
-    .sp-choice .sp-label { font:var(--fw-semibold) var(--fs-body-sm)/1.3 var(--font-sans); color:var(--text-primary); }
-    .sp-choice .sp-hint { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-secondary); }
-    .sp-cancel { margin-top:4px; background:none; border:none; padding:6px; cursor:pointer; color:var(--text-tertiary); font:var(--fw-medium) var(--fs-label)/1.3 var(--font-sans); }
-    .sp-cancel:hover { color:var(--text-secondary); }
-    body:not(.report-first-ux) #analyze-source-picker { display:none !important; }
-
     .mode-tab .tab-lock { display:none; margin-left:2px; color:var(--text-muted); }
     .mode-tab[hidden] { display:none; }
     body.not-pro .mode-tab .tab-lock { display:inline-flex; }
@@ -181,34 +163,6 @@
        cascade-ordering assertions in source-tabs-gate / tool-tabs-gate tests). */
     .mode-tab .tab-soon { margin-left:4px; padding:1px 5px; border-radius:var(--radius-sm); background:var(--surface-raised); color:var(--text-muted); font:var(--fw-semibold) var(--fs-micro)/1.2 var(--font-sans); }
 
-    /* Unified source entry point (#544, epic e17): with report-first-ux on, the
-       three "where's the audio from?" tabs are reachable only through the #543
-       picker — keeping them in the tab bar too is duplicate navigation. The
-       guide/ringout tabs join this rule for a separate reason (#546): they're
-       redundant once #545 ships contextual links to both tools from the
-       Report Card. In both cases, the buttons stay in the DOM (routing/links
-       route by simulated .click(), and the flag-off shell must be unchanged);
-       display:none also drops them from the accessibility tree, so they are
-       not announced as tabs either. */
-    body.report-first-ux .mode-tab[data-mode="dir"],
-    body.report-first-ux .mode-tab[data-mode="live"],
-    body.report-first-ux .mode-tab[data-mode="guide"],
-    body.report-first-ux .mode-tab[data-mode="ringout"] { display:none; }
-    /* Final nav consolidation (#547, epic e17): flag-on, the tab bar offers
-       exactly two destinations — Analyze (opens the #543 source picker) and
-       History (the #542 full-width Recent list) — so the two remaining legacy
-       tabs fold away too. Same rationale as above: buttons stay in the DOM
-       because simulated .click() routing and the flag-off shell depend on them. */
-    body.report-first-ux .mode-tab[data-mode="recent"],
-    body.report-first-ux .mode-tab[data-mode="reportcard"] { display:none; }
-    /* The two #547 entries are new, flag-only chrome: hidden by default so the
-       flag-off shell is unchanged (same idiom as #analyze-source-picker).
-       Selected by id, not [data-mode=...], so the rule above stays the only
-       display:none on mode-tab data-mode selectors (source-tabs-gate.test.ts
-       asserts every such line is flag-scoped). */
-    #nav-analyze, #nav-history { display:none; }
-    body.report-first-ux #nav-analyze, body.report-first-ux #nav-history { display:inline-flex; }
-    body.simple-mode #nav-analyze, body.simple-mode #nav-history { display:inline-flex; }
     body.not-pro #tab-live > :not(.pro-gate),
     body.not-pro #settings-pane-audio > :not(.pro-gate) { display:none !important; }
     body.not-pro #tab-live .pro-gate,
@@ -1457,7 +1411,7 @@
     .mt-value .unit { color:var(--text-muted); margin-left:3px; }
     .mt-target { font:var(--fw-regular) var(--fs-data-sm)/1 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-muted); white-space:nowrap; }
 
-    /* ── Score-circle expandable metric rows (report-first-ux epic, #540) ── */
+    /* ── Score-circle expandable metric rows ── */
     .metric-rows { display:flex; flex-direction:column; gap:10px; }
     details.metric-row {
       background:var(--surface); border:1px solid var(--border-subtle);
@@ -1491,12 +1445,10 @@
     .metric-detail-row .impact { margin-left:auto; font:var(--fw-medium) 10px/1.2 var(--font-sans); letter-spacing:0.02em; text-transform:uppercase; color:var(--text-tertiary); }
     .metric-extra { margin-top:8px; font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-tertiary); }
 
-    /* ── Single-column workspace (#542, report-first-ux epic) ──
-       Recent / Build Guide / Ring-Out are a list, a checklist and a step
-       wizard — nothing to meter — so the spectrum panel sits empty beside
-       them. body.single-column (set from window.singleColumnState,
-       flag-gated) folds it away and lets the Source panel take the full
-       workspace width. */
+    /* ── Single-column workspace ──
+       Simple-mode History is a list, not a metered workspace, so the spectrum
+       panel sits empty beside it. body.single-column folds it away and lets
+       the Source panel take the full workspace width. */
     body.single-column #spectrum-panel { display:none; }
     body.single-column #source-panel { width:100%; flex:1; border-right:none; }
     body.single-column #live-eq-pane { display:none; }

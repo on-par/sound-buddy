@@ -66,7 +66,7 @@ export default function BuildGuidePanel(): JSX.Element {
 
   /* c8 ignore start -- storage re-read on tab entry, no jsdom in this
      harness; reload-on-every-visit is exercised by
-     tests/e2e/report-first-ux.spec.ts. The state transitions themselves
+     Build Guide e2e coverage. The state transitions themselves
      (setPhase/setProgress) are unit-tested via the handler functions below. */
   useEffect(() => {
     if (appMode !== 'guide') return;
@@ -83,7 +83,7 @@ export default function BuildGuidePanel(): JSX.Element {
   const completeHtml = bo.completeMomentHtml(progress, escapeHtml);
 
   /* c8 ignore start -- icon-injection DOM pass, no jsdom in this harness;
-     exercised end-to-end by tests/e2e/report-first-ux.spec.ts. */
+     exercised end-to-end by Build Guide specs. */
   useEffect(() => {
     if (completeRef.current) getHydrateIcons()(completeRef.current);
   }, [completeHtml]);

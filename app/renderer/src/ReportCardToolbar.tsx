@@ -14,7 +14,6 @@ import { useSpectrumStore } from './stores/spectrumStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useFeedbackDialogStore } from './stores/feedbackDialogStore';
 import { useGradeOwnGuideStore } from './stores/gradeOwnGuideStore';
-import { useAnalyzeSourceStore } from './stores/analyzeSourceStore';
 import { spectrumTransport } from './spectrum-transport';
 import { resolveReportCardChromeSource, reportCardChromeView, getReportCardSource, persistSummary, chooseAndAnalyzeFile } from './report-card-chrome';
 import { iconSvg, buildMetricRows, type ReportCardSource, type GradingPillApi } from './report-card';
@@ -23,27 +22,14 @@ import type { AnalysisPayload } from '@sound-buddy/shared';
 import * as reportExport from './report-export';
 import * as shareCard from './share-card';
 
-// grading.js/analyzeSourceState.js/reportFirstUxState.js stay classic
-// scripts — read via a typed window cast, matching ReportCardIsland.tsx's
-// getGrading()-style pattern.
+// grading.js stays a classic script — read via a typed window cast, matching
+// ReportCardIsland.tsx's getGrading()-style pattern.
 interface GradingApi extends GradingPillApi {
   computeGrade(src: ReportCardSource): string;
   computeScore(src: ReportCardSource): number;
 }
-interface AnalyzeSourceStateApi {
-  isPickerEnabled(reportFirstUxEnabled: boolean): boolean;
-}
-interface ReportFirstUxStateApi {
-  isEnabled(settings: unknown): boolean;
-}
 function getGrading(): GradingApi {
   return (window as unknown as { grading: GradingApi }).grading;
-}
-function getAnalyzeSourceState(): AnalyzeSourceStateApi {
-  return (window as unknown as { analyzeSourceState: AnalyzeSourceStateApi }).analyzeSourceState;
-}
-function getReportFirstUxState(): ReportFirstUxStateApi {
-  return (window as unknown as { reportFirstUxState: ReportFirstUxStateApi }).reportFirstUxState;
 }
 // Share Image (#265): a one-click, purpose-built 1200×630 PNG for social
 // posting — distinct from Export PDF (window.print()). Model → draw ops →
@@ -149,14 +135,12 @@ export default function ReportCardToolbar(): JSX.Element {
     liveSource: s.liveSource,
     historySummary: s.historySummary,
   }));
-  const settings = useStoreShallow(useSettingsStore, (s) => s.settings);
-
   const view = reportCardChromeView({ currentAnalysis, liveSource, historySummary, status });
 
   /* c8 ignore start -- effect wiring only; applyStatusTransition's own logic
      is exhaustively unit-tested above. No jsdom in this harness to run a
      real effect — exercised end-to-end by
-     tests/e2e/report-card-basics.spec.ts and report-first-ux.spec.ts. */
+     tests/e2e/report-card-basics.spec.ts. */
   useEffect(() => {
     applyStatusTransition(status, currentAnalysis, liveSource);
     // Deliberately keyed on `status` alone, matching syncReportCardChrome's
@@ -201,15 +185,7 @@ export default function ReportCardToolbar(): JSX.Element {
           disabled={view.loadDisabled}
           dangerouslySetInnerHTML={{ __html: iconSvg('file-audio', 16) + 'Load a file…' }}
           /* c8 ignore next -- click dispatch, no jsdom */
-          onClick={() => {
-            if (getAnalyzeSourceState().isPickerEnabled(getReportFirstUxState().isEnabled(settings))) {
-              // TD-001 slice 6h (#711): the picker is analyzeSourceStore-owned
-              // now — open() replaces the deleted window.analyzeSourcePicker bridge.
-              useAnalyzeSourceStore.getState().open();
-            } else {
-              void chooseAndAnalyzeFile();
-            }
-          }}
+          onClick={() => { void chooseAndAnalyzeFile(); }}
         />
         <button
           type="button"

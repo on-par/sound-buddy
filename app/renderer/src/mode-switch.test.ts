@@ -44,7 +44,6 @@ let elements: Record<string, FakeElement>;
 let tabContentEls: FakeElement[];
 let bodyClassList: ReturnType<typeof makeClassList>;
 let isSingleColumn: ReturnType<typeof vi.fn>;
-let isEnabled: ReturnType<typeof vi.fn>;
 let mock: ReturnType<typeof createMockSoundBuddy>;
 
 // zustand's `set` copies the current state's own properties (including a
@@ -66,7 +65,6 @@ beforeEach(() => {
   tabContentEls = [makeFakeElement(), makeFakeElement()];
   bodyClassList = makeClassList();
   isSingleColumn = vi.fn(() => false);
-  isEnabled = vi.fn(() => false);
   mock = createMockSoundBuddy();
 
   (globalThis as { document?: unknown }).document = {
@@ -77,7 +75,6 @@ beforeEach(() => {
   (globalThis as { window?: unknown }).window = {
     soundBuddy: mock.api,
     singleColumnState: { isSingleColumn },
-    reportFirstUxState: { isEnabled },
     liveCaptureRuntime: {
       beforeStartCapture: () => ({ ok: true }),
       onCaptureStarting: vi.fn(),
@@ -100,8 +97,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
     idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null,
     usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
-    crashReportingEnabled: false, liveAdjustmentsEnabled: false,
-    reportFirstUxEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false,
+    crashReportingEnabled: false, liveAdjustmentsEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false,
     weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
     measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
@@ -120,16 +116,12 @@ describe('resolveModeSwitch', () => {
     expect(isWorkspaceMode("soundcheck")).toBe(false);
   });
 
-  it('opens the source picker for "analyze"', () => {
-    expect(resolveModeSwitch('analyze', 'reportcard')).toEqual({ type: 'openPicker' });
+  it('opens the file picker for "analyze"', () => {
+    expect(resolveModeSwitch('analyze', 'reportcard')).toEqual({ type: 'chooseFile' });
   });
 
-  it('bypasses the source picker for "analyze" in Simple mode', () => {
+  it('opens the file picker for "analyze" in Simple mode', () => {
     expect(resolveModeSwitch('analyze', 'reportcard', { simpleMode: true })).toEqual({ type: 'chooseFile' });
-  });
-
-  it('keeps opening the source picker when the Simple-mode option is absent', () => {
-    expect(resolveModeSwitch('analyze', 'reportcard')).toEqual({ type: 'openPicker' });
   });
 
   it('redirects "history" to "recent"', () => {
@@ -182,16 +174,14 @@ describe('applySpectrumForMode', () => {
 });
 
 describe('applySingleColumnSync', () => {
-  it('reads the report-first-ux flag and current mode through to singleColumnState', () => {
-    useSettingsStore.setState({ settings: settings({ reportFirstUxEnabled: true }) });
-    useLiveCaptureStore.setState({ appMode: 'guide' });
-    isEnabled.mockReturnValue(true);
+  it('reads Simple mode and current mode through to singleColumnState', () => {
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false }) });
+    useLiveCaptureStore.setState({ appMode: 'recent' });
     isSingleColumn.mockReturnValue(true);
 
     applySingleColumnSync();
 
-    expect(isEnabled).toHaveBeenCalledWith(settings({ reportFirstUxEnabled: true }));
-    expect(isSingleColumn).toHaveBeenCalledWith(true, 'guide');
+    expect(isSingleColumn).toHaveBeenCalledWith(true, 'recent');
     expect(bodyClassList.contains('single-column')).toBe(true);
   });
 

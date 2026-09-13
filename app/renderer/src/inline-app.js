@@ -188,13 +188,8 @@ window.seekPlayback = (t) => transport.seek(t);
 // window.modeSwitch for the two call sites below that aren't inside
 // switchMode() itself.
 
-// #543 (epic e17): the unified "Analyze" source picker is React-owned now
-// (TD-001 slice 6h, #711) — AnalyzeSourcePicker.tsx renders the overlay from
-// analyzeSourceStore and routes choices through analyzeSourceState.targetModeFor
-// / switchMode / report-card-chrome.ts#chooseAndAnalyzeFile (TD-001 slice 6k,
-// #714). The static markup and the window.analyzeSourcePicker open/close
-// bridge are gone; ModeTabs.tsx and ReportCardToolbar.tsx open it via
-// useAnalyzeSourceStore.getState().open().
+// The static Analyze-source picker markup and bridge are gone; Simple-mode
+// Analyze and the Report Card Load button both call chooseAndAnalyzeFile.
 
 // Mode tabs (#547 and earlier): the click listener, currentMode var, and
 // syncSpectrumForMode are gone — ModeTabs.tsx (portaled onto #mode-tabs) now
@@ -424,8 +419,8 @@ sb.onMenuOpenFile((fp) => {
 // (#rc-empty only renders when no card is present) and Clear is disabled (no file to
 // release). chooseAndAnalyzeFile is gone — report-card-chrome.ts's export
 // (TD-001 slice 6k, #714) is imported directly by ReportCardToolbar.tsx's
-// Load button and AnalyzeSourcePicker.tsx's file choice, replacing both
-// components' independent window.chooseAndAnalyzeFile reads.
+// Load button and Simple-mode Analyze, replacing independent
+// window.chooseAndAnalyzeFile reads.
 
 /* ══ License (#54) ══ */
 // renderLicenseUi/renderTrialBanner/trialDismissed/dismissTrial + the
@@ -481,13 +476,8 @@ function aiEl(id) { return document.getElementById(id); }
 
 (() => {
   aiEl('settings-btn').addEventListener('click', () => setStore.getState().openDialog());
-  // Report-first-ux epic gate (#538): the body class is the branch point the
-  // e17 slices mount against. Absent by default — with the flag off the
-  // existing tab bar and 3-column workspace render exactly as before.
-  setStore.subscribe((s) => document.body.classList.toggle('report-first-ux', window.reportFirstUxState.isEnabled(s.settings)));
-  // #542: re-fold the workspace to a single column whenever the flag (or
-  // mode) changes, so toggling it in Settings while on Recent reflows
-  // immediately.
+  // Re-fold the workspace when settings change; Simple-mode History uses the
+  // Recent workspace as a full-width single-column surface.
   setStore.subscribe(() => window.modeSwitch.applySingleColumnSync());
   // Experimental live adjustments gate (#522): re-sync the Live pane on an
   // actual flip so the area appears/disappears without a tab switch.

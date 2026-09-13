@@ -21,8 +21,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
     idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null,
     usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
-    crashReportingEnabled: false, liveAdjustmentsEnabled: false,
-    reportFirstUxEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '',
+    crashReportingEnabled: false, liveAdjustmentsEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '',
     weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
     measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
     soundcheckBuses: [], splCalibrationOffsetDb: null, lastAppMode: '',
@@ -53,9 +52,4 @@ describe('syncSimpleModeBodyClass', () => {
     expect(classList.contains('simple-mode')).toBe(false);
   });
 
-  it('removes simple-mode when report-first-ux has precedence', () => {
-    classList.toggle('simple-mode', true);
-    syncSimpleModeBodyClass(settings({ advancedFeaturesEnabled: false, reportFirstUxEnabled: true }));
-    expect(classList.contains('simple-mode')).toBe(false);
-  });
 });

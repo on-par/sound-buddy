@@ -22,8 +22,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
     idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null,
     usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
-    crashReportingEnabled: false, liveAdjustmentsEnabled: false,
-    reportFirstUxEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '',
+    crashReportingEnabled: false, liveAdjustmentsEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '',
     weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
     measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
     soundcheckBuses: [], splCalibrationOffsetDb: null, lastAppMode: '',
@@ -102,9 +101,4 @@ describe('ModeTabs', () => {
     expect(html).toContain('data-mode="reportcard"');
   });
 
-  it('does not hide tabs when report-first-ux has precedence', () => {
-    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false, reportFirstUxEnabled: true }) });
-    const html = renderMarkup();
-    expect(html).not.toContain('hidden=""');
-  });
 });

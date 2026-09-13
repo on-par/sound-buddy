@@ -283,7 +283,6 @@ describe('installStoreBridge', () => {
     inputInstrumentProfiles: {},
     crashReportingEnabled: false,
     liveAdjustmentsEnabled: false,
-    reportFirstUxEnabled: false,
     advancedFeaturesEnabled: true,
     shareChurchName: '',
     weeklyReminderEnabled: false,
