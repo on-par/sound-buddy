@@ -333,6 +333,27 @@ export const EQ_COLS: BarColumn[] = BAND_META.map((b, i) => {
   return { key: b.key, label: b.label, short: b.short, color: b.color, range: b.range, left: (i * w + EQ_GAP).toFixed(3), width: (w - 2 * EQ_GAP).toFixed(3), center: (i * w + w / 2).toFixed(3) };
 });
 
+export const ANALYZER_VB_H = 280;
+export const ANALYZER_GAP = 0.5;
+export const ANALYZER_DB_TICKS = [-60, -48, -36, -24, -12, -6];
+export function analyzerLogPos(f: number): number {
+  return (Math.log10(f) - Math.log10(CURVE_FMIN)) / (Math.log10(CURVE_FMAX) - Math.log10(CURVE_FMIN)) * 100;
+}
+export const ANALYZER_INSET = (() => {
+  const { w, ml, mr, mt, mb } = CURVE_VB;
+  return `left:${(ml / w * 100).toFixed(2)}%;right:${(mr / w * 100).toFixed(2)}%;top:${(mt / ANALYZER_VB_H * 100).toFixed(2)}%;bottom:${(mb / ANALYZER_VB_H * 100).toFixed(2)}%`;
+})();
+export const ANALYZER_LABEL_MARGIN = `margin-left:${(CURVE_VB.ml / CURVE_VB.w * 100).toFixed(2)}%;margin-right:${(CURVE_VB.mr / CURVE_VB.w * 100).toFixed(2)}%`;
+export const ANALYZER_BANDS: BarColumn[] = BAND_META.map((b) => {
+  const bx0 = analyzerLogPos(b.lo) + ANALYZER_GAP;
+  const bx1 = analyzerLogPos(b.hi) - ANALYZER_GAP;
+  const center = analyzerLogPos(Math.sqrt(b.lo * b.hi));
+  return {
+    key: b.key, label: b.label, short: b.short, color: b.color, range: b.range,
+    left: bx0.toFixed(2), width: (bx1 - bx0).toFixed(2), center: center.toFixed(2),
+  };
+});
+
 // Bucket a fine {freqs, db} curve into 7 BAND_META band levels (mean dB of
 // samples whose freq falls within [lo, hi]) — for contexts that only carry
 // the full-resolution curve (scrub frames, the level-matched target) rather
@@ -380,6 +401,97 @@ export function eqTargetLineSVG(targetBandDb: number[]): string {
   return `<svg class="eq-target-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
     <path class="sb-target-line" style="vector-effect:non-scaling-stroke" d="M${pts.join(' L')}"/>
   </svg>`;
+}
+
+export interface AnalyzerStyleOpts {
+  curve?: SpectrumCurve | null;
+  centroid?: number;
+  bandDb: number[];
+  targetDb?: number[] | null;
+  uid?: string;
+  compact?: boolean;
+  className?: string;
+}
+
+export function bandCurveFromDb(db: number[], baseDb = 0): SpectrumCurve {
+  return {
+    freqs: BAND_META.map((b) => Math.sqrt(b.lo * b.hi)),
+    db: BAND_META.map((_, i) => {
+      const v = db[i];
+      return Number.isFinite(v) ? baseDb + v : -120;
+    }),
+  };
+}
+
+function analyzerGridSVG(uid: string, compact = false): string {
+  const { w, ml, mr, mt, mb } = CURVE_VB;
+  const h = compact ? 250 : ANALYZER_VB_H;
+  const x0 = ml, x1 = w - mr, y0 = mt, y1 = h - mb;
+  const logMin = Math.log10(CURVE_FMIN), logSpan = Math.log10(CURVE_FMAX) - logMin;
+  const xForFreq = (f: number) => x0 + (Math.log10(Math.max(CURVE_FMIN, Math.min(CURVE_FMAX, f))) - logMin) / logSpan * (x1 - x0);
+  const yForDb = (db: number) => y1 - (db - DB_MIN) / (DB_MAX - DB_MIN) * (y1 - y0);
+  const tints = BAND_META.map((b) => {
+    const bx0 = xForFreq(b.lo), bx1 = xForFreq(b.hi);
+    return `<rect class="sb-band-tint" x="${bx0.toFixed(1)}" y="${y0}" width="${(bx1 - bx0).toFixed(1)}" height="${y1 - y0}" fill="${b.color}"/>`;
+  }).join('');
+  const yGrid = GRID.map((v) => {
+    const y = yForDb(v).toFixed(1);
+    return `<line class="sb-grid-line major" x1="${x0}" y1="${y}" x2="${x1}" y2="${y}"/>`;
+  }).join('');
+  const yMinor = GRID_MINOR.map((v) => {
+    const y = yForDb(v).toFixed(1);
+    return `<line class="sb-grid-line minor" x1="${x0}" y1="${y}" x2="${x1}" y2="${y}"/>`;
+  }).join('');
+  const xGrid = X_TICKS.map((t) => {
+    const x = xForFreq(t.f).toFixed(1);
+    return `<line class="sb-grid-line major" x1="${x}" y1="${y0}" x2="${x}" y2="${y1}"/>`
+      + (compact ? '' : `<text class="sb-x-label" x="${x}" y="${y1 + 22}">${t.label}</text>`);
+  }).join('');
+  const xMinor = X_MINOR_TICKS.map((f) => {
+    const x = xForFreq(f).toFixed(1);
+    return `<line class="sb-grid-line minor" x1="${x}" y1="${y0}" x2="${x}" y2="${y1}"/>`;
+  }).join('');
+  return `<svg class="sb-spectrum-curve sb-analyzer-grid-only" viewBox="0 0 ${w} ${h}" role="img" aria-label="Frequency analyzer grid" data-analyzer-uid="${escapeHtml(uid)}">
+    ${tints}${yMinor}${xMinor}${yGrid}${xGrid}
+    <line class="sb-axis-base" x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}"/>
+  </svg>`;
+}
+
+function analyzerDbScaleHTML(): string {
+  return `<div class="sb-analyzer-db-scale" style="${ANALYZER_INSET}" aria-label="dBFS scale">`
+    + ANALYZER_DB_TICKS.map((db) =>
+      `<span class="sb-analyzer-db-pill" style="top:${(100 - toPct(db)).toFixed(2)}%">${db}</span>`).join('')
+    + `</div>`;
+}
+
+export function analyzerStyleHTML(opts: AnalyzerStyleOpts): string {
+  const compact = !!opts.compact;
+  const bandDb = BAND_META.map((_, i) => Number.isFinite(opts.bandDb[i]) ? opts.bandDb[i] : -120);
+  const curve = opts.curve && hasUsableCurve({ curve: opts.curve }) ? opts.curve : null;
+  const loudestIdx = veqLoudestIdx(bandDb);
+  const { bars, labels } = veqBarsAndLabelsHTML(ANALYZER_BANDS, bandDb, loudestIdx);
+  const targetDb = opts.targetDb && Array.isArray(opts.targetDb) && opts.targetDb.length >= (curve?.db.length ?? 0)
+    ? opts.targetDb
+    : null;
+  const uid = opts.uid ? opts.uid.replace(/[^a-zA-Z0-9_-]/g, '') : `analyzer-${bandDb.length}-${Math.round((bandDb[0] ?? 0) * 10)}`;
+  const svg = curve
+    ? spectrumCurveSVG(curve, opts.centroid, targetDb, {
+      uid,
+      vbH: compact ? 250 : ANALYZER_VB_H,
+      yMin: compact ? undefined : DB_MIN,
+      yMax: compact ? undefined : DB_MAX,
+    })
+    : analyzerGridSVG(uid, compact);
+  const cls = ['sb-analyzer', compact ? 'sb-analyzer-compact' : '', curve ? 'sb-analyzer-curve' : 'sb-analyzer-band-only', opts.className || '']
+    .filter(Boolean).join(' ');
+  return `<div class="${cls}" data-eq-style="live-analyzer">
+    <div class="sb-analyzer-plot">
+      <div class="sb-analyzer-svg">${svg}</div>
+      <div class="sb-analyzer-bars veq-bars" style="${ANALYZER_INSET}">${bars}</div>
+      ${compact ? '' : analyzerDbScaleHTML()}
+    </div>
+    <div class="sb-analyzer-labels veq-labels" style="${ANALYZER_LABEL_MARGIN}">${labels}</div>
+  </div>`;
 }
 /* ── Time-sampled spectrum: spectrogram heatmap + scrubber (PRD 03) ──
  * Extracted verbatim from inline-app.js's closure (TD-001 slice 4, #422) so
@@ -442,24 +554,17 @@ export function heatmapSVG(frames: SpectrumFrame[], opts: HeatmapSVGOpts = {}): 
 // Compact sparkline of one frame's dB grid, for the report-card thumbnails.
 // (The analysis view uses the full PRD 02 spectrumCurveSVG; these stay small.)
 export function miniCurveSVG(db: number[]): string {
-  const VW = 600, VH = 150, padT = 8, padB = 10, ih = VH - padT - padB;
   const n = db.length;
-  const xf = (i: number) => (n <= 1 ? VW / 2 : (i / (n - 1)) * VW);
-  const yf = (v: number) => padT + (1 - normHeat(v)) * ih;
-  let line = '', area = `M0 ${padT + ih}`;
-  for (let i = 0; i < n; i++) {
-    const X = xf(i).toFixed(1), Y = yf(db[i]).toFixed(1);
-    line += (i ? 'L' : 'M') + X + ' ' + Y + ' ';
-    area += ` L${X} ${Y}`;
-  }
-  area += ` L${VW} ${padT + ih} Z`;
-  const refs = [0.25, 0.5, 0.75].map((t) =>
-    `<line class="sb-grid-line minor" x1="0" y1="${(padT + ih * t).toFixed(1)}" x2="${VW}" y2="${(padT + ih * t).toFixed(1)}"/>`).join('');
-  return `<svg viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="none" role="img" aria-label="Frame spectral curve">
-    ${refs}
-    <path d="${area}" fill="var(--gold-tint)" stroke="none"/>
-    <path d="${line}" fill="none" stroke="var(--gold-500)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
-  </svg>`;
+  const freqs = Array.from({ length: n }, (_, i) =>
+    CURVE_FMIN * Math.pow(CURVE_FMAX / CURVE_FMIN, n <= 1 ? 0.5 : i / (n - 1)));
+  const curve = { freqs, db: db.map((v) => Number.isFinite(v) ? v : -120) };
+  return analyzerStyleHTML({
+    curve,
+    bandDb: bandLevelsFromCurve(curve),
+    compact: true,
+    uid: `mini-${n}-${Math.round((db[0] ?? 0) * 10)}`,
+    className: 'sb-analyzer-frame',
+  });
 }
 
 // m:ss.d duration formatter shared by the frame time axis, the report-card
@@ -505,17 +610,12 @@ export function eqCentroidHTML(spectrum: SpectrumData): string {
 // bandDb: 7 levels in BAND_META order. targetDb (optional): same shape,
 // overlaid as the dashed target line.
 export function eqBarsHTML(bandDb: number[], targetDb?: number[]): string {
-  const loudestIdx = veqLoudestIdx(bandDb);
-  const { bars, labels } = veqBarsAndLabelsHTML(EQ_COLS, bandDb, loudestIdx);
-  const grid = GRID.map((g) => `<div class="eq-grid major" style="bottom:${toPct(g)}%"></div>`).join('')
-    + GRID_MINOR.map((g) => `<div class="eq-grid minor" style="bottom:${toPct(g)}%"></div>`).join('');
-  const yAxis = GRID.map((g) => `<span style="bottom:${toPct(g)}%">${g}</span>`).join('');
-  const targetSvg = Array.isArray(targetDb) && targetDb.length === EQ_COLS.length ? eqTargetLineSVG(targetDb) : '';
-  return `<div class="eq-yaxis">${yAxis}</div>
-    <div class="eq-main">
-      <div class="eq-plot">${grid}<div class="veq-bars">${bars}</div>${targetSvg}</div>
-      <div class="veq-labels">${labels}</div>
-    </div>`;
+  return analyzerStyleHTML({
+    bandDb,
+    targetDb: Array.isArray(targetDb) ? bandCurveFromDb(targetDb).db : null,
+    uid: 'band-meter',
+    className: 'sb-analyzer-spectrum',
+  });
 }
 
 // m:ss clock readout shared by the spectrogram scrubber's elapsed/total
@@ -591,15 +691,27 @@ export function spectrumChartModel(opts: {
   let legendHTML = '';
   if (showTarget && curve && idealProfile) {
     const target = levelMatchedTarget(curve, idealProfile);
-    const targetBandDb = bandLevelsFromCurve({ freqs: curve.freqs, db: target });
     // compareToProfile only reads profile.dbOffsets at runtime; IdealProfileLike
     // intentionally narrows the audio-engine IdealProfile shape to the fields
     // levelMatchedTarget/spectrumLegendHTML actually need.
     const cmp = compareToProfile(curve, idealProfile as IdealProfile);
-    chartHTML = eqBarsHTML(measuredBandDb, targetBandDb);
+    chartHTML = analyzerStyleHTML({
+      curve,
+      centroid: spectrum.spectralCentroid,
+      bandDb: measuredBandDb,
+      targetDb: target,
+      uid: selectedFrame != null ? `spectrum-frame-${selectedFrame}` : 'spectrum-full',
+      className: 'sb-analyzer-spectrum',
+    });
     legendHTML = spectrumLegendHTML(idealProfile, cmp, isAutoProfile);
   } else {
-    chartHTML = eqBarsHTML(measuredBandDb);
+    chartHTML = analyzerStyleHTML({
+      curve: curveOk ? curve : null,
+      centroid: spectrum.spectralCentroid,
+      bandDb: measuredBandDb,
+      uid: selectedFrame != null ? `spectrum-frame-${selectedFrame}` : 'spectrum-bands',
+      className: 'sb-analyzer-spectrum',
+    });
   }
   const centroidHTML = eqCentroidHTML(spectrum);
   return { chartHTML, legendHTML, centroidHTML };
@@ -616,12 +728,18 @@ export function liveCurveComparisonModel(opts: {
   const { curve, targetProfile } = opts;
   const measuredBandDb = bandLevelsFromCurve(curve);
   const target = levelMatchedTarget(curve, targetProfile);
-  const targetBandDb = bandLevelsFromCurve({ freqs: curve.freqs, db: target });
   const canScore = curve.db.length >= 8 && targetProfile.dbOffsets.length === curve.db.length;
   const cmp = canScore ? compareToProfile(curve, targetProfile as IdealProfile) : null;
   return {
     kind: canScore ? 'curve' : 'bands',
-    chartHTML: eqBarsHTML(measuredBandDb, targetBandDb),
+    chartHTML: analyzerStyleHTML({
+      curve,
+      bandDb: measuredBandDb,
+      targetDb: target,
+      compact: true,
+      uid: canScore ? 'curve-live-full' : 'curve-live-bands',
+      className: 'sb-analyzer-live-compare',
+    }),
     legendHTML: spectrumLegendHTML(targetProfile, cmp, false),
     note: canScore ? '' : 'Using 7-band live meters; match score appears when analyzer data is available.',
     matchScore: cmp ? cmp.matchScore : null,

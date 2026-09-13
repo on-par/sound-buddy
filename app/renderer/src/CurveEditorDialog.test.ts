@@ -173,8 +173,9 @@ describe('CurveEditorDialog', () => {
     expect(initial).toContain('Live room vs edited target');
     expect(initial).toContain('Target · Unsaved curve');
     expect(initial).toContain('Match');
-    expect(initial).toContain('eq-target-svg');
-    expect(edited).toContain('eq-target-svg');
+    expect(initial).toContain('data-eq-style="live-analyzer"');
+    expect(initial).toContain('sb-target-line');
+    expect(edited).toContain('sb-target-line');
     expect(edited).not.toBe(initial);
   });
 
@@ -195,7 +196,8 @@ describe('CurveEditorDialog', () => {
 
     const html = renderMarkup();
 
-    expect(html).toContain('eq-target-svg');
+    expect(html).toContain('data-eq-style="live-analyzer"');
+    expect(html).toContain('sb-target-line');
     expect(html).toContain('7-band live meters');
     expect(html).not.toContain('Match');
   });

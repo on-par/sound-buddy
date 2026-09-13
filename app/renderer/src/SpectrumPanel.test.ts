@@ -75,7 +75,9 @@ describe('SpectrumPanel', () => {
 
     expect(html).toContain('id="spectrum-chart"');
     expect(html).toContain('veq-bar');
-    expect(html).not.toContain('sb-spectrum-curve');
+    expect(html).toContain('sb-analyzer-band-only');
+    expect(html).toContain('sb-analyzer-grid-only');
+    expect(html).not.toContain('sb-curve-line');
   });
 
   it('renders the curve + target overlay when spectrumData has a usable curve and an ideal profile is set', () => {

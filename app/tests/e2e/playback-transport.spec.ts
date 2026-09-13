@@ -102,7 +102,7 @@ test.describe('playback transport (#180)', () => {
       .evaluateAll((els) => els.map((el) => (el as HTMLElement).style.height));
 
     await expect(readout).toHaveText('Whole-file average');
-    await expect(window.locator('#spectrum-chart .eq-target-svg')).toBeVisible();
+    await expect(window.locator('#spectrum-chart .sb-target-line')).toBeVisible();
     const idleHeights = await bars();
 
     // Play — the bars start animating against the (still-visible, static)
@@ -111,7 +111,7 @@ test.describe('playback transport (#180)', () => {
     await playBtn.click();
     await expect(playBtn).toHaveClass(/playing/);
     await expect(readout).toContainText('Window avg', { timeout: 2000 });
-    await expect(window.locator('#spectrum-chart .eq-target-svg')).toBeVisible();
+    await expect(window.locator('#spectrum-chart .sb-target-line')).toBeVisible();
 
     // At least one bar height changed from the whole-file average — the
     // real-time per-frame values are actually driving the bars, not a no-op.

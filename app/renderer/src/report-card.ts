@@ -22,6 +22,7 @@ import { evaluateRules, gradeSymptoms, type GradeSymptom } from '@sound-buddy/au
 import {
   escapeHtml, toPct, DIM_DB, HOT_DB, GRID, BAND_META,
   heatmapSVG, miniCurveSVG, fmtDur, classLabel, pickRepresentativeFrames,
+  analyzerStyleHTML, bandCurveFromDb, bandDbFromSpectrum,
   type SpectrumFrame,
 } from './spectrum-display';
 
@@ -215,19 +216,16 @@ export function fmtDev(d: number): string {
   return (d >= 0 ? '+' : '') + d.toFixed(1) + ' dB';
 }
 export function deviationMiniCurve(dev: number[]): string {
-  const W = 700, H = 64, padL = 4, padT = 4;
-  const plotW = W - padL * 2, mid = H / 2;
-  const maxAbs = Math.max(3, ...dev.map((d) => Math.abs(d)));
-  const bw = plotW / dev.length;
-  const bars = dev.map((d, i) => {
-    const x = padL + i * bw;
-    const h = Math.abs(d) / maxAbs * (mid - padT);
-    const y = d >= 0 ? mid - h : mid;
-    const cls = d >= 0 ? 'devbar-over' : 'devbar-under';
-    return `<rect class="${cls}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(1, bw - 1).toFixed(1)}" height="${Math.max(0.5, h).toFixed(1)}"/>`;
-  }).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Per-frequency deviation from the ideal target">
-    <line class="zero" x1="${padL}" y1="${mid}" x2="${padL + plotW}" y2="${mid}"/>${bars}</svg>`;
+  const measured = dev.map((d) => -36 + (Number.isFinite(d) ? d : 0));
+  const target = BAND_META.map(() => -36);
+  return analyzerStyleHTML({
+    curve: bandCurveFromDb(measured),
+    bandDb: measured,
+    targetDb: target,
+    compact: true,
+    uid: 'profile-match',
+    className: 'sb-analyzer-profile-match',
+  });
 }
 
 // The string-building body of the former renderProfileMatch — `isAuto`
@@ -664,15 +662,21 @@ export interface BandDiffApi {
 }
 
 export function bandBreakdownHTML(bands: Record<string, number>, g: BandDiffApi): string {
-  return BAND_META.map((b) => {
+  const analyzer = analyzerStyleHTML({
+    bandDb: bandDbFromSpectrum({ bands }),
+    uid: 'rc-band-breakdown',
+    className: 'sb-analyzer-band-breakdown',
+  });
+  const verdicts = BAND_META.map((b) => {
     const db = bands[b.key];
     const diff = g.bandDiffFromOthers(bands, b.key);
     let vc: 'ok' | 'hot' | 'quiet' = 'ok';
     let vt = 'Balanced';
     if (diff > g.CONFIG.bandBalance.hotDiff) { vc = 'hot'; vt = 'Too Hot'; }
     else if (diff < g.CONFIG.bandBalance.quietDiff) { vc = 'quiet'; vt = 'Too Quiet'; }
-    return `<div class="rc-band-row">${bandMeterHTML(b.label, b.range, db, { colorBy: 'level' })}<span class="rc-band-verdict ${vc}">${vt}</span></div>`;
+    return `<span class="rc-band-verdict ${vc}" data-band="${b.key}">${b.short} · ${vt} · ${fmt(db)}</span>`;
   }).join('');
+  return `${analyzer}<div class="rc-band-verdicts">${verdicts}</div>`;
 }
 
 /* ── "Spectrum Over Time" report-card section ──
