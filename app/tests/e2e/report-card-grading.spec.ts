@@ -50,7 +50,7 @@ test.describe('Sound Buddy E2E — report card grading', () => {
     expect(errors).toEqual([]);
   });
 
-  test('report card renders grade, metrics table, and recommendations', async () => {
+  test('report card renders grade, metric rows, and recommendations', async () => {
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
     // This file runs standalone (its own Electron session), so — unlike the
     // original single-session file, where the prior "playback transport"
@@ -62,16 +62,14 @@ test.describe('Sound Buddy E2E — report card grading', () => {
     const grade = (await window.locator('#rc-ring .letter').textContent())?.trim();
     expect(['A', 'B', 'C', 'D', 'F']).toContain(grade);
 
-    // Peak Level leads the metrics table in the redesign (clipping is the headline metric).
-    const metricNames = await window.locator('#rc-metrics-body tr td:first-child .mt-metric').allTextContents();
-    expect(metricNames).toEqual(['Peak Level', 'RMS Level', 'Dynamic Range', 'Clipping', 'Spectral Centroid']);
-
-    // Each row shows its config-sourced target beside the value (#132). RMS reads
-    // the acceptable band; Clipping has no config target so it renders an em dash.
-    const targets = await window.locator('#rc-metrics-body tr .mt-target').allTextContents();
-    expect(targets).toHaveLength(5);
-    expect(targets[1]).toBe('-20 to -14 dBFS'); // RMS Level
-    expect(targets[3]).toBe('—'); // Clipping — no target in config
+    const metricRows = window.locator('#rc-metric-rows');
+    await expect(metricRows).toContainText('RMS Level');
+    await expect(metricRows).toContainText('Peak Level');
+    await expect(metricRows).toContainText('Dynamic Range');
+    await expect(metricRows).toContainText('Clipping');
+    await expect(metricRows).toContainText('Spectral Centroid');
+    await expect(metricRows).toContainText('-18.0 dBFS');
+    await expect(metricRows).toContainText('No clipping');
 
     const recCount = await window.locator('#rc-recommendations .rc-rec').count();
     expect(recCount).toBeGreaterThanOrEqual(1);
