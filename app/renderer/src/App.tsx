@@ -101,6 +101,7 @@ import { getSessionTimelineScale } from './session-timeline-scale';
 import { registerLiveFrameHook, isLiveFrameLoopActive } from './live-frame-hooks';
 import { sessionTimelineMarks } from './timeline-state';
 import { installTimelineScaleTestHook } from './timeline-scale-harness';
+import { installLiveFrameProbeTestHook } from './live-frame-probe';
 import { sessionClipSelection } from './clip-selection';
 import { sessionTimeSelection } from './time-selection';
 import { sessionLoopRegion } from './loopBrace.render';
@@ -317,10 +318,14 @@ export default function App() {
     void useOnboardingStore.getState().init();
     // Renderer test hooks (#1294) — window.__soundBuddyTimelineScale exists only when the
     // app was launched with SOUND_BUDDY_TEST_HOOKS=1. catch → false so a build whose preload
-    // predates this method boots normally with no hook.
+    // predates this method boots normally with no hook. #1414 reuses the same gate for
+    // window.__soundBuddyFrameProbe rather than adding a second IPC round trip.
     void getSoundBuddy().areTestHooksEnabled()
       .catch(() => false)
-      .then((enabled) => { installTimelineScaleTestHook(window as unknown as Record<string, unknown>, enabled); });
+      .then((enabled) => {
+        installTimelineScaleTestHook(window as unknown as Record<string, unknown>, enabled);
+        installLiveFrameProbeTestHook(window as unknown as Record<string, unknown>, enabled);
+      });
     // Skill-tree onboarding (#382): hydrates progress after BOOT_SCRIPTS so
     // window.skillTreeState exists — same ordering guarantee as onboarding.
     useSkillTreeStore.getState().init();
