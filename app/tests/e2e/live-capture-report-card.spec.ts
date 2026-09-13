@@ -151,7 +151,7 @@ test.describe('Live-capture session report card (#261)', () => {
     // them (not just the capped rolling buffer's tail) fed the card.
     await expect(window.locator('#rc-filename')).toContainText('(12 windows)');
     // Mean of two -40s and ten -18s across all 12 windows = -21.7 (rounded).
-    await expect(window.locator('#rc-metrics-body')).toContainText('-21.7');
+    await expect(window.locator('#rc-metric-rows')).toContainText('-21.7');
   });
 
   test('a capture session with only 1 window tick degrades to "not enough data" (no crash, no save)', async () => {

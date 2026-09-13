@@ -44,7 +44,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   inputInstrumentProfiles: {},
   crashReportingEnabled: false,
   liveAdjustmentsEnabled: false,
-  reportFirstUxEnabled: false,
+  advancedFeaturesEnabled: true,
   shareChurchName: '',
   weeklyReminderEnabled: false,
   weeklyReminderServiceDay: 0,
@@ -53,7 +53,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   gradingProfile: 'casual',
   consoleNetworkConsentGranted: false,
   soundcheckBuses: [],
-  splCalibrationOffsetDb: null,
+  splCalibrationOffsetDb: null, lastAppMode: '',
 };
 
 const DEFAULT_LICENSE_STATE: LicenseState = { tier: 'free', status: 'none' };

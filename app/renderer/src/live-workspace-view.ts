@@ -66,6 +66,8 @@ import {
   TIMELINE_A11Y_CLIP_SELECTION_CLASS,
   TIMELINE_A11Y_TIME_SELECTION_CLASS,
 } from './timeline-accessibility-labels';
+import { mainsHumBadgeText, mainsHumWarningText, type MainsHumFrequencyHz, type MainsHumTracker, type MainsHumWarningMap } from './mains-hum-warnings';
+import { trackChannelPickerView, trackChannelPickerHTML, type TrackChannelPickerView } from './track-channel-picker';
 
 export type { DawShellRuntime } from './daw-shell-runtime';
 
@@ -93,6 +95,8 @@ export interface LiveWorkspaceViewState {
   liveWindows: LiveEvent[];
   settings: AppSettings | null;
   lapCoaching: unknown;
+  /** #1392 per-strip mains-hum warnings, keyed by strip index. */
+  mainsHumWarnings: MainsHumWarningMap;
   /** Seeded elapsed time (ms) for the DAW shell's transport readout — read
    *  imperatively from the 6j playhead bridge at render time so a mid-capture
    *  rebuild never flashes 0:00 (#518). */
@@ -113,6 +117,11 @@ export interface LiveWorkspaceViewState {
   /** The Session toolbar's follow-scroll state (#1286). null for callers that do
    *  not own it - dawShellHTML then falls back to the default (following) model. */
   timelineFollow: TimelineFollowView | null;
+  /** #1404: the index of the track whose channel-routing picker is open on the
+   *  head row, or null when every picker is closed. React state, like
+   *  sessionRoutingDrawerOpen above — survives a board rebuild so an open
+   *  popover is not destroyed by the next store write. */
+  channelPickerIndex: number | null;
 }
 
 // The slice of liveCaptureStore's state that liveWorkspaceViewState() reads —
@@ -139,6 +148,7 @@ export interface LiveWorkspaceStoreSlice {
   lastLiveChannels: LiveMeterChannel[] | null;
   liveWindows: LiveEvent[];
   lapCoaching: unknown;
+  mainsHum: MainsHumTracker;
 }
 
 // #847: "should the Live surface render as live". True while a capture is
@@ -149,6 +159,21 @@ export interface LiveWorkspaceStoreSlice {
 // idle card for the duration of that IPC.
 export function boardRunning(lc: { isCapturing: boolean; demoting: boolean }): boolean {
   return lc.isCapturing || lc.demoting;
+}
+
+// #1403: "may the capture SET be edited" is a different question from "is the
+// board live" (boardRunning). The tab is always-monitoring (ADR-0080), so a
+// monitoring board must keep Mode/Source/Arm/Add track editable; only an
+// active recording — or the record→monitor demote window (#847), during which
+// liveMode is still 'record' — locks them.
+export function captureConfigLocked(lc: { isCapturing: boolean; liveMode: 'monitor' | 'record'; demoting?: boolean }): boolean {
+  return (lc.isCapturing && lc.liveMode === 'record') || !!lc.demoting;
+}
+
+// #1403: may liveCaptureStore.restartMonitorCapture() bounce the stream right
+// now — only a plain running monitor session, never mid-promote/stop/demote.
+export function monitorRestartAllowed(lc: { isCapturing: boolean; liveMode: 'monitor' | 'record'; promoting: boolean; stopping: boolean; demoting: boolean }): boolean {
+  return lc.isCapturing && lc.liveMode === 'monitor' && !lc.promoting && !lc.stopping && !lc.demoting;
 }
 
 // The one builder for LiveWorkspaceViewState (#710 shotgun-surgery fix):
@@ -169,6 +194,7 @@ export function liveWorkspaceViewState(
   timelineBpm: TimelineBpmControlView | null = null,
   timelineZoom: TimelineZoomControlsView | null = null,
   timelineFollow: TimelineFollowView | null = null,
+  channelPickerIndex: number | null = null,
 ): LiveWorkspaceViewState {
   return {
     channelConfig: lc.channelConfig,
@@ -188,6 +214,7 @@ export function liveWorkspaceViewState(
     liveWindows: lc.liveWindows,
     settings,
     lapCoaching: lc.lapCoaching,
+    mainsHumWarnings: lc.mainsHum.warnings,
     playheadElapsedMs,
     sessionPicker,
     sessionWaveforms,
@@ -197,6 +224,7 @@ export function liveWorkspaceViewState(
     timelineBpm,
     timelineZoom,
     timelineFollow,
+    channelPickerIndex,
   };
 }
 
@@ -433,12 +461,30 @@ export function currentEqPaneChannels(state: LiveWorkspaceViewState): LiveMeterC
   return state.lastLiveChannels || state.channelConfig.map(() => getTrackWorkspace().idleChannel(LIVE_BAND_KEYS));
 }
 
-// Port of inline-app.js's addTrackDisabled — device channel cap or a capture
-// running (#38), used by both the toolbar's Add track and the guided hero's CTA.
+/** Structural shape for the #live-eq-pane element — same convention as
+ *  TrackHeadLevelShellLike, sized to just the field this check reads. */
+export interface EqPaneVisibilityLike {
+  style: { display: string };
+}
+
+/** #1413: whether a live tick should spend time patching the EQ pane at all.
+ *  Reads the inline `style.display` LiveEqPane's own visibility effect
+ *  already writes ('none' off the Live tab, 'flex' on it) rather than
+ *  offsetParent/getComputedStyle/checkVisibility — each of those would force
+ *  a layout flush inside the rAF patch callback, costing more than the patch
+ *  they'd guard. Class-based hiding (body.not-pro, single-column) leaves this
+ *  inline style at 'flex' and is a known non-goal (ADR-0136). */
+export function eqPaneTickPatchEnabled(pane: EqPaneVisibilityLike | null): boolean {
+  return !!pane && pane.style.display !== 'none';
+}
+
+// Port of inline-app.js's addTrackDisabled — device channel cap or an active
+// recording (#38, #1403), used by both the toolbar's Add track and the guided
+// hero's CTA. Monitoring alone no longer locks it (#1403).
 export function addTrackDisabled(state: LiveWorkspaceViewState): boolean {
   const used = usedChannelCount(state.channelConfig);
   const total = deviceChannelCount(state.selectedDevice, state.devices);
-  return !getTrackWorkspace().addEnabled(used, total, state.isCapturing);
+  return !getTrackWorkspace().addEnabled(used, total, captureConfigLocked(state));
 }
 
 // Port of inline-app.js's liveWorkspaceToolbarHTML (#188): Add track + a
@@ -510,6 +556,13 @@ export interface DawTrackRow {
   monitorActive: boolean;
   levelPercent: number;
   takeClip: SessionTabWaveformClip | null;
+  /** #1392: the detected mains-hum frequency while this strip qualifies, or
+   *  null/undefined otherwise. Only ever set while the board is capturing. */
+  mainsHumHz?: MainsHumFrequencyHz | null;
+  /** #1404: the channel-routing badge/picker view for this track. Always set
+   *  by dawTrackRows; optional here only so hand-built DawTrackRow fixtures
+   *  (existing dawTrackHeaderHTML unit tests) don't have to carry one. */
+  channelPicker?: TrackChannelPickerView;
 }
 
 // The single ordered per-track list both arrangement columns render from
@@ -521,7 +574,12 @@ export interface DawTrackRow {
 // governs what records, never what the arrangement shows.
 export function dawTrackRows(state: LiveWorkspaceViewState): DawTrackRow[] {
   const hasSoloedChannel = Object.values(state.soloedChannels).some((soloed) => soloed === true);
+  // #1404: the channel picker locks with captureConfigLocked's rule (an active
+  // recording, or the demote window — see ADR-0133), which this expression
+  // already equals given state.isCapturing folds in `demoting` (boardRunning) —
+  // same reasoning as armDisabled just below.
   const armDisabled = state.isCapturing && state.liveMode === 'record';
+  const deviceChannels = deviceChannelCount(state.selectedDevice, state.devices);
   return state.channelConfig.map((strip, idx) => {
     const channel = liveChannelAt(state, idx);
     const muted = state.mutedChannels[idx] === true;
@@ -539,11 +597,13 @@ export function dawTrackRows(state: LiveWorkspaceViewState): DawTrackRow[] {
       armDisabled,
       configDisabled: state.isCapturing,
       removeDisabled: state.isCapturing,
+      channelPicker: trackChannelPickerView(idx, strip, deviceChannels, state.channelPickerIndex, armDisabled),
       muted,
       soloed,
       monitorActive: !muted && (!hasSoloedChannel || soloed),
       levelPercent: levelPercent(channel?.rms ?? Number.NaN, !!channel?.idle),
       takeClip: state.sessionWaveforms?.clips.find((clip) => clip.stripIndex === idx) ?? null,
+      mainsHumHz: state.isCapturing ? (state.mainsHumWarnings[idx]?.frequencyHz ?? null) : null,
     };
   });
 }
@@ -607,7 +667,10 @@ export function dawTrackListEntries(state: LiveWorkspaceViewState): DawTrackList
 
 /** Pure inside markup for one arrangement track header. The row is derived
  * once by dawTrackRows, preserving the header/lane ordering contract.
- * Overview-only: per-channel settings live in the selection pane (#849). */
+ * Overview-only: per-channel settings live in the selection pane (#849), with
+ * one sanctioned exception — the #1404 channel-routing badge/picker, owned by
+ * track-channel-picker.ts and rendered via trackChannelPickerHTML (ADR-0133),
+ * so no <select> is ever inlined in this function's own body. */
 export function dawTrackHeaderHTML(row: DawTrackRow): string {
   const dragHTML = (row.groupIndex ?? -1) >= 0
     ? `<button type="button" class="daw-track-head-drag" draggable="true" aria-label="Reorder track within group — drag, or press Arrow Up/Down" title="Drag to reorder track"${row.configDisabled ? ' disabled' : ''}>⋮⋮</button>`
@@ -616,12 +679,15 @@ export function dawTrackHeaderHTML(row: DawTrackRow): string {
     + `<span class="daw-track-head-index">${row.index + 1}</span>`
     + `<span class="daw-track-head-name${row.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${row.name}</span>`
     + `<span class="daw-track-head-controls">`
+    + (row.channelPicker ? trackChannelPickerHTML(row.channelPicker) : '')
     + `<button type="button" class="daw-track-head-arm" data-idx="${row.index}" aria-label="${row.armed ? 'Disarm track' : 'Arm track for recording'}" title="${row.armed ? 'Disarm track' : 'Arm track for recording'}" aria-pressed="${row.armed}"${row.armDisabled ? ' disabled' : ''}></button>`
     + `<button type="button" class="daw-track-head-mute" aria-label="${row.muted ? 'Unmute track' : 'Mute track'}" aria-pressed="${row.muted}">M</button>`
     + `<button type="button" class="daw-track-head-solo" aria-label="${row.soloed ? 'Unsolo track' : 'Solo track'}" aria-pressed="${row.soloed}">S</button>`
     + `</span>`
     + `<span class="daw-track-head-level" aria-hidden="true"><span class="daw-track-head-level-fill" style="width:${row.levelPercent}%"></span></span>`
-    + `<span class="daw-track-head-meta">${row.idle ? 'Idle' : 'Live'}</span>`
+    + (row.mainsHumHz
+      ? `<span class="daw-track-head-meta daw-track-head-meta-warn" role="status" title="${mainsHumWarningText(row.name, row.mainsHumHz)}">${mainsHumBadgeText(row.mainsHumHz)}</span>`
+      : `<span class="daw-track-head-meta">${row.idle ? 'Idle' : 'Live'}</span>`)
     + `<button type="button" class="daw-track-head-remove" title="Remove track" aria-label="Remove track"${row.removeDisabled ? ' disabled' : ''}>×</button>`;
 }
 
@@ -657,6 +723,80 @@ export function dawShellPatchView(state: LiveWorkspaceViewState): DawShellPatchV
     laneSignature: dawTrackRows(state).map((row) => `${row.name}\u0001${row.takeClip ? `${row.takeClip.trackIndex}\u0001${row.takeClip.leftPx}\u0001${row.takeClip.widthPx}` : ''}`).join('\u0000'),
     transportChip: getDawWorkspaceState().transportLabel(state.isCapturing, state.liveMode),
     captureMode: getDawWaveformState().captureModeToken(state.isCapturing, state.liveMode),
+  };
+}
+
+/** #1411: one track head's level-meter fill. Derived from the SAME dawTrackRows
+ *  list the markup builder uses, so the patched width can never disagree with
+ *  the rendered one. */
+export interface TrackHeadLevelPatch {
+  index: number;
+  levelPercent: number;
+}
+
+/** Structural shapes so a plain object satisfies the patcher in tests — same
+ *  convention as timeline-overview.ts's TimelineOverviewShellLike. */
+interface TrackHeadLevelNodeLike {
+  style: { width: string };
+}
+export interface TrackHeadLevelShellLike {
+  querySelector(selector: string): TrackHeadLevelNodeLike | null;
+}
+
+export function dawTrackLevelPatchView(state: LiveWorkspaceViewState): TrackHeadLevelPatch[] {
+  return dawTrackRows(state).map((row) => ({ index: row.index, levelPercent: row.levelPercent }));
+}
+
+/** Writes each track head's level-meter width in place (#1411). Before this,
+ *  the fill was refreshed only as a side effect of the per-window board
+ *  rebuild; now that window ticks no longer rebuild the board, the meter is
+ *  patched from the tick like every other animation-rate value (ADR-0005). */
+export function patchTrackHeadLevels(shell: TrackHeadLevelShellLike | null, patches: TrackHeadLevelPatch[]): void {
+  if (!shell) return;
+  for (const patch of patches) {
+    const fill = shell.querySelector(`.daw-track-head[data-ch="${patch.index}"] .daw-track-head-level-fill`);
+    if (fill) fill.style.width = `${patch.levelPercent}%`;
+  }
+}
+
+/** Structural query-selector shape, generic over the returned node type — same
+ *  querySelector(selector) contract as TrackHeadLevelShellLike above, reused
+ *  here so createTrackNodeCache's memoized scope stays a drop-in stand-in for
+ *  any *ShellLike consumer (patchTrackHeadLevels included). */
+export interface QuerySelectorLike<T> {
+  querySelector(selector: string): T | null;
+}
+
+/** #1413: memoizes per-track DOM node lookups (head name, lane name,
+ *  level-fill) across live ticks so an unchanged board reuses last frame's
+ *  queried nodes instead of re-querying every track every frame.
+ *
+ *  Keyed on `(root, boardShapeVersion)` together, not boardShapeVersion
+ *  alone: LiveCapturePanel re-renders the whole `.daw-shell` from one
+ *  dangerouslySetInnerHTML string on any discrete change (rename, selection,
+ *  mute/solo, hum badge) without bumping boardShapeVersion, which would
+ *  leave a version-keyed cache pointing at detached nodes. Comparing the
+ *  freshly re-queried `.daw-shell` root's identity against the cached one
+ *  catches that rebuild for free — callers already re-resolve `.daw-shell`
+ *  once per tick before reaching this cache (ADR-0136). */
+export function createTrackNodeCache<T>(): { scope(root: QuerySelectorLike<T>, boardShapeVersion: number): QuerySelectorLike<T> } {
+  let cachedRoot: QuerySelectorLike<T> | null = null;
+  let cachedVersion: number | null = null;
+  let nodes = new Map<string, T | null>();
+  return {
+    scope(root, boardShapeVersion) {
+      if (root !== cachedRoot || boardShapeVersion !== cachedVersion) {
+        cachedRoot = root;
+        cachedVersion = boardShapeVersion;
+        nodes = new Map();
+      }
+      return {
+        querySelector(selector) {
+          if (!nodes.has(selector)) nodes.set(selector, root.querySelector(selector));
+          return nodes.get(selector) ?? null;
+        },
+      };
+    },
   };
 }
 

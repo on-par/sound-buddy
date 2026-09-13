@@ -283,7 +283,7 @@ describe('installStoreBridge', () => {
     inputInstrumentProfiles: {},
     crashReportingEnabled: false,
     liveAdjustmentsEnabled: false,
-    reportFirstUxEnabled: false,
+    advancedFeaturesEnabled: true,
     shareChurchName: '',
     weeklyReminderEnabled: false,
     weeklyReminderServiceDay: 0,
@@ -292,7 +292,7 @@ describe('installStoreBridge', () => {
     gradingProfile: 'casual',
     consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
-    splCalibrationOffsetDb: null,
+    splCalibrationOffsetDb: null, lastAppMode: '',
   };
 
   it('seeds idealProfilesStore from settings once they first load, and pushes the resolved profile into spectrumStore', () => {

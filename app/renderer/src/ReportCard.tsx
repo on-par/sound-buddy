@@ -85,9 +85,7 @@ export interface ReportCardProps {
    *  section hidden (no usable curve); [] → calm empty-state message (#863);
    *  non-empty → the rendered item rows. */
   troubleshooting?: TroubleshootingItem[] | null;
-  /** Score-circle expandable metric rows (#540, report-first-ux epic). Non-null → the flag-on
-   *  treatment renders (rows replace the metric table, "Why This Grade" is dropped); null/omitted
-   *  → today's markup renders unchanged. */
+  /** Score-circle expandable metric rows (#540). Non-null → rows replace the legacy metric table. */
   scoreRows?: ScoreRow[] | null;
   phaseDoubling?: PhaseDoublingView | null;
   feedbackRingout?: FeedbackRingoutView | null;
@@ -100,10 +98,10 @@ export interface ReportCardProps {
    *  the CTA to a done state instead of hiding it. */
   saveTargetSaved?: boolean;
   onSaveAsTarget?: () => void;
-  /** Contextual-links treatment (#545, report-first-ux epic). When true, the
+  /** Contextual-links treatment. When true, the
    *  feedback-ringout callout renders only when a ring was actually detected,
    *  and the forward "Review in Build Guide" link renders. False/omitted →
-   *  today's markup renders unchanged (flag-off path). */
+   *  legacy markup renders. */
   contextualLinks?: boolean;
   onOpenBuildGuide?: () => void;
   /** Optional one-line handoff note for the next volunteer (#267). Editable
@@ -259,12 +257,10 @@ export default function ReportCard({
           </table>
         )}
       </div>
-      {!scoreRows && (
-        <div className="rc-section" id="rc-why-section">
-          <h2>Why This Grade</h2>
-          <div className="rc-why" id="rc-why" dangerouslySetInnerHTML={{ __html: whyGradeHTML(grade.explain) }} />
-        </div>
-      )}
+      <div className="rc-section" id="rc-why-section">
+        <h2>Why This Grade</h2>
+        <div className="rc-why" id="rc-why" dangerouslySetInnerHTML={{ __html: whyGradeHTML(grade.explain) }} />
+      </div>
       {bandDiffApi && (
         <div className="rc-section" id="rc-bands-section">
           <h2>Frequency Band Breakdown</h2>

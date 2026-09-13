@@ -8,6 +8,8 @@ import {
   switchMode,
   applySpectrumForMode,
   applySingleColumnSync,
+  maybeAutoStartLive,
+  restoreBootMode,
 } from './mode-switch';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useRigStore } from './stores/rigStore';
@@ -42,7 +44,6 @@ let elements: Record<string, FakeElement>;
 let tabContentEls: FakeElement[];
 let bodyClassList: ReturnType<typeof makeClassList>;
 let isSingleColumn: ReturnType<typeof vi.fn>;
-let isEnabled: ReturnType<typeof vi.fn>;
 let mock: ReturnType<typeof createMockSoundBuddy>;
 
 // zustand's `set` copies the current state's own properties (including a
@@ -64,7 +65,6 @@ beforeEach(() => {
   tabContentEls = [makeFakeElement(), makeFakeElement()];
   bodyClassList = makeClassList();
   isSingleColumn = vi.fn(() => false);
-  isEnabled = vi.fn(() => false);
   mock = createMockSoundBuddy();
 
   (globalThis as { document?: unknown }).document = {
@@ -75,7 +75,6 @@ beforeEach(() => {
   (globalThis as { window?: unknown }).window = {
     soundBuddy: mock.api,
     singleColumnState: { isSingleColumn },
-    reportFirstUxState: { isEnabled },
     liveCaptureRuntime: {
       beforeStartCapture: () => ({ ok: true }),
       onCaptureStarting: vi.fn(),
@@ -98,12 +97,12 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
     idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null,
     usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
-    crashReportingEnabled: false, liveAdjustmentsEnabled: false,
-    reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false,
+    crashReportingEnabled: false, liveAdjustmentsEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false,
     weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
     measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
     splCalibrationOffsetDb: null,
+    lastAppMode: '',
     ...overrides,
   };
 }
@@ -117,8 +116,12 @@ describe('resolveModeSwitch', () => {
     expect(isWorkspaceMode("soundcheck")).toBe(false);
   });
 
-  it('opens the source picker for "analyze"', () => {
-    expect(resolveModeSwitch('analyze', 'reportcard')).toEqual({ type: 'openPicker' });
+  it('opens the file picker for "analyze"', () => {
+    expect(resolveModeSwitch('analyze', 'reportcard')).toEqual({ type: 'chooseFile' });
+  });
+
+  it('opens the file picker for "analyze" in Simple mode', () => {
+    expect(resolveModeSwitch('analyze', 'reportcard', { simpleMode: true })).toEqual({ type: 'chooseFile' });
   });
 
   it('redirects "history" to "recent"', () => {
@@ -171,16 +174,14 @@ describe('applySpectrumForMode', () => {
 });
 
 describe('applySingleColumnSync', () => {
-  it('reads the report-first-ux flag and current mode through to singleColumnState', () => {
-    useSettingsStore.setState({ settings: settings({ reportFirstUxEnabled: true }) });
-    useLiveCaptureStore.setState({ appMode: 'guide' });
-    isEnabled.mockReturnValue(true);
+  it('reads Simple mode and current mode through to singleColumnState', () => {
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false }) });
+    useLiveCaptureStore.setState({ appMode: 'recent' });
     isSingleColumn.mockReturnValue(true);
 
     applySingleColumnSync();
 
-    expect(isEnabled).toHaveBeenCalledWith(settings({ reportFirstUxEnabled: true }));
-    expect(isSingleColumn).toHaveBeenCalledWith(true, 'guide');
+    expect(isSingleColumn).toHaveBeenCalledWith(true, 'recent');
     expect(bodyClassList.contains('single-column')).toBe(true);
   });
 
@@ -381,5 +382,151 @@ describe('switchMode', () => {
     switchMode('live');
 
     expect(startCapture).toHaveBeenCalledTimes(1);
+  });
+
+  // #1405: a real (non-boot) switch is what makes the mode survive a relaunch.
+  it('persists the new mode to settings on a real switch', () => {
+    const spy = vi.spyOn(mock.api, 'updateSettings');
+    switchMode('live');
+    expect(spy).toHaveBeenCalledWith({ lastAppMode: 'live' });
+  });
+
+  // #1405: App.tsx's synchronous first-paint call passes { boot: true } — it
+  // fires before settings have loaded, so persisting here would clobber a
+  // saved 'live' with the hardcoded initial 'reportcard' default every launch.
+  it('boot: true does not persist the mode', () => {
+    const spy = vi.spyOn(mock.api, 'updateSettings');
+    switchMode('reportcard', { boot: true });
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  // #1405: the boot call fires before device/rig hydration settles, so
+  // auto-starting here would race decideLiveAutoStart against an empty
+  // rigStore and skip with a false 'no-last-used-device'. restoreBootMode
+  // performs the real auto-start after hydration.
+  it('boot: true does not auto-start even with an active rig', () => {
+    useRigStore.setState({ activeRigId: 'rig-1' });
+    const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture')
+      .mockResolvedValue(undefined);
+
+    switchMode('live', { boot: true });
+
+    expect(startCapture).not.toHaveBeenCalled();
+  });
+
+  it('boot: true still applies the mode and DOM side effects', () => {
+    switchMode('live', { boot: true });
+    expect(useLiveCaptureStore.getState().appMode).toBe('live');
+    expect(bodyClassList.contains('live-active')).toBe(true);
+  });
+});
+
+describe('maybeAutoStartLive', () => {
+  it('logs a live-auto-start line with the start decision', () => {
+    useRigStore.setState({ activeRigId: 'rig-1' });
+    vi.spyOn(useLiveCaptureStore.getState(), 'startCapture').mockResolvedValue(undefined);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    maybeAutoStartLive();
+
+    expect(logSpy).toHaveBeenCalledWith('live-auto-start', { type: 'start' });
+  });
+
+  it('logs a live-auto-start line with the skip reason', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    maybeAutoStartLive();
+
+    expect(logSpy).toHaveBeenCalledWith('live-auto-start', { type: 'skip', reason: 'no-last-used-device' });
+  });
+});
+
+describe('restoreBootMode', () => {
+  it('awaits hydration before reading settings or rigStore state', async () => {
+    let resolveHydration!: () => void;
+    const hydration = new Promise<void>((resolve) => { resolveHydration = resolve; });
+    useSettingsStore.setState({ settings: settings({ lastAppMode: 'live' }) });
+    const spy = vi.spyOn(mock.api, 'recordAppEvent');
+
+    const done = restoreBootMode({
+      hydration,
+      getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+      getCurrentMode: () => useLiveCaptureStore.getState().appMode,
+      getSettings: () => useSettingsStore.getState().settings,
+    });
+
+    expect(spy).not.toHaveBeenCalled();
+    resolveHydration();
+    await done;
+    expect(spy).toHaveBeenCalledWith('screen.live');
+  });
+
+  it('restores a saved mode that differs from the current (boot-default) mode', async () => {
+    useSettingsStore.setState({ settings: settings({ lastAppMode: 'live' }) });
+
+    await restoreBootMode({
+      hydration: Promise.resolve(),
+      getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+      getCurrentMode: () => 'reportcard',
+      getSettings: () => useSettingsStore.getState().settings,
+    });
+
+    expect(useLiveCaptureStore.getState().appMode).toBe('live');
+  });
+
+  it('runs the auto-start decision (no mode switch) when the saved mode matches the current mode', async () => {
+    useLiveCaptureStore.setState({ appMode: 'live' });
+    useSettingsStore.setState({ settings: settings({ lastAppMode: 'live' }) });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await restoreBootMode({
+      hydration: Promise.resolve(),
+      getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+      getCurrentMode: () => useLiveCaptureStore.getState().appMode,
+      getSettings: () => useSettingsStore.getState().settings,
+    });
+
+    expect(logSpy).toHaveBeenCalledWith('live-auto-start', expect.anything());
+  });
+
+  it('does nothing when no mode was ever saved and the current mode is not live', async () => {
+    useSettingsStore.setState({ settings: settings({ lastAppMode: '' }) });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await restoreBootMode({
+      hydration: Promise.resolve(),
+      getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+      getCurrentMode: () => 'reportcard',
+      getSettings: () => useSettingsStore.getState().settings,
+    });
+
+    expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');
+    expect(logSpy).not.toHaveBeenCalled();
+  });
+
+  it('ignores a stale/unrecognized saved mode', async () => {
+    useSettingsStore.setState({ settings: settings({ lastAppMode: 'soundcheck' }) });
+
+    await restoreBootMode({
+      hydration: Promise.resolve(),
+      getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+      getCurrentMode: () => 'reportcard',
+      getSettings: () => useSettingsStore.getState().settings,
+    });
+
+    expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');
+  });
+
+  it('clamps a saved hidden mode to reportcard in Simple mode', async () => {
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false, lastAppMode: 'live' }) });
+
+    await restoreBootMode({
+      hydration: Promise.resolve(),
+      getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+      getCurrentMode: () => 'reportcard',
+      getSettings: () => useSettingsStore.getState().settings,
+    });
+
+    expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');
   });
 });

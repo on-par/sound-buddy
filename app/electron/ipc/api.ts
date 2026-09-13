@@ -36,12 +36,13 @@ export interface UpdateSettingsPatch {
   inputInstrumentProfiles?: Record<string, Record<string, string>>;
   crashReportingEnabled?: boolean;
   liveAdjustmentsEnabled?: boolean;
-  reportFirstUxEnabled?: boolean;
+  advancedFeaturesEnabled?: boolean;
   shareChurchName?: string;
   weeklyReminderEnabled?: boolean;
   weeklyReminderServiceDay?: number;
   liveEqPaneWidth?: number;
   measurementDeviceName?: string;
+  lastAppMode?: string;
   gradingProfile?: 'casual' | 'broadcast';
   consoleNetworkConsentGranted?: boolean;
   soundcheckBuses?: SoundcheckBus[];
@@ -255,6 +256,15 @@ export interface AppSettings {
   /** Id of the currently selected rig, or null when none. Default null. */
   activeRigId: string | null;
   /**
+   * The workspace mode (WorkspaceMode, mode-switch.ts) active when the app
+   * last closed (#1405), e.g. 'live' or 'reportcard'. Default '' (= no
+   * preference, boots on Report Card as before). Typed as a plain string
+   * here rather than a union so the runtime mode list stays solely owned by
+   * mode-switch.ts's isWorkspaceMode — an unrecognized or stale value is
+   * just ignored at restore time, never rejected at the settings layer.
+   */
+  lastAppMode: string;
+  /**
    * Opt-in anonymous usage counts (#145). Default false (off). This is a
    * persisted preference ONLY — no collection, batching, or network code
    * exists anywhere in the app, and none may be added until a receiving
@@ -299,14 +309,13 @@ export interface AppSettings {
    */
   liveAdjustmentsEnabled: boolean;
   /**
-   * Opt-in report-first-ux epic gate (#538, epic e17). Default false (off).
-   * Pure UI gate — when false the existing tab/pane UI renders unchanged;
-   * when true the renderer takes the report-first-ux branch (e17-00 onward).
-   * It has an env layer
-   * (SOUND_BUDDY_REPORT_FIRST_UX), so the epic can be dogfooded at launch
-   * time without shipping a Settings toggle.
+   * Opt-in Advanced shell gate (#1421). Default true in the first Simple-mode
+   * slice so shipped behavior is unchanged; false hides advanced workspace
+   * tabs while leaving their routes/components in place. Has an env layer
+   * (SOUND_BUDDY_ADVANCED_FEATURES) so e2e and development launches can force
+   * the full shell without mutating settings.json.
    */
-  reportFirstUxEnabled: boolean;
+  advancedFeaturesEnabled: boolean;
   /**
    * Optional church name (#265) shown on the "Share Image" report-card
    * export. Default '' (blank) — an empty value means the shared image

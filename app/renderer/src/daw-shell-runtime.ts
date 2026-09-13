@@ -331,6 +331,14 @@ export interface DawShellRuntimeDeps {
   /** The arrangement's loop region (#1313). Optional: an un-injected runtime paints no
    *  brace, exactly the pre-#1313 behaviour. */
   loopRegion?: LoopRegionModel;
+  /** Whether the Live tab's shared frame loop (live-meter-controller.ts, mirrored via
+   *  live-frame-hooks.ts) is currently running (#1412). When true, ingestPeaks skips its
+   *  own scheduleWaveformRender — the loop's flushWaveform per-frame hook (registered in
+   *  App.tsx) drains the repaint on the next frame instead, so peaks ingestion never
+   *  becomes a second competing rAF loop. Optional: an un-injected runtime (or one used
+   *  outside that loop) keeps ingestPeaks' own self-scheduled coalescing, unchanged from
+   *  pre-#1412. */
+  isFrameLoopActive?(): boolean;
 }
 
 export interface DawShellRuntime {
@@ -347,6 +355,7 @@ export interface DawShellRuntime {
   previewLoopBrace(region: LoopRegion): void;
   renderAccessibilityLabels(): void;
   renderWaveform(): void;
+  flushWaveform(): void;
   playheadElapsedMs(): number;
   ingestPeaks(data: unknown): void;
   bindLiveEvents(): void;
@@ -641,6 +650,13 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     });
   }
 
+  // The waveform half of the shared Live frame loop's per-frame work (#1412): the
+  // loop's flushWaveform hook (registered in App.tsx) calls this directly, with no
+  // scheduling of its own — the loop itself is what coalesces it to once per frame.
+  function flushWaveform(): void {
+    renderWaveform();
+  }
+
   function ingestPeaks(data: unknown): void {
     const lanes = deps.dawWaveformState.decodeLanes(data);
     if (!lanes) return;
@@ -650,6 +666,12 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
       waveformLaneStates[id] = deps.dawWaveformState.append(
         waveformLaneStates[id] || deps.dawWaveformState.create(), lanes[id]);
     }
+    // #1412: while the shared Live frame loop is running, its flushWaveform hook
+    // drains this on the very next frame — scheduling a second rAF here would be
+    // exactly the duplicate loop #1412 removes. Outside the loop (or when no
+    // isFrameLoopActive dep is injected) this falls back to its own coalescing,
+    // unchanged from pre-#1412.
+    if (deps.isFrameLoopActive?.()) return;
     scheduleWaveformRender();
   }
 
@@ -674,6 +696,7 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     previewLoopBrace,
     renderAccessibilityLabels,
     renderWaveform,
+    flushWaveform,
     playheadElapsedMs,
     ingestPeaks,
     bindLiveEvents,

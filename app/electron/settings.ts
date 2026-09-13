@@ -58,6 +58,10 @@ export const MAX_SHARE_CHURCH_NAME_LEN = 40;
 // names are short; the cap only guards a hand-crafted settings.json payload
 // from bloating the stored preference.
 const MAX_MEASUREMENT_DEVICE_NAME_LEN = 128;
+// Cap on the persisted last-active app mode string (#1405). Every real
+// WorkspaceMode name (mode-switch.ts) is well under this; it only guards a
+// hand-crafted settings.json payload, same rationale as the device-name cap.
+const MAX_LAST_APP_MODE_LEN = 20;
 // Valid range for weeklyReminderServiceDay (#268) — 0 = Sunday … 6 = Saturday,
 // matching Date.prototype.getDay().
 const MIN_SERVICE_DAY = 0;
@@ -270,6 +274,11 @@ export const SETTING_SPECS: { [K in keyof AppSettings]: SettingSpec<AppSettings[
     default: null,
     sanitizeFile: (v) => ((v ?? SETTING_SPECS.activeRigId.default) as string | null),
   },
+  lastAppMode: {
+    default: '',
+    sanitizeFile: (v) => (typeof v === 'string' ? v : SETTING_SPECS.lastAppMode.default),
+    sanitizePatch: (v) => (typeof v === 'string' ? v.trim().slice(0, MAX_LAST_APP_MODE_LEN) : undefined),
+  },
   usageSignalEnabled: {
     default: false,
     sanitizeFile: (v) => ((v ?? SETTING_SPECS.usageSignalEnabled.default) as boolean),
@@ -300,11 +309,11 @@ export const SETTING_SPECS: { [K in keyof AppSettings]: SettingSpec<AppSettings[
     sanitizeFile: (v) => ((v ?? SETTING_SPECS.liveAdjustmentsEnabled.default) as boolean),
     sanitizePatch: (v) => (typeof v === 'boolean' ? v : undefined),
   },
-  reportFirstUxEnabled: {
+  advancedFeaturesEnabled: {
     default: false,
-    sanitizeFile: (v) => ((v ?? SETTING_SPECS.reportFirstUxEnabled.default) as boolean),
+    sanitizeFile: (v) => ((v ?? SETTING_SPECS.advancedFeaturesEnabled.default) as boolean),
     sanitizePatch: (v) => (typeof v === 'boolean' ? v : undefined),
-    envRead: (f) => envBool('SOUND_BUDDY_REPORT_FIRST_UX') ?? f,
+    envRead: (f) => envBool('SOUND_BUDDY_ADVANCED_FEATURES') ?? f,
   },
   shareChurchName: {
     default: '',
@@ -394,6 +403,23 @@ function readSettingsFile(context: string): Partial<AppSettings> {
   return {};
 }
 
+function hasOwn(obj: object, key: PropertyKey): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+export function deriveAdvancedFeaturesDefault(file: Partial<AppSettings>): boolean {
+  const activeRigId = file.activeRigId;
+  return (typeof activeRigId === 'string' && activeRigId.trim().length > 0)
+    || file.consoleNetworkConsentGranted === true;
+}
+
+function fileLayerValue<K extends keyof AppSettings>(file: Partial<AppSettings>, key: K): AppSettings[K] {
+  if (key === 'advancedFeaturesEnabled' && !hasOwn(file, key)) {
+    return deriveAdvancedFeaturesDefault(file) as AppSettings[K];
+  }
+  return SETTING_SPECS[key].sanitizeFile(file[key]);
+}
+
 /**
  * Persist the file layer, preserving any fields not being changed — including
  * unknown top-level keys a future version may add. Every known key is
@@ -410,7 +436,9 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     // directly indexable-and-callable under tsc --noEmit, so each entry is
     // widened to the shared SettingSpec<union> shape (see getSettings below).
     const spec = SETTING_SPECS[key] as SettingSpec<AppSettings[keyof AppSettings]>;
-    persisted[key] = spec.sanitizeFile(file[key]);
+    persisted[key] = key === 'advancedFeaturesEnabled' && !hasOwn(file, key)
+      ? deriveAdvancedFeaturesDefault(file)
+      : spec.sanitizeFile(file[key]);
   }
   try {
     fs.writeFileSync(settingsPath(), JSON.stringify(persisted, null, 2));
@@ -432,7 +460,7 @@ export function getSettings(): AppSettings {
   const result: Record<string, unknown> = {};
   for (const key of Object.keys(SETTING_SPECS) as Array<keyof AppSettings>) {
     const spec = SETTING_SPECS[key] as SettingSpec<AppSettings[keyof AppSettings]>;
-    const fileValue = spec.sanitizeFile(file[key]);
+    const fileValue = fileLayerValue(file, key);
     result[key] = spec.envRead ? spec.envRead(fileValue) : fileValue;
   }
   return result as unknown as AppSettings;
@@ -441,10 +469,10 @@ export function getSettings(): AppSettings {
 /** Merge and persist a partial update; returns the new settings. */
 export function updateSettings(patch: Partial<AppSettings>): AppSettings {
   // Persist the patch over the FILE contents (layered on defaults) — never over
-  // getSettings()'s env-resolved view. Otherwise a transient env override (e.g.
-  // SOUND_BUDDY_REPORT_FIRST_UX=1) would be baked permanently into
-  // settings.json, silently defeating the launch-time-only contract after the
-  // env var is removed. Env overrides stay transient (read-time only).
+  // getSettings()'s env-resolved view. Otherwise a transient env override would
+  // be baked permanently into settings.json, silently defeating the
+  // launch-time-only contract after the env var is removed. Env overrides stay
+  // transient (read-time only).
   const file = readSettingsFile('before update');
   const nextFile = { ...file, ...patch };
   writeSettingsFile(nextFile);

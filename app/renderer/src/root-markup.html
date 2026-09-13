@@ -9,14 +9,10 @@
   <!-- ══ First-run onboarding welcome (#69) — OnboardingDialog.tsx (TD-001
        slice 6f, #704) renders it. ══ -->
   <div id="onboarding-island"></div>
-  <!-- ══ Unified "Analyze" source picker (#543, epic e17) ══
-       The first-run Analyze entry point, offering the three real ways to get
-       audio in. AnalyzeSourcePicker.tsx (TD-001 slice 6h, #711) renders the
-       overlay reactively from analyzeSourceStore — it is no longer static
-       markup, so there is nothing here. The app.css flag-off rule for
-       #analyze-source-picker still gates the overlay even if the store is
-       ever opened. -->
   <div id="live-mix-alert-island"></div>
+  <!-- ══ Analyze entry point ══
+       The first-run Analyze entry point is React-owned, so there is no static
+       picker markup here. -->
   <!-- ══ Header ══ -->
   <div id="header">
     <div id="logo">

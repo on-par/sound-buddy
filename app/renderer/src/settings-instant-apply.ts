@@ -2,7 +2,7 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 // Instant-apply Settings controls (#1018, epic #1000). The one place the
-// seven non-storage, non-church-name Settings controls' display values are
+// instant non-storage, non-church-name Settings controls' display values are
 // derived from AppSettings, and the one place a single-key patch is sent —
 // so SettingsPanel.tsx renders straight from settingsStore's persisted
 // `settings` instead of mirroring it into local state seeded on dialog open.
@@ -12,6 +12,7 @@ import type { AppSettings, UpdateSettingsPatch } from '../../electron/ipc/api';
 import type { SettingsState } from './stores/settingsStore';
 
 export type InstantSettingKey =
+  | 'advancedFeaturesEnabled'
   | 'gradingProfile'
   | 'weeklyReminderEnabled'
   | 'weeklyReminderServiceDay'
@@ -19,9 +20,10 @@ export type InstantSettingKey =
   | 'crashReportingEnabled'
   | 'liveAdjustmentsEnabled';
 
-// The render-time projection of the six instant-apply Settings controls,
+// The render-time projection of the instant-apply Settings controls,
 // derived straight from persisted AppSettings.
 export interface InstantSettingValues {
+  advancedFeaturesEnabled: boolean;
   gradingProfile: 'casual' | 'broadcast';
   weeklyReminderEnabled: boolean;
   weeklyReminderServiceDay: number;
@@ -38,6 +40,7 @@ export const WEEKLY_REMINDER_DEFAULT_DAY = 0;
 // place so they are unit-testable (the effect itself is c8-ignored).
 export function instantSettingValues(settings: AppSettings | null): InstantSettingValues {
   return {
+    advancedFeaturesEnabled: settings?.advancedFeaturesEnabled !== false,
     gradingProfile: settings?.gradingProfile === 'broadcast' ? 'broadcast' : 'casual',
     weeklyReminderEnabled: !!settings?.weeklyReminderEnabled,
     weeklyReminderServiceDay: settings?.weeklyReminderServiceDay ?? WEEKLY_REMINDER_DEFAULT_DAY,

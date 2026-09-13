@@ -390,33 +390,6 @@ describe('update-settings IPC whitelist — liveAdjustmentsEnabled (#522)', () =
   });
 });
 
-describe('update-settings IPC whitelist — reportFirstUxEnabled (#538)', () => {
-  it('accepts a boolean and persists it', async () => {
-    const handler = handlers.get('update-settings');
-    const result = (await handler!(null, { reportFirstUxEnabled: true })) as {
-      reportFirstUxEnabled: boolean;
-    };
-    expect(result.reportFirstUxEnabled).toBe(true);
-    expect(readFile().reportFirstUxEnabled).toBe(true);
-  });
-
-  it('ignores a string value, leaving the setting at its default', async () => {
-    const handler = handlers.get('update-settings');
-    const result = (await handler!(null, { reportFirstUxEnabled: 'true' })) as {
-      reportFirstUxEnabled: boolean;
-    };
-    expect(result.reportFirstUxEnabled).toBe(false);
-  });
-
-  it('ignores a number value, leaving the setting at its default', async () => {
-    const handler = handlers.get('update-settings');
-    const result = (await handler!(null, { reportFirstUxEnabled: 1 })) as {
-      reportFirstUxEnabled: boolean;
-    };
-    expect(result.reportFirstUxEnabled).toBe(false);
-  });
-});
-
 describe('update-settings IPC whitelist — measurementDeviceName (#460)', () => {
   it('accepts a string, trims it, and persists it', async () => {
     const handler = handlers.get('update-settings');
@@ -452,6 +425,28 @@ describe('update-settings IPC whitelist — measurementDeviceName (#460)', () =>
       measurementDeviceName: string;
     };
     expect(result.measurementDeviceName).toBe('');
+  });
+});
+
+describe('update-settings IPC whitelist — lastAppMode (#1405)', () => {
+  it('accepts a string, trims it, and persists it', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { lastAppMode: '  live  ' })) as { lastAppMode: string };
+    expect(result.lastAppMode).toBe('live');
+    expect(readFile().lastAppMode).toBe('live');
+  });
+
+  it('truncates past the 20-char cap', async () => {
+    const handler = handlers.get('update-settings');
+    const long = 'x'.repeat(40);
+    const result = (await handler!(null, { lastAppMode: long })) as { lastAppMode: string };
+    expect(result.lastAppMode).toBe('x'.repeat(20));
+  });
+
+  it('ignores a non-string value, leaving the setting at its default', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { lastAppMode: 42 })) as { lastAppMode: string };
+    expect(result.lastAppMode).toBe('');
   });
 });
 
@@ -598,7 +593,7 @@ describe('update-settings whitelist exactness (#747)', () => {
       inputInstrumentProfiles: {},
       crashReportingEnabled: true,
       liveAdjustmentsEnabled: true,
-      reportFirstUxEnabled: true,
+      advancedFeaturesEnabled: false,
       shareChurchName: 'Grace Chapel',
       weeklyReminderEnabled: true,
       weeklyReminderServiceDay: 0,
@@ -606,6 +601,7 @@ describe('update-settings whitelist exactness (#747)', () => {
       measurementDeviceName: 'USB Mic',
       gradingProfile: 'casual',
       consoleNetworkConsentGranted: false,
+      lastAppMode: 'live',
     };
 
     await handler!(null, patch);

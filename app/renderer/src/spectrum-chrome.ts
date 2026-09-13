@@ -37,7 +37,7 @@ export function spectrumChromeView(input: { panelState: SpectrumPanelState; hasC
     showImperative: false,
     title: panelState === 'populated' && !hasCurve ? SPECTRUM_TITLE.meters : SPECTRUM_TITLE.curve,
     showStats: panelState === 'populated',
-    showIdealProfile: panelState === 'populated' && hasCurve,
+    showIdealProfile: true,
   };
 }
 

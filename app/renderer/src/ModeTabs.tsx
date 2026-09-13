@@ -11,9 +11,11 @@
 import { useState, type JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
-import { useAnalyzeSourceStore } from './stores/analyzeSourceStore';
+import { useSettingsStore } from './stores/settingsStore';
 import { resolveModeSwitch, switchMode, type ModeSwitchRequest } from './mode-switch';
+import { isSimpleMode, visibleTabModes } from './simple-mode';
 import { iconSvg } from './report-card';
+import { chooseAndAnalyzeFile } from './report-card-chrome';
 
 interface TabDef {
   mode: ModeSwitchRequest;
@@ -42,6 +44,8 @@ function tabHtml(tab: TabDef): string {
 
 export default function ModeTabs(): JSX.Element {
   const appMode = useStoreShallow(useLiveCaptureStore, (s) => s.appMode);
+  const settings = useStoreShallow(useSettingsStore, (s) => s.settings);
+  const visibleModes = visibleTabModes(settings);
   // Final nav consolidation quirk (#547, epic e17): History is a flag-only
   // entry that delegates to Recent's real switch but visually marks itself
   // active anyway (inline-app.js's old tab.classList.add('active') after the
@@ -50,16 +54,17 @@ export default function ModeTabs(): JSX.Element {
   const [historyActive, setHistoryActive] = useState(false);
 
   /* c8 ignore start -- click dispatch; needs a real DOM click event to
-     exercise (no jsdom in this harness). Covered by
-     tests/e2e/report-first-ux.spec.ts and tests/e2e/momentum.spec.ts, which
-     both drive the .mode-tab click idiom. resolveModeSwitch/switchMode
-     themselves are exhaustively unit-tested in mode-switch.test.ts. */
+     exercise (no jsdom in this harness). Covered by e2e specs that drive the
+     .mode-tab click idiom. resolveModeSwitch/switchMode themselves are
+     exhaustively unit-tested in mode-switch.test.ts. */
   function handleClick(mode: ModeSwitchRequest): void {
-    const decision = resolveModeSwitch(mode, useLiveCaptureStore.getState().appMode);
+    const decision = resolveModeSwitch(
+      mode,
+      useLiveCaptureStore.getState().appMode,
+      { simpleMode: isSimpleMode(useSettingsStore.getState().settings) },
+    );
     if (decision.type === 'noop') return;
-    // TD-001 slice 6h (#711): the picker is analyzeSourceStore-owned now —
-    // open() replaces the deleted window.analyzeSourcePicker bridge.
-    if (decision.type === 'openPicker') { useAnalyzeSourceStore.getState().open(); return; }
+    if (decision.type === 'chooseFile') { void chooseAndAnalyzeFile(); return; }
     if (decision.type === 'redirect') {
       handleClick(decision.mode);
       setHistoryActive(true);
@@ -79,6 +84,7 @@ export default function ModeTabs(): JSX.Element {
           className={`mode-tab${tab.mode === appMode || (tab.mode === 'history' && historyActive) ? ' active' : ''}`}
           id={tab.id}
           data-mode={tab.mode}
+          hidden={!visibleModes.includes(tab.mode)}
           /* c8 ignore next -- click dispatch, see handleClick's ignore note above */
           onClick={() => handleClick(tab.mode)}
           dangerouslySetInnerHTML={{ __html: tabHtml(tab) }}

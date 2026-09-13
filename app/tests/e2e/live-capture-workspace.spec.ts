@@ -201,10 +201,52 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
       await closeSettings(window);
 
       await window.locator('#daw-session-record').click(); // stop → monitoring resumes (#776)
-      // #776: always-monitoring — a record stop keeps the board live, so Add
-      // stays read-only (config capture-locked while monitoring) instead of
-      // re-enabling the way the old full stop did.
-      await expect(window.locator('#live-ws-add')).toBeDisabled();
+      // #1403: a record stop resumes monitoring, and monitoring no longer
+      // locks the capture set — Add re-enables (remove stays boardRunning-
+      // gated, so it is not asserted here). Clicking it proves an add while
+      // monitoring actually lands a track.
+      await expect(window.locator('#live-ws-add')).toBeEnabled();
+      await window.locator('#live-ws-add').click();
+      await expect(window.locator('#spectrum-body .daw-track-head')).toHaveCount(3);
+    });
+  });
+
+  // Track-head channel badge + picker (#1404): change any track's hardware
+  // channel (mono or stereo pair) from the track itself, without selecting
+  // the strip or opening the EQ pane inspector.
+  test.describe('Track channel badge/picker (#1404)', () => {
+    test('shows each track\'s current channel assignment as a compact badge', async () => {
+      // Default device seeding (defaultChannelConfig): track 1 -> Ch1, track 2 -> Ch2.
+      await expect(window.locator('.daw-track-head[data-ch="0"] .daw-track-head-channel-badge')).toHaveText('1');
+      await expect(window.locator('.daw-track-head[data-ch="1"] .daw-track-head-channel-badge')).toHaveText('2');
+    });
+
+    test('changes a track to a stereo pair from the badge picker, and Escape closes it', async () => {
+      const track2 = window.locator('.daw-track-head[data-ch="1"]');
+      const badge = track2.locator('.daw-track-head-channel-badge');
+      const picker = track2.locator('.daw-track-channel-picker');
+
+      await badge.click();
+      await expect(picker).toBeVisible();
+      await expect(badge).toHaveAttribute('aria-expanded', 'true');
+
+      await picker.locator('.daw-track-channel-picker-kind').selectOption('stereo');
+      await expect(picker.locator('.daw-track-channel-picker-source[data-field="b"]')).toBeVisible();
+
+      await picker.locator('.daw-track-channel-picker-source[data-field="a"]').selectOption('4'); // Ch 5
+      await picker.locator('.daw-track-channel-picker-source[data-field="b"]').selectOption('5'); // Ch 6
+      await expect(badge).toHaveText('5/6');
+
+      // Escape closes the still-open picker with no further change.
+      await picker.locator('.daw-track-channel-picker-kind').press('Escape');
+      await expect(picker).toBeHidden();
+      await expect(badge).toHaveText('5/6');
+
+      // The EQ pane inspector for the same track stays in sync (same store action).
+      await track2.locator('.daw-track-head-index').click();
+      await expect(window.locator('.eq-pane-inspector-kind')).toHaveValue('stereo');
+      await expect(window.locator('.eq-pane-inspector-source[data-field="a"]')).toHaveValue('4');
+      await expect(window.locator('.eq-pane-inspector-source[data-field="b"]')).toHaveValue('5');
     });
   });
 

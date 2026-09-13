@@ -244,7 +244,11 @@ export interface EqPaneInspectorView {
   selectedIndex: number;
   strip: StripConfig;
   deviceChannels: number;
+  // `disabled` = board live (gates the Playback output select, unchanged).
   disabled: boolean;
+  // `configLocked` = captureConfigLocked (#1403) — gates Name/Mode/Source/Arm,
+  // which stay editable while merely monitoring.
+  configLocked: boolean;
   playbackTrack: SessionManifestTrack | null;
   playbackRoute: number[] | null;
   playbackDeviceChannels: number;
@@ -279,6 +283,7 @@ export function eqPaneInspectorHTML(view: EqPaneInspectorView | null): string {
   const { selectedIndex, strip } = view;
   const stereo = strip.kind === 'stereo';
   const disabled = view.disabled ? ' disabled' : '';
+  const locked = view.configLocked ? ' disabled' : '';
   const label = measurementSourceOptionLabel(strip, selectedIndex);
   const swatch = EQ_PANE_INSPECTOR_BAND_CLASSES[selectedIndex % EQ_PANE_INSPECTOR_BAND_CLASSES.length];
   const outputHTML = view.playbackTrack
@@ -299,22 +304,22 @@ export function eqPaneInspectorHTML(view: EqPaneInspectorView | null): string {
       <span class="eq-pane-inspector-index">Strip ${selectedIndex + 1}</span>
     </div>
     <label class="eq-pane-inspector-field">Name
-      <input class="eq-pane-inspector-label" aria-label="Channel name" value="${escapeHtml(label)}"${disabled}>
+      <input class="eq-pane-inspector-label" aria-label="Channel name" value="${escapeHtml(label)}"${locked}>
     </label>
     <label class="eq-pane-inspector-field">Mode
-      <select class="eq-pane-inspector-kind" aria-label="Mono or stereo"${disabled}>
+      <select class="eq-pane-inspector-kind" aria-label="Mono or stereo"${locked}>
         <option value="mono"${!stereo ? ' selected' : ''}>Mono</option>
         <option value="stereo"${stereo ? ' selected' : ''}>Stereo</option>
       </select>
     </label>
     <div class="eq-pane-header">Input</div>
     <label class="eq-pane-inspector-field">${stereo ? 'Left source channel' : 'Source channel'}
-      <select class="eq-pane-inspector-source" data-field="a" aria-label="${stereo ? 'Left source channel' : 'Source channel'}"${disabled}>${channelOptions(strip.a, view.deviceChannels, stereo)}</select>
+      <select class="eq-pane-inspector-source" data-field="a" aria-label="${stereo ? 'Left source channel' : 'Source channel'}"${locked}>${channelOptions(strip.a, view.deviceChannels, stereo)}</select>
     </label>
     ${stereo ? `<label class="eq-pane-inspector-field">Right source channel
-      <select class="eq-pane-inspector-source" data-field="b" aria-label="Right source channel"${disabled}>${channelOptions(strip.b, view.deviceChannels, true)}</select>
+      <select class="eq-pane-inspector-source" data-field="b" aria-label="Right source channel"${locked}>${channelOptions(strip.b, view.deviceChannels, true)}</select>
     </label>` : ''}
-    <button type="button" class="eq-pane-inspector-arm${strip.armed ? ' armed' : ''}" aria-pressed="${!!strip.armed}"${disabled}>${strip.armed ? 'Armed for recording' : 'Arm for recording'}</button>
+    <button type="button" class="eq-pane-inspector-arm${strip.armed ? ' armed' : ''}" aria-pressed="${!!strip.armed}"${locked}>${strip.armed ? 'Armed for recording' : 'Arm for recording'}</button>
     <div class="eq-pane-header">Level</div>
     <div class="eq-pane-level-grid" aria-label="Selected channel level">
       ${levelTileHTML('RMS', 'rms', levelTiles.rms, levelTiles.rmsTone)}
@@ -475,7 +480,7 @@ export function eqPaneSignature(view: EqPaneView): string {
       inspector.selectedIndex,
       inspector.strip.label ?? '', inspector.strip.kind, inspector.strip.a, inspector.strip.b, !!inspector.strip.armed,
       inspector.deviceChannels,
-      inspector.disabled, inspector.playbackTrack ? inspector.playbackTrack.kind : null,
+      inspector.disabled, inspector.configLocked, inspector.playbackTrack ? inspector.playbackTrack.kind : null,
       inspector.playbackTrack ? inspector.playbackRoute?.[0] ?? null : null,
       inspector.playbackTrack ? inspector.playbackDeviceChannels : null,
     ])
@@ -629,12 +634,18 @@ export function shouldOfferReportCard(windowCount: number): boolean {
 }
 
 /* ── Channel configuration ── */
-export function channelOptions(selected: number, max: number, compact = false): string {
+// `exclude` (#1404) drops one channel index from the list entirely — the
+// track-head channel picker uses it so a stereo pair's two source selects can
+// never both resolve to the same channel (a === b stays unselectable).
+export function channelOptions(selected: number, max: number, compact = false, exclude?: number): string {
   let html = '';
   // Compact (numeric-only) labels for the two stereo legs, which share the row
   // with the kind select; roomy "Ch N" for the single mono select.
   const label = (i: number) => (compact ? `${i + 1}` : `Ch ${i + 1}`);
-  for (let i = 0; i < max; i++) html += `<option value="${i}"${i === selected ? ' selected' : ''}>${label(i)}</option>`;
+  for (let i = 0; i < max; i++) {
+    if (i === exclude) continue;
+    html += `<option value="${i}"${i === selected ? ' selected' : ''}>${label(i)}</option>`;
+  }
   return html;
 }
 

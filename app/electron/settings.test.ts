@@ -36,6 +36,7 @@ import {
   setActiveRig,
   grantConsoleNetworkConsent,
   SETTING_SPECS,
+  deriveAdvancedFeaturesDefault,
   type AppSettings,
   type CaptureRig,
 } from './settings';
@@ -64,7 +65,7 @@ beforeEach(() => {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-settings-'));
   delete process.env.SOUND_BUDDY_IDEAL_PROFILE;
   delete process.env.SOUND_BUDDY_STORAGE_DIR;
-  delete process.env.SOUND_BUDDY_REPORT_FIRST_UX;
+  delete process.env.SOUND_BUDDY_ADVANCED_FEATURES;
   vi.mocked(logWarn).mockClear();
 });
 
@@ -287,55 +288,103 @@ describe('liveAdjustmentsEnabled (#522 — experimental live adjustments, defaul
   });
 });
 
-describe('reportFirstUxEnabled (#538 — report-first-ux epic gate, default off)', () => {
+describe('advancedFeaturesEnabled (#1421/#1425 — Simple mode default with existing-user preservation)', () => {
   it('defaults to false when settings.json is absent', () => {
-    expect(getSettings().reportFirstUxEnabled).toBe(false);
+    expect(getSettings().advancedFeaturesEnabled).toBe(false);
   });
 
-  it('defaults to false when the file exists without the key', () => {
+  it('defaults to false when the file exists without the key and has no preservation signal', () => {
     writeFile({ idealProfile: '' });
-    expect(getSettings().reportFirstUxEnabled).toBe(false);
+    expect(getSettings().advancedFeaturesEnabled).toBe(false);
   });
 
-  it('flips on and back off, persisting each value to the raw file and surviving a fresh read', () => {
-    const on = updateSettings({ reportFirstUxEnabled: true });
-    expect(on.reportFirstUxEnabled).toBe(true);
-    expect(readFile().reportFirstUxEnabled).toBe(true);
-    expect(getSettings().reportFirstUxEnabled).toBe(true);
-
-    const off = updateSettings({ reportFirstUxEnabled: false });
-    expect(off.reportFirstUxEnabled).toBe(false);
-    expect(readFile().reportFirstUxEnabled).toBe(false);
+  it('derives true for an existing user with an active rig and no explicit key', () => {
+    writeFile({ activeRigId: 'r1' });
+    expect(getSettings().advancedFeaturesEnabled).toBe(true);
   });
 
-  it("reads enabled from SOUND_BUDDY_REPORT_FIRST_UX='1' with no settings file present", () => {
-    process.env.SOUND_BUDDY_REPORT_FIRST_UX = '1';
-    expect(getSettings().reportFirstUxEnabled).toBe(true);
+  it('derives true for an existing user with console network consent and no explicit key', () => {
+    writeFile({ consoleNetworkConsentGranted: true });
+    expect(getSettings().advancedFeaturesEnabled).toBe(true);
   });
 
-  it("reads enabled from SOUND_BUDDY_REPORT_FIRST_UX='true' with no settings file present", () => {
-    process.env.SOUND_BUDDY_REPORT_FIRST_UX = 'true';
-    expect(getSettings().reportFirstUxEnabled).toBe(true);
+  it('keeps Simple mode for an existing file with neither preservation signal', () => {
+    writeFile({
+      rigs: [],
+      activeRigId: null,
+      consoleNetworkConsentGranted: false,
+      lastAppMode: 'guide',
+    });
+    expect(getSettings().advancedFeaturesEnabled).toBe(false);
+    expect(getSettings().lastAppMode).toBe('guide');
   });
 
-  it("SOUND_BUDDY_REPORT_FIRST_UX='0' forces it off over a file-layer true", () => {
-    writeFile({ reportFirstUxEnabled: true });
-    process.env.SOUND_BUDDY_REPORT_FIRST_UX = '0';
-    expect(getSettings().reportFirstUxEnabled).toBe(false);
+  it('lets an explicit value win over an active rig', () => {
+    writeFile({ advancedFeaturesEnabled: false, activeRigId: 'r1' });
+    expect(getSettings().advancedFeaturesEnabled).toBe(false);
   });
 
-  it('never bakes an env override into a rigs write', () => {
-    writeFile({ idealProfile: '', rigs: [], activeRigId: null, reportFirstUxEnabled: false });
-    process.env.SOUND_BUDDY_REPORT_FIRST_UX = '1';
+  it('does not rewrite settings.json during derived reads', () => {
+    const raw = { activeRigId: 'r1' };
+    writeFile(raw);
+    const before = fs.readFileSync(settingsFile(), 'utf8');
+    expect(getSettings().advancedFeaturesEnabled).toBe(true);
+    expect(fs.readFileSync(settingsFile(), 'utf8')).toBe(before);
+    expect(readFile()).toEqual(raw);
+  });
 
-    // getSettings reflects the env layer...
-    expect(getSettings().reportFirstUxEnabled).toBe(true);
+  it('persists the derived value on the next settings write', () => {
+    writeFile({ activeRigId: 'r1' });
+    updateSettings({ idealProfile: 'broadcast' });
+    expect(readFile().advancedFeaturesEnabled).toBe(true);
+  });
 
-    // ...but writing a rig persists the FILE's reportFirstUxEnabled=false, not the env true.
-    upsertRig(makeRig());
-    expect(readFile().reportFirstUxEnabled).toBe(false);
-    // The env override is still applied on read.
-    expect(getSettings().reportFirstUxEnabled).toBe(true);
+  it('does not demote an existing user after the active rig is later removed', () => {
+    writeFile({
+      advancedFeaturesEnabled: true,
+      activeRigId: 'r1',
+      rigs: [{ id: 'r1', ...makeRig() }],
+    });
+    deleteRig('r1');
+    expect(getSettings().advancedFeaturesEnabled).toBe(true);
+    expect(readFile().advancedFeaturesEnabled).toBe(true);
+    expect(readFile().activeRigId).toBeNull();
+  });
+
+  it('derives defaults from active rig and console consent signals only', () => {
+    expect(deriveAdvancedFeaturesDefault({})).toBe(false);
+    expect(deriveAdvancedFeaturesDefault({ activeRigId: null })).toBe(false);
+    expect(deriveAdvancedFeaturesDefault({ activeRigId: '' })).toBe(false);
+    expect(deriveAdvancedFeaturesDefault({ activeRigId: 'r1' })).toBe(true);
+    expect(deriveAdvancedFeaturesDefault({ consoleNetworkConsentGranted: false })).toBe(false);
+    expect(deriveAdvancedFeaturesDefault({ consoleNetworkConsentGranted: true })).toBe(true);
+    expect(deriveAdvancedFeaturesDefault({ activeRigId: 'r1', consoleNetworkConsentGranted: true })).toBe(true);
+  });
+
+  it('flips on and back off, persisting each boolean value to the raw file', () => {
+    const off = updateSettings({ advancedFeaturesEnabled: false });
+    expect(off.advancedFeaturesEnabled).toBe(false);
+    expect(readFile().advancedFeaturesEnabled).toBe(false);
+
+    const on = updateSettings({ advancedFeaturesEnabled: true });
+    expect(on.advancedFeaturesEnabled).toBe(true);
+    expect(readFile().advancedFeaturesEnabled).toBe(true);
+  });
+
+  it('drops a non-boolean patch and preserves the existing file-layer value', () => {
+    expect(SETTING_SPECS.advancedFeaturesEnabled.sanitizePatch?.('nope')).toBeUndefined();
+  });
+
+  it("SOUND_BUDDY_ADVANCED_FEATURES='1' forces it on over a file-layer false", () => {
+    writeFile({ advancedFeaturesEnabled: false });
+    process.env.SOUND_BUDDY_ADVANCED_FEATURES = '1';
+    expect(getSettings().advancedFeaturesEnabled).toBe(true);
+  });
+
+  it("SOUND_BUDDY_ADVANCED_FEATURES='0' forces it off over a derived true value", () => {
+    writeFile({ activeRigId: 'r1' });
+    process.env.SOUND_BUDDY_ADVANCED_FEATURES = '0';
+    expect(getSettings().advancedFeaturesEnabled).toBe(false);
   });
 });
 
@@ -458,6 +507,37 @@ describe('measurementDeviceName (#460 — persisted preferred device, matched by
     updateSettings({ measurementDeviceName: 'Built-in Microphone' });
     // No SOUND_BUDDY_* override exists; the file value is the effective value.
     expect(getSettings().measurementDeviceName).toBe('Built-in Microphone');
+  });
+});
+
+describe('lastAppMode (#1405 — persisted last-active workspace mode, default empty)', () => {
+  it('defaults to empty when settings.json is absent', () => {
+    expect(getSettings().lastAppMode).toBe('');
+  });
+
+  it('defaults to empty when the file exists without the key', () => {
+    writeFile({ idealProfile: '' });
+    expect(getSettings().lastAppMode).toBe('');
+  });
+
+  it('round-trips a value through updateSettings, the raw file, and a fresh read', () => {
+    const updated = updateSettings({ lastAppMode: 'live' });
+    expect(updated.lastAppMode).toBe('live');
+    expect(readFile().lastAppMode).toBe('live');
+    expect(getSettings().lastAppMode).toBe('live');
+  });
+
+  it.each([42, null, {}, ['a']])(
+    'hydrates a corrupted lastAppMode value (%p) back to the default empty string',
+    (corrupted) => {
+      writeFile({ lastAppMode: corrupted });
+      expect(getSettings().lastAppMode).toBe('');
+    },
+  );
+
+  it('has no env layer — a stored mode is pure persisted data', () => {
+    updateSettings({ lastAppMode: 'live' });
+    expect(getSettings().lastAppMode).toBe('live');
   });
 });
 
@@ -692,25 +772,10 @@ describe('setActiveRig', () => {
 });
 
 describe('layered-persistence discipline', () => {
-  it('never bakes an env override into a rigs write', () => {
-    writeFile({ idealProfile: '', rigs: [], activeRigId: null, reportFirstUxEnabled: false });
-    process.env.SOUND_BUDDY_REPORT_FIRST_UX = '1';
-
-    // getSettings reflects the env layer...
-    expect(getSettings().reportFirstUxEnabled).toBe(true);
-
-    // ...but writing a rig persists the FILE's reportFirstUxEnabled=false, not the env true.
-    upsertRig(makeRig());
-    expect(readFile().reportFirstUxEnabled).toBe(false);
-    // The env override is still applied on read.
-    expect(getSettings().reportFirstUxEnabled).toBe(true);
-  });
-
-  it('rig writes do not disturb existing reportFirstUxEnabled/idealProfile file values', () => {
-    updateSettings({ reportFirstUxEnabled: true, idealProfile: 'broadcast' });
+  it('rig writes do not disturb existing idealProfile file values', () => {
+    updateSettings({ idealProfile: 'broadcast' });
     upsertRig(makeRig());
     const f = readFile();
-    expect(f.reportFirstUxEnabled).toBe(true);
     expect(f.idealProfile).toBe('broadcast');
     expect(f.rigs).toHaveLength(1);
   });
@@ -862,7 +927,7 @@ describe('SETTING_SPECS — the single owner of every field invariant (#747)', (
     inputInstrumentProfiles: {},
     crashReportingEnabled: false,
     liveAdjustmentsEnabled: false,
-    reportFirstUxEnabled: false,
+    advancedFeaturesEnabled: false,
     shareChurchName: '',
     weeklyReminderEnabled: false,
     weeklyReminderServiceDay: 0,
@@ -871,7 +936,7 @@ describe('SETTING_SPECS — the single owner of every field invariant (#747)', (
     gradingProfile: 'casual',
     consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
-    splCalibrationOffsetDb: null,
+    splCalibrationOffsetDb: null, lastAppMode: '',
   };
 
   it('covers every AppSettings key — and no extras (compile-time + runtime set equality)', () => {
@@ -890,6 +955,7 @@ describe('SETTING_SPECS — the single owner of every field invariant (#747)', (
     expect(SETTING_SPECS.activeRigId.default).toBeNull();
     expect(SETTING_SPECS.liveEqPaneWidth.default).toBe(360);
     expect(SETTING_SPECS.gradingProfile.default).toBe('casual');
+    expect(SETTING_SPECS.advancedFeaturesEnabled.default).toBe(false);
     expect(SETTING_SPECS.consoleNetworkConsentGranted.default).toBe(false);
   });
 });
@@ -990,5 +1056,46 @@ describe('legacy secondaryMeasurementEnabled settings retirement (#730)', () => 
     expect(raw[LEGACY_KEY]).toBe(true);
     expect(raw.idealProfile).toBe('concert');
     expect(raw.storageDir).toBe('/tmp/somewhere');
+  });
+});
+
+describe('legacy report-first settings retirement (#1426)', () => {
+  const LEGACY_KEY = 'report' + 'FirstUx' + 'Enabled';
+
+  function writeLegacyReportFirstSettings() {
+    writeFile({
+      [LEGACY_KEY]: true,
+      idealProfile: 'broadcast',
+      storageDir: '/tmp/somewhere',
+      advancedFeaturesEnabled: false,
+      rigs: [],
+      activeRigId: null,
+    });
+  }
+
+  it('loads a settings.json with the retired key cleanly, dropping it from getSettings() while preserving every other setting', () => {
+    writeLegacyReportFirstSettings();
+
+    let s: ReturnType<typeof getSettings> | undefined;
+    expect(() => {
+      s = getSettings();
+    }).not.toThrow();
+
+    expect(LEGACY_KEY in (s as object)).toBe(false);
+    expect(s?.idealProfile).toBe('broadcast');
+    expect(s?.storageDir).toBe('/tmp/somewhere');
+    expect(s?.advancedFeaturesEnabled).toBe(false);
+  });
+
+  it('round-trips the retired key untouched through a subsequent updateSettings write', () => {
+    writeLegacyReportFirstSettings();
+
+    updateSettings({ idealProfile: 'concert' });
+
+    const raw = readFile();
+    expect(raw[LEGACY_KEY]).toBe(true);
+    expect(raw.idealProfile).toBe('concert');
+    expect(raw.storageDir).toBe('/tmp/somewhere');
+    expect(raw.advancedFeaturesEnabled).toBe(false);
   });
 });

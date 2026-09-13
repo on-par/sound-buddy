@@ -13,7 +13,10 @@ test('packaged app analyzes a file with no external tools on PATH', async () => 
   test.setTimeout(180_000);
   const releaseDir = path.join(__dirname, '..', 'release');
   const zipName = fs.existsSync(releaseDir)
-    ? fs.readdirSync(releaseDir).find((f) => f.endsWith('-arm64-mac.zip'))
+    ? fs
+        .readdirSync(releaseDir)
+        .filter((f) => f.endsWith('-arm64-mac.zip'))
+        .sort((a, b) => fs.statSync(path.join(releaseDir, b)).mtimeMs - fs.statSync(path.join(releaseDir, a)).mtimeMs)[0]
     : undefined;
   test.skip(!zipName, 'release zip not built');
   const zip = path.join(releaseDir, zipName as string);

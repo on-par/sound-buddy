@@ -49,6 +49,7 @@ import {
   hasUsableCurve,
   frameBandDb,
   spectrumChartModel,
+  liveCurveComparisonModel,
   type SpectrumCurvePaths,
   type SpectrumFrame,
   type SpectrumData,
@@ -696,5 +697,45 @@ describe('spectrumChartModel', () => {
   it('carries the centroid readout through unchanged', () => {
     const model = spectrumChartModel({ spectrum: fixtureSpectrum });
     expect(model.centroidHTML).toBe(eqCentroidHTML(fixtureSpectrum));
+  });
+});
+
+describe('liveCurveComparisonModel', () => {
+  const curve = {
+    freqs: [20, 60, 250, 500, 2000, 4000, 6000],
+    db: [-44, -38, -30, -24, -28, -32, -36],
+  };
+  const target = {
+    label: 'Edited target',
+    dbOffsets: [-4, -2, 0, 2, 1, -1, -3],
+  };
+
+  it('renders a target overlay without a match score for 7-band live data', () => {
+    const model = liveCurveComparisonModel({ curve, targetProfile: target });
+
+    expect(model.kind).toBe('bands');
+    expect(model.chartHTML).toContain('eq-target-svg');
+    expect(model.legendHTML).toContain('Target · Edited target');
+    expect(model.legendHTML).not.toContain('Match');
+    expect(model.note).toContain('7-band');
+  });
+
+  it('includes a match score when full analyzer data is available', () => {
+    const fullCurve = {
+      freqs: Array.from({ length: 48 }, (_, i) => 20 * Math.pow(1000, i / 47)),
+      db: Array.from({ length: 48 }, (_, i) => -42 + i * 0.2),
+    };
+    const fullTarget = {
+      label: 'Edited target',
+      dbOffsets: Array.from({ length: 48 }, (_, i) => (i % 7) - 3),
+    };
+
+    const model = liveCurveComparisonModel({ curve: fullCurve, targetProfile: fullTarget });
+
+    expect(model.kind).toBe('curve');
+    expect(model.chartHTML).toContain('eq-target-svg');
+    expect(model.legendHTML).toContain('Match');
+    expect(model.matchScore).not.toBeNull();
+    expect(model.note).toBe('');
   });
 });

@@ -41,7 +41,7 @@ import {
   type WheelEvent,
 } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
-import { useLiveCaptureStore, MAX_LABEL_LEN, type LapAction } from './stores/liveCaptureStore';
+import { useLiveCaptureStore, MAX_LABEL_LEN, type LapAction, type LiveCaptureState } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useSoundcheckStore } from './stores/soundcheckStore';
@@ -53,9 +53,8 @@ import {
   routeStateForSession,
   routingDrawerHTML,
 } from './routingDrawer';
-import { deviceChannelCount } from './live-capture-panel';
+import { deviceChannelCount, type StripConfig, type ChannelGroup, type LiveDevice, type ChannelFlagMap } from './live-capture-panel';
 import {
-  liveAdjustmentsPanelHTML,
   dawShellHTML,
   dawShellPatchView,
   getDawShellRuntime,
@@ -63,7 +62,10 @@ import {
   liveWorkspaceViewState,
   MS_PER_SECOND,
 } from './live-workspace-view';
+import LiveAdjustmentsPanel from './LiveAdjustmentsPanel';
+import { mainsHumWarningsSignature } from './mains-hum-warnings';
 import { setSessionTimelineScale, sessionTimelineScaleForRange } from './session-timeline-scale';
+import { registerLiveFrameHook } from './live-frame-hooks';
 import { renderStableElapsedMs } from './recording-elapsed';
 import { sessionTabSessionPickerAction, sessionTabSessionPickerView } from './session-tab-session-picker';
 import { paintSessionTabWaveformClips, sessionTabWaveformView, sessionTakeDurationSecs } from './session-tab-waveforms';
@@ -103,6 +105,7 @@ import { applyClipClick } from './clip-click';
 import { sessionClipSelection } from './clip-selection';
 import { sessionTimeSelection } from './time-selection';
 import { beginTimeSelectionDrag } from './time-selection-drag';
+import { zoomSelectionAtAction } from './zoomFromSelection';
 import { beginLoopBodyDrag, LOOP_BRACE_BODY_SELECTOR } from './loopBrace.bodyDrag';
 import { beginLoopEdgeDrag, LOOP_HANDLE_END_SELECTOR, LOOP_HANDLE_START_SELECTOR, type LoopEdge } from './loopBrace.edgeDrag';
 import { sessionLoopRegion } from './loopBrace.render';
@@ -119,6 +122,7 @@ import {
 import { createSoundcheckTransportController } from './soundcheck-transport-controller';
 import { runtime, recordCapture, stopLiveCapture } from './LiveControls';
 import { recordButtonAction } from './record-transport';
+import { liveFrameProbe } from './live-frame-probe';
 
 // Per-element "original text" snapshot for the delegated inline rename (#39),
 // keyed by the DAW track-name element being edited. Survives the element being
@@ -198,8 +202,64 @@ export function ensureSessionRouting(
   return current;
 }
 
+/** #1411: the board shell's subscription, as a pure exported function so its
+ *  stability is unit-testable. ONLY discrete board-SHAPE values belong here —
+ *  see this story's ADR. Never add lastTick, lastLiveChannels, liveWindows,
+ *  lapCoaching, secondaryWindows, or the mainsHum tracker object: liveCaptureStore
+ *  replaces those on every tick, and any of them here rebuilds the whole board
+ *  (and every waveform canvas) at tick rate. A window-rate value that must reach
+ *  the board markup enters as a value-stable primitive fingerprint, like
+ *  mainsHumSignature below. */
+export interface LiveBoardSelection {
+  channelConfig: StripConfig[];
+  channelGroups: ChannelGroup[];
+  devices: LiveDevice[];
+  selectedDevice: string;
+  isCapturing: boolean;
+  promoting: boolean;
+  stopping: boolean;
+  demoting: boolean;
+  liveMode: 'monitor' | 'record';
+  appMode: string;
+  selectedChannel: number | null;
+  measurementSource: number | null;
+  focusedInputIndex: number | null;
+  mutedChannels: ChannelFlagMap;
+  soloedChannels: ChannelFlagMap;
+  boardShapeVersion: number;
+  /** #1407 hum badges stay fresh without subscribing to the per-tick tracker. */
+  mainsHumSignature: string;
+}
+
+export function liveBoardSelection(st: LiveCaptureState): LiveBoardSelection {
+  return {
+    channelConfig: st.channelConfig,
+    channelGroups: st.channelGroups,
+    devices: st.devices,
+    selectedDevice: st.selectedDevice,
+    isCapturing: st.isCapturing,
+    promoting: st.promoting,
+    stopping: st.stopping,
+    demoting: st.demoting,
+    liveMode: st.liveMode,
+    appMode: st.appMode,
+    selectedChannel: st.selectedChannel,
+    measurementSource: st.measurementSource,
+    focusedInputIndex: st.focusedInputIndex,
+    mutedChannels: st.mutedChannels,
+    soloedChannels: st.soloedChannels,
+    boardShapeVersion: st.boardShapeVersion,
+    mainsHumSignature: mainsHumWarningsSignature(st.mainsHum.warnings),
+  };
+}
+
 export default function LiveCapturePanel(): JSX.Element | null {
   const [sessionRoutingDrawerOpen, setSessionRoutingDrawerOpen] = useState(false);
+  // #1404: which track's channel-routing picker is open on the head row, or
+  // null. Transient view state like the routing drawer flag above, not store
+  // data — surviving a board rebuild (dangerouslySetInnerHTML swap) is exactly
+  // why it lives in React state rather than being derived from the DOM.
+  const [channelPickerIndex, setChannelPickerIndex] = useState<number | null>(null);
   // Session tempo (#1276). Transient render state, like the routing drawer flag
   // above — persistence across restarts is not in this slice's scope.
   const [timelineTempo, setTimelineTempo] = useState<TimelineTempo>(createTimelineTempo);
@@ -218,26 +278,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // Follow-scroll state (#1286). Local view state like timelineZoom above - it is
   // navigation, not capture or session data, and is not persisted.
   const [timelineFollow, setTimelineFollow] = useState<TimelineFollowModel>(createTimelineFollowModel);
-  const s = useStoreShallow(useLiveCaptureStore, (st) => ({
-    channelConfig: st.channelConfig,
-    channelGroups: st.channelGroups,
-    devices: st.devices,
-    selectedDevice: st.selectedDevice,
-    isCapturing: st.isCapturing,
-    promoting: st.promoting,
-    stopping: st.stopping,
-    demoting: st.demoting,
-    liveMode: st.liveMode,
-    appMode: st.appMode,
-    selectedChannel: st.selectedChannel,
-    measurementSource: st.measurementSource,
-    focusedInputIndex: st.focusedInputIndex,
-    mutedChannels: st.mutedChannels,
-    soloedChannels: st.soloedChannels,
-    lapCoaching: st.lapCoaching,
-    boardShapeVersion: st.boardShapeVersion,
-    liveWindows: st.liveWindows,
-  }));
+  const s = useStoreShallow(useLiveCaptureStore, liveBoardSelection);
   const settings = useStoreShallow(useSettingsStore, (st) => st.settings);
   // Only discrete Session selection/cache fields are subscribed here. Live
   // waveform frames remain outside this render path (ADR-0005).
@@ -287,10 +328,12 @@ export default function LiveCapturePanel(): JSX.Element | null {
   const zoomContext: TimelineZoomContext = {
     durationSecs: timelineOverviewDurationSecs(takeSecs, elapsedSecs),
     playheadSecs: elapsedSecs,
-    // No time-selection surface exists yet (#1283/#1285), so the loaded take's
-    // span is the selection; with no take, applyTimelineZoom falls back to an
-    // insert-marker window at the real insert marker (#1301), not the playhead.
-    selection: takeSecs > 0 ? { startSecs: 0, endSecs: takeSecs } : null,
+    // The drawn time selection (#1395), falling back to the loaded take's full span, or
+    // with no take to null so applyTimelineZoom falls back to an insert-marker window at
+    // the real insert marker (#1301), not the playhead. The .daw-zoom-btn branch below
+    // re-derives this live at click time instead of trusting this render-time value — see
+    // the comment there.
+    selection: zoomSelectionAtAction(sessionTimeSelection, takeSecs),
     insertMarkerSecs: sessionTimelineMarks.getInsertMarkerSecs(),
   };
   const timelineZoomView = timelineZoomControlsView(timelineZoom, zoomContext);
@@ -325,6 +368,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     timelineBpm,
     timelineZoomView,
     timelineFollowView(timelineFollow),
+    channelPickerIndex,
   );
   const laneSignature = dawShellPatchView(state).laneSignature;
 
@@ -518,26 +562,29 @@ export default function LiveCapturePanel(): JSX.Element | null {
     getDawShellRuntime()?.renderLoopBrace?.();
   });
 
-  // The playhead ticker (TD-001 slice 6j, #713): a requestAnimationFrame loop
-  // driving renderPlayhead every frame while the shell is mounted and
-  // capturing — replaces the old 100ms setInterval owned by inline-app.js.
-  // Active during "Connecting…" and whenever meter events stall, exactly like
-  // the old interval (but at frame rate), so the playhead never freezes early.
+  // The playhead ticker (TD-001 slice 6j, #713; consolidated into the shared Live
+  // frame loop, #1412 — this story's ADR-0134): drives renderPlayhead every frame
+  // while the shell is mounted and capturing — replaces the old 100ms setInterval
+  // owned by inline-app.js. Registers into live-frame-hooks.ts rather than running
+  // its own requestAnimationFrame loop, so LiveWorkspace.tsx's createLiveMeterController
+  // stays the Live tab's one rAF owner; that controller free-runs while its own
+  // isCapturing snapshot is true (a superset of s.isCapturing — see #847's
+  // boardRunning), so this hook keeps firing every frame — active during
+  // "Connecting…" and whenever meter events stall, exactly like the old interval
+  // (but at frame rate), so the playhead never freezes early.
   useEffect(() => {
     if (s.appMode !== 'live') return;
     if (!s.isCapturing) return;
-    let rafHandle = 0;
-    const tick = (): void => {
-      getDawShellRuntime()?.renderPlayhead?.();
+    return registerLiveFrameHook(() => {
+      const runtime = getDawShellRuntime();
+      runtime?.renderPlayhead?.();
+      followTickRef.current((runtime?.playheadElapsedMs?.() ?? 0) / MS_PER_SECOND);
       patchOverview(document.getElementById('live-island')?.querySelector('.daw-shell') ?? null);
-      rafHandle = requestAnimationFrame(tick);
-    };
-    rafHandle = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafHandle);
-    // sessionWaveforms is a dep (not just appMode/isCapturing) so tick's
+    });
+    // sessionWaveforms is a dep (not just appMode/isCapturing) so the hook's
     // patchOverview closure never goes stale: loading a different recorded
     // session while capturing must not freeze the overview's loaded-duration
-    // reading at whatever it was when this effect last (re)started.
+    // reading at whatever it was when this effect last (re)registered.
   }, [s.appMode, s.isCapturing, sessionWaveforms]);
 
   // Native 'change' listener (see boardRootRef's comment above) — must stay
@@ -559,7 +606,6 @@ export default function LiveCapturePanel(): JSX.Element | null {
 
   if (s.appMode !== 'live') return null;
 
-  const adjustmentsHtml = liveAdjustmentsPanelHTML(state);
   const routingDrawerContent = soundcheck.sessionDir && soundcheck.manifest && routeState
     ? routingDrawerHTML(
       s.channelConfig,
@@ -571,7 +617,10 @@ export default function LiveCapturePanel(): JSX.Element | null {
     )
     : '';
   const board = routingDrawerContent ? dawShellHTML(state, routingDrawerContent) : dawShellHTML(state);
-  const body = board + adjustmentsHtml;
+  // #1414: a changed board string IS the dangerouslySetInnerHTML rebuild below —
+  // cheapest place to count it without a render-keyed effect (board is computed
+  // after the appMode early return, so no hook can depend on it).
+  liveFrameProbe.noteBoardHtml(board);
 
   /* c8 ignore start -- delegated interaction handlers, no jsdom in this
      harness (renderToString doesn't dispatch events) — exercised by
@@ -643,7 +692,9 @@ export default function LiveCapturePanel(): JSX.Element | null {
     // zoomContext is captured from the current render, which is correct here
     // for the same reason the BPM branch captures timelineTempo: the handler
     // is re-created every render — EXCEPT insertMarkerSecs, which #1302 lets
-    // move on a lane press without a render, so it is re-read live here.
+    // move on a lane press without a render, so it is re-read live here, and
+    // selection, which a drag gesture can likewise change without a render
+    // (#1395) — zoomSelectionAtAction re-reads sessionTimeSelection live.
     const zoomBtn = target.closest('.daw-zoom-btn');
     if (zoomBtn) {
       const action = timelineZoomActionForId(zoomBtn.id);
@@ -654,6 +705,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
         zoomManuallyChanged.current = action !== 'fit-full';
         setTimelineZoom((model) => applyTimelineZoom(model, action, {
           ...zoomContext,
+          selection: zoomSelectionAtAction(sessionTimeSelection, takeSecs),
           insertMarkerSecs: sessionTimelineMarks.getInsertMarkerSecs(),
         }));
         setTimelineFollow((m) => applyTimelineFollowEvent(m, 'navigate'));
@@ -690,6 +742,20 @@ export default function LiveCapturePanel(): JSX.Element | null {
       routeHeaderChannelAction(action, channelId, useLiveCaptureStore.getState());
       return;
     }
+    // #1404: the channel-routing badge opens/closes its own track's picker.
+    // Clicking a different track's badge switches which one is open rather
+    // than stacking two — only one picker is ever open at a time.
+    const channelBadge = target.closest('.daw-track-head-channel-badge');
+    if (channelBadge) {
+      const idx = parseInt(channelBadge.closest('.daw-track-head')?.getAttribute('data-ch') ?? '', 10);
+      if (Number.isInteger(idx)) setChannelPickerIndex((open) => (open === idx ? null : idx));
+      return;
+    }
+    // #1404: a click anywhere inside the open picker (its selects, in
+    // particular) must not fall through to strip selection below — that
+    // would rewrite the board's innerHTML mid-interaction and destroy the
+    // native <select> before the browser commits the click (ADR-0133).
+    if (target.closest('.daw-track-channel-picker')) return;
     // Workspace Arm all / Disarm all (#191).
     if (target.closest('#live-ws-arm-all')) {
       useLiveCaptureStore.getState().setAllArmed(true);
@@ -932,6 +998,14 @@ export default function LiveCapturePanel(): JSX.Element | null {
 
   function onBoardKeyDown(e: KeyboardEvent<HTMLDivElement>): void {
     const target = e.target as Element;
+    // #1404: Escape closes the open channel-routing picker with no change to
+    // channelConfig — the picker's own selects only ever write on 'change',
+    // so closing here never needs to undo anything.
+    if (e.key === 'Escape' && target.closest('.daw-track-channel-picker')) {
+      e.preventDefault();
+      setChannelPickerIndex(null);
+      return;
+    }
     // Inline rename (#39): Enter commits via blur, Escape restores + blurs.
     const name = nameElOf(target);
     if (name) {
@@ -1009,6 +1083,24 @@ export default function LiveCapturePanel(): JSX.Element | null {
     const outputDevice = target.closest('#daw-session-output-device');
     if (outputDevice instanceof HTMLSelectElement) {
       useSoundcheckStore.getState().selectDevice(outputDevice.value);
+      return;
+    }
+    // #1404: the track-head channel picker's Mode/Source selects route into
+    // the same store actions the EQ pane inspector uses, so both stay in
+    // sync (setStripKind/setStripSource restart the monitor stream on their
+    // own — ADR-0132 — this handler does not need to).
+    const pickerKind = target.closest('.daw-track-channel-picker-kind');
+    if (pickerKind instanceof HTMLSelectElement) {
+      const idx = parseInt(pickerKind.closest('.daw-track-head')?.getAttribute('data-ch') ?? '', 10);
+      if (Number.isInteger(idx)) useLiveCaptureStore.getState().setStripKind(idx, pickerKind.value);
+      return;
+    }
+    const pickerSource = target.closest('.daw-track-channel-picker-source');
+    if (pickerSource instanceof HTMLSelectElement) {
+      const idx = parseInt(pickerSource.closest('.daw-track-head')?.getAttribute('data-ch') ?? '', 10);
+      const field = pickerSource.dataset.field === 'b' ? 'b' : 'a';
+      const channel = parseInt(pickerSource.value, 10);
+      if (Number.isInteger(idx) && Number.isInteger(channel)) useLiveCaptureStore.getState().setStripSource(idx, field, channel);
       return;
     }
     const routingMaster = target.closest('.daw-routing-master-mixdown');
@@ -1228,7 +1320,9 @@ export default function LiveCapturePanel(): JSX.Element | null {
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       onDragEnd={onDragEnd}
-      dangerouslySetInnerHTML={{ __html: body }}
-    />
+    >
+      <div className="live-board-shell" dangerouslySetInnerHTML={{ __html: board }} />
+      <LiveAdjustmentsPanel />
+    </div>
   );
 }

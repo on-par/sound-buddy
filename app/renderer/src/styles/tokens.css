@@ -74,13 +74,13 @@
 
       /* Settings dialog chrome (#1008) — a fixed frame so the rail, pane and
          footer keep their geometry across section switches. */
-      --settings-card-w:min(760px,calc(100vw - 48px));
+      --settings-card-w:min(900px,calc(100vw - 48px));
       --settings-card-h:min(560px,calc(100vh - 96px));
-      --settings-rail-w:176px;
+      --settings-rail-w:160px;
 
       /* Settings row grid (#1009) — one control column width and one row
          gutter so every pane's controls share a right edge. */
-      --settings-control-w:260px;
+      --settings-control-w:220px;
       --settings-row-gap:14px;
 
       /* Settings toggles (#1010) — one box size for every checkbox in the

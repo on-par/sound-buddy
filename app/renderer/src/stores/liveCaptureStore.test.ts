@@ -12,6 +12,29 @@ import {
 import { createMockSoundBuddy } from '../mock-sound-buddy';
 import { useSettingsStore } from './settingsStore';
 import type { StripConfig, LiveDevice } from '../live-capture-panel';
+import { dawTrackRows, dawTrackHeaderHTML, liveWorkspaceViewState } from '../live-workspace-view';
+import { GRID_FREQS } from '@sound-buddy/audio-engine/dist/profiles/index.js';
+
+// Local mains-hum curve fixture (#1392) — duplicated rather than shared with
+// mains-hum-warnings.test.ts per this repo's test-colocation convention.
+function nearestGridIndexToFrequency(targetHz: number): number {
+  let bestIndex = 0;
+  let bestDiff = Infinity;
+  GRID_FREQS.forEach((f, i) => {
+    const diff = Math.abs(f - targetHz);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestIndex = i;
+    }
+  });
+  return bestIndex;
+}
+const GRID_INDEX_NEAREST_60HZ = nearestGridIndexToFrequency(60);
+function curveWithPeakAt60Hz(): number[] {
+  const db = new Array(GRID_FREQS.length).fill(-60);
+  db[GRID_INDEX_NEAREST_60HZ] = -48;
+  return db;
+}
 
 // The pure helper classic-scripts the store reads off `window` — real modules
 // (not hand-rolled stubs), same convention as arm-state.test.ts/group-state.test.ts.
@@ -19,9 +42,10 @@ const armState = require('../../arm-state.js');
 const groupState = require('../../group-state.js');
 const rigKind = require('../../rig-kind.js');
 const channelLabels = require('../../channel-labels.js');
+const trackWorkspace = require('../../track-workspace.js');
 
 beforeEach(() => {
-  (globalThis as { window?: unknown }).window = { armState, groupState, rigKind, channelLabels };
+  (globalThis as { window?: unknown }).window = { armState, groupState, rigKind, channelLabels, trackWorkspace };
 });
 
 afterEach(() => {
@@ -56,6 +80,7 @@ describe('createLiveCaptureStore', () => {
     expect(s.soloedChannels).toEqual({});
     expect(s.meterIntervalMs).toBe(100);
     expect(s.windowSecs).toBe(3);
+    expect(s.mainsHum).toEqual({ eligibility: {}, warnings: {} });
   });
 
   describe('capture cadence (#725)', () => {
@@ -425,6 +450,20 @@ describe('createLiveCaptureStore', () => {
       expect(store.getState().channelConfig[1]).toEqual({ kind: 'mono', a: 1, b: 2, armed: true });
     });
 
+    it('#1403: addStrip picks the lowest unreferenced input, not just the used count', () => {
+      const { store } = makeStore();
+      store.setState({ devices: DEVICES, channelConfig: [{ kind: 'mono', a: 0, b: 1 }, { kind: 'mono', a: 2, b: 3 }] });
+      store.getState().addStrip();
+      expect(store.getState().channelConfig[2]).toEqual({ kind: 'mono', a: 1, b: 2, armed: true });
+    });
+
+    it('#1403: addStrip skips both legs of a stereo strip when picking the next input', () => {
+      const { store } = makeStore();
+      store.setState({ devices: DEVICES, channelConfig: [{ kind: 'stereo', a: 0, b: 1 }, { kind: 'mono', a: 3, b: 4 }] });
+      store.getState().addStrip();
+      expect(store.getState().channelConfig[2]).toEqual({ kind: 'mono', a: 2, b: 3, armed: true });
+    });
+
     it('removeStrip drops the strip and prunes it from groups', () => {
       const { store } = makeStore();
       store.setState({
@@ -527,6 +566,57 @@ describe('createLiveCaptureStore', () => {
       store.setState({ channelConfig: [{ kind: 'mono', a: 0, b: 1 }, { kind: 'mono', a: 1, b: 2 }] });
       store.getState().setAllArmed(false);
       expect(store.getState().channelConfig.every((s: StripConfig) => s.armed === false)).toBe(true);
+    });
+
+    describe('#1403: token-changing mutators call restartMonitorCapture', () => {
+      it.each([
+        ['idle', { isCapturing: false, liveMode: 'monitor' as const }],
+        ['monitoring', { isCapturing: true, liveMode: 'monitor' as const }],
+      ])('setStripKind calls it once while %s', (_label, stateOverrides) => {
+        const { store } = makeStore();
+        const restart = vi.fn(async () => undefined);
+        store.setState({ devices: DEVICES, channelConfig: [{ kind: 'mono', a: 0, b: 0 }], ...stateOverrides, restartMonitorCapture: restart });
+        store.getState().setStripKind(0, 'stereo');
+        expect(restart).toHaveBeenCalledTimes(1);
+      });
+
+      it.each([
+        ['idle', { isCapturing: false, liveMode: 'monitor' as const }],
+        ['monitoring', { isCapturing: true, liveMode: 'monitor' as const }],
+      ])('setStripSource calls it once while %s', (_label, stateOverrides) => {
+        const { store } = makeStore();
+        const restart = vi.fn(async () => undefined);
+        store.setState({ channelConfig: [{ kind: 'stereo', a: 0, b: 1 }], ...stateOverrides, restartMonitorCapture: restart });
+        store.getState().setStripSource(0, 'b', 5);
+        expect(restart).toHaveBeenCalledTimes(1);
+      });
+
+      it.each([
+        ['idle', { isCapturing: false, liveMode: 'monitor' as const }],
+        ['monitoring', { isCapturing: true, liveMode: 'monitor' as const }],
+      ])('addStrip calls it once while %s', (_label, stateOverrides) => {
+        const { store } = makeStore();
+        const restart = vi.fn(async () => undefined);
+        store.setState({ devices: DEVICES, channelConfig: [{ kind: 'mono', a: 0, b: 1 }], ...stateOverrides, restartMonitorCapture: restart });
+        store.getState().addStrip();
+        expect(restart).toHaveBeenCalledTimes(1);
+      });
+
+      it('toggleArm does not call it (no token change)', () => {
+        const { store } = makeStore();
+        const restart = vi.fn(async () => undefined);
+        store.setState({ channelConfig: [{ kind: 'mono', a: 0, b: 1 }], restartMonitorCapture: restart });
+        store.getState().toggleArm(0);
+        expect(restart).not.toHaveBeenCalled();
+      });
+
+      it('setStripLabel does not call it (no token change)', () => {
+        const { store } = makeStore();
+        const restart = vi.fn(async () => undefined);
+        store.setState({ channelConfig: [{ kind: 'mono', a: 0, b: 1 }], restartMonitorCapture: restart });
+        store.getState().setStripLabel(0, 'Kick');
+        expect(restart).not.toHaveBeenCalled();
+      });
     });
   });
 
@@ -775,6 +865,15 @@ describe('createLiveCaptureStore', () => {
       expect(mock.calls.filter((c) => c.method === 'startLive')).toHaveLength(0);
     });
 
+    it('resets mainsHum to a fresh tracker (#1392, no leak across sessions)', async () => {
+      const { store } = makeStore({ startLive: async () => ({ success: true }) });
+      store.setState({
+        mainsHum: { eligibility: { 0: { consecutiveQualifyingWindows: 3, eligible: true } }, warnings: { 0: { channelIndex: 0, channelName: 'Bass DI', frequencyHz: 60 } } },
+      });
+      await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1 });
+      expect(store.getState().mainsHum).toEqual({ eligibility: {}, warnings: {} });
+    });
+
   });
 
   describe('stopCapture', () => {
@@ -821,6 +920,123 @@ describe('createLiveCaptureStore', () => {
     });
   });
 
+  describe('restartMonitorCapture (#1403)', () => {
+    const MONITORING = { isCapturing: true, liveMode: 'monitor' as const, promoting: false, stopping: false, demoting: false };
+
+    it.each([
+      ['idle', { isCapturing: false, liveMode: 'monitor' as const, promoting: false, stopping: false, demoting: false }],
+      ['recording', { ...MONITORING, liveMode: 'record' as const }],
+      ['promoting', { ...MONITORING, promoting: true }],
+      ['stopping', { ...MONITORING, stopping: true }],
+      ['demoting', { ...MONITORING, demoting: true }],
+    ])('is a no-op (no IPC, resolves undefined) while %s', async (_label, stateOverrides) => {
+      const { store, mock } = makeStore();
+      store.setState({ devices: DEVICES, channelConfig: [{ kind: 'mono', a: 0, b: 1 }], ...stateOverrides });
+      const result = await store.getState().restartMonitorCapture();
+      expect(result).toBeUndefined();
+      expect(mock.calls.some((c) => c.method === 'stopLive' || c.method === 'startLive')).toBe(false);
+    });
+
+    it('bounces stopLive then startLive with the current tokens while monitoring, keeping isCapturing true and leaving unrelated state untouched', async () => {
+      const { store, mock } = makeStore({
+        stopLive: async () => { mock.calls.push({ method: 'stopLive', args: [] }); return { success: true, sessionDir: null }; },
+        startLive: async (opts) => { mock.calls.push({ method: 'startLive', args: [opts] }); return { success: true }; },
+      });
+      store.setState({
+        devices: DEVICES, selectedDevice: '0',
+        channelConfig: [{ kind: 'mono', a: 0, b: 1, armed: true }, { kind: 'stereo', a: 2, b: 3, armed: false }],
+        channelGroups: [{ name: 'Drums', members: [0] }],
+        ...MONITORING,
+        measurementSource: 1,
+        selectedChannel: 0,
+        liveWindows: [{ type: 'window', window: 1, ts: 0, channels: [], masking: [] }],
+        lastLiveChannels: [{ index: 0, name: 'A', rms: -10, peak: -5, clipping: false, centroid: 0, rolloff: 0, bands: {} }],
+      });
+
+      await store.getState().restartMonitorCapture();
+
+      expect(mock.calls.map((c) => c.method)).toEqual(['stopLive', 'startLive']);
+      const payload = mock.calls[1].args[0] as { channels: string[]; mode: string; arm?: string[] };
+      expect(payload.channels).toEqual(['0', '2-3']);
+      expect(payload.mode).toBe('monitor');
+      expect(payload.arm).toBeUndefined();
+      expect(store.getState().isCapturing).toBe(true);
+      expect(store.getState().liveWindows).toEqual([]);
+      expect(store.getState().lastLiveChannels).toBeNull();
+      expect(store.getState().channelGroups).toEqual([{ name: 'Drums', members: [0] }]);
+      expect(store.getState().measurementSource).toBe(1);
+      expect(store.getState().selectedChannel).toBe(0);
+      expect(store.getState().channelConfig[0].armed).toBe(true);
+      expect(store.getState().channelConfig[1].armed).toBe(false);
+    });
+
+    it('a failed stopLive keeps isCapturing true, sets an actionable lastError, and never calls startLive', async () => {
+      const { store, mock } = makeStore({
+        stopLive: async () => { mock.calls.push({ method: 'stopLive', args: [] }); return { success: false, sessionDir: null }; },
+        startLive: async (opts) => { mock.calls.push({ method: 'startLive', args: [opts] }); return { success: true }; },
+      });
+      store.setState({ devices: DEVICES, channelConfig: [{ kind: 'mono', a: 0, b: 1 }], ...MONITORING });
+
+      const result = await store.getState().restartMonitorCapture();
+
+      expect(result).toEqual({ success: false, error: expect.stringContaining('routing change') });
+      expect(mock.calls.map((c) => c.method)).toEqual(['stopLive']);
+      expect(store.getState().isCapturing).toBe(true);
+      expect(store.getState().lastError).toContain('routing change');
+    });
+
+    it('a failed startLive sets isCapturing false and lastError to the result error', async () => {
+      const { store } = makeStore({
+        stopLive: async () => ({ success: true, sessionDir: null }),
+        startLive: async () => ({ success: false, error: 'device gone' }),
+      });
+      store.setState({ devices: DEVICES, channelConfig: [{ kind: 'mono', a: 0, b: 1 }], ...MONITORING });
+
+      const result = await store.getState().restartMonitorCapture();
+
+      expect(result).toEqual({ success: false, error: 'device gone' });
+      expect(store.getState().isCapturing).toBe(false);
+      expect(store.getState().lastError).toBe('device gone');
+    });
+
+    it('coalesces overlapping calls to exactly one follow-up restart, whose payload reflects a mutation made in between', async () => {
+      const stopGates: Array<() => void> = [];
+      const startResolvers: Array<(v: { success: boolean }) => void> = [];
+      const { store, mock } = makeStore({
+        stopLive: () => new Promise((resolve) => {
+          mock.calls.push({ method: 'stopLive', args: [] });
+          stopGates.push(() => resolve({ success: true, sessionDir: null }));
+        }),
+        startLive: (opts: unknown) => new Promise((resolve) => {
+          mock.calls.push({ method: 'startLive', args: [opts] });
+          startResolvers.push(resolve as (v: { success: boolean }) => void);
+        }),
+      });
+      store.setState({ devices: DEVICES, channelConfig: [{ kind: 'mono', a: 0, b: 1 }], ...MONITORING });
+
+      const p1 = store.getState().restartMonitorCapture();
+      const p2 = store.getState().restartMonitorCapture();
+      const p3 = store.getState().restartMonitorCapture();
+
+      await vi.waitFor(() => expect(stopGates).toHaveLength(1));
+      stopGates[0]();
+      await vi.waitFor(() => expect(startResolvers).toHaveLength(1));
+      store.getState().setStripSource(0, 'a', 5); // mutation made while the first restart is in flight
+      startResolvers[0]({ success: true });
+
+      await vi.waitFor(() => expect(stopGates).toHaveLength(2));
+      stopGates[1]();
+      await vi.waitFor(() => expect(startResolvers).toHaveLength(2));
+      const secondPayload = mock.calls.filter((c) => c.method === 'startLive')[1].args[0] as { channels: string[] };
+      expect(secondPayload.channels).toEqual(['5']);
+      startResolvers[1]({ success: true });
+
+      await Promise.all([p1, p2, p3]);
+      expect(mock.calls.filter((c) => c.method === 'stopLive')).toHaveLength(2);
+      expect(mock.calls.filter((c) => c.method === 'startLive')).toHaveLength(2);
+    });
+  });
+
   describe('clearLiveWindows', () => {
     it('empties the rolling buffer', () => {
       const { store } = makeStore();
@@ -836,6 +1052,15 @@ describe('createLiveCaptureStore', () => {
       store.setState({ lastLiveChannels: [{ index: 0, name: 'Ch 1', rms: -20, peak: -6, clipping: false, centroid: 0, rolloff: 0, bands: {} }] });
       store.getState().clearLastLiveChannels();
       expect(store.getState().lastLiveChannels).toBeNull();
+    });
+
+    it('resets mainsHum to a fresh tracker (#1392, a device switch must not leak a stale warning onto the new device\'s strips)', () => {
+      const { store } = makeStore();
+      store.setState({
+        mainsHum: { eligibility: { 0: { consecutiveQualifyingWindows: 3, eligible: true } }, warnings: { 0: { channelIndex: 0, channelName: 'Bass DI', frequencyHz: 60 } } },
+      });
+      store.getState().clearLastLiveChannels();
+      expect(store.getState().mainsHum).toEqual({ eligibility: {}, warnings: {} });
     });
   });
 
@@ -910,6 +1135,85 @@ describe('createLiveCaptureStore', () => {
       const tick = { type: 'window', window: 1, ts: 0, channels: [{ index: 0, name: 'A', bands: {}, rms: -10, peak: -5, clipping: false, centroid: 100, rolloff: 200 }], masking: [] };
       mock.emit('onLiveEvent', tick);
       expect(store.getState().channelGroups).toEqual([{ name: 'Drums', members: [0, 1], collapsed: true }]);
+    });
+
+    it('#1403: a tick with duplicate-token channels is stored positionally, one entry per strip', () => {
+      const { store, mock } = makeStore();
+      store.setState({ channelConfig: [{ kind: 'mono', a: 3, b: 3 }, { kind: 'mono', a: 3, b: 3 }, { kind: 'mono', a: 1, b: 1 }] });
+      store.getState().bindIpcEvents();
+      const tick = {
+        type: 'meter', ts: 0,
+        channels: [
+          { index: 3, name: 'A', bands: {}, rms: -10, peak: -5, clipping: false, centroid: 100, rolloff: 200 },
+          { index: 3, name: 'B', bands: {}, rms: -12, peak: -6, clipping: false, centroid: 100, rolloff: 200 },
+          { index: 1, name: 'C', bands: {}, rms: -14, peak: -7, clipping: false, centroid: 100, rolloff: 200 },
+        ],
+      };
+      mock.emit('onLiveEvent', tick);
+      const channels = store.getState().lastLiveChannels as Array<{ index: number }>;
+      expect(channels).toHaveLength(3);
+      expect(channels.map((c) => c.index)).toEqual([3, 3, 1]);
+    });
+
+    describe('mains-hum tracking (#1392)', () => {
+      function qualifyingWindowTick(windowIndex: number) {
+        return {
+          type: 'window',
+          window: windowIndex,
+          ts: windowIndex,
+          channels: [
+            { index: 0, name: 'Ch 0', bands: {}, rms: -70, peak: -40, clipping: false, centroid: 0, rolloff: 0 },
+            { index: 1, name: 'Bass DI', bands: {}, rms: -70, peak: -40, clipping: false, centroid: 0, rolloff: 0, curve: curveWithPeakAt60Hz() },
+          ],
+          masking: [],
+        };
+      }
+
+      it('publishes mainsHum.warnings[1] after three qualifying window ticks, with no entry for channel 0', () => {
+        const { store, mock } = makeStore();
+        store.getState().bindIpcEvents();
+        mock.emit('onLiveEvent', qualifyingWindowTick(0));
+        mock.emit('onLiveEvent', qualifyingWindowTick(1));
+        expect(store.getState().mainsHum.warnings).toEqual({});
+        mock.emit('onLiveEvent', qualifyingWindowTick(2));
+        expect(store.getState().mainsHum.warnings).toEqual({
+          1: { channelIndex: 1, channelName: 'Bass DI', frequencyHz: 60 },
+        });
+        expect(store.getState().mainsHum.warnings[0]).toBeUndefined();
+      });
+
+      it('a meter tick in between does not advance mainsHum', () => {
+        const { store, mock } = makeStore();
+        store.getState().bindIpcEvents();
+        mock.emit('onLiveEvent', qualifyingWindowTick(0));
+        mock.emit('onLiveEvent', { type: 'meter', ts: 0, channels: qualifyingWindowTick(0).channels });
+        mock.emit('onLiveEvent', qualifyingWindowTick(1));
+        mock.emit('onLiveEvent', qualifyingWindowTick(2));
+        expect(store.getState().mainsHum.warnings).toEqual({
+          1: { channelIndex: 1, channelName: 'Bass DI', frequencyHz: 60 },
+        });
+      });
+
+      it('a subsequent non-qualifying window clears the warning', () => {
+        const { store, mock } = makeStore();
+        store.getState().bindIpcEvents();
+        mock.emit('onLiveEvent', qualifyingWindowTick(0));
+        mock.emit('onLiveEvent', qualifyingWindowTick(1));
+        mock.emit('onLiveEvent', qualifyingWindowTick(2));
+        expect(store.getState().mainsHum.warnings[1]).toBeDefined();
+
+        mock.emit('onLiveEvent', {
+          type: 'window',
+          window: 3,
+          ts: 3,
+          channels: [
+            { index: 0, name: 'Ch 0', bands: {}, rms: -70, peak: -40, clipping: false, centroid: 0, rolloff: 0 },
+            { index: 1, name: 'Bass DI', bands: {}, rms: -20, peak: -6, clipping: false, centroid: 0, rolloff: 0, curve: curveWithPeakAt60Hz() },
+          ],
+          masking: [],
+        });
+        expect(store.getState().mainsHum.warnings[1]).toBeUndefined();
+      });
     });
   });
 
@@ -1176,6 +1480,55 @@ describe('createLiveCaptureStore', () => {
       store.setState({ channelConfig: [{ kind: 'mono', a: 0, b: 1 }], focusedInputIndex: 0 });
       store.getState().removeStrip(0);
       expect(store.getState().focusedInputIndex).toBeNull();
+    });
+
+    it('publishes, labels, isolates, and clears a channel-specific mains-hum badge end to end (#1392)', () => {
+      const { store, mock } = makeStore();
+      store.setState({
+        channelConfig: [
+          { kind: 'mono', a: 0, b: 1 },
+          { kind: 'mono', a: 1, b: 2, label: 'Vocals' },
+        ],
+      });
+      store.getState().setRunning(true);
+      store.getState().bindIpcEvents();
+
+      const qualifyingTick = (windowIndex: number) => ({
+        type: 'window',
+        window: windowIndex,
+        ts: windowIndex,
+        channels: [
+          { index: 0, name: 'Ch 0', bands: {}, rms: -70, peak: -40, clipping: false, centroid: 0, rolloff: 0 },
+          { index: 1, name: 'Vocals', bands: {}, rms: -70, peak: -40, clipping: false, centroid: 0, rolloff: 0, curve: curveWithPeakAt60Hz() },
+        ],
+        masking: [],
+      });
+      mock.emit('onLiveEvent', qualifyingTick(0));
+      mock.emit('onLiveEvent', qualifyingTick(1));
+      mock.emit('onLiveEvent', qualifyingTick(2));
+
+      const rows = dawTrackRows(liveWorkspaceViewState(store.getState(), null));
+      expect(rows[0].mainsHumHz).toBeNull();
+      expect(rows[1].mainsHumHz).toBe(60);
+      const headerHTML = dawTrackHeaderHTML(rows[1]);
+      expect(headerHTML).toContain('Vocals');
+      expect(headerHTML).toContain('60 Hz');
+      expect(headerHTML).toContain('daw-track-head-meta-warn');
+
+      mock.emit('onLiveEvent', {
+        type: 'window',
+        window: 3,
+        ts: 3,
+        channels: [
+          { index: 0, name: 'Ch 0', bands: {}, rms: -70, peak: -40, clipping: false, centroid: 0, rolloff: 0 },
+          { index: 1, name: 'Vocals', bands: {}, rms: -20, peak: -6, clipping: false, centroid: 0, rolloff: 0, curve: curveWithPeakAt60Hz() },
+        ],
+        masking: [],
+      });
+
+      const clearedRows = dawTrackRows(liveWorkspaceViewState(store.getState(), null));
+      expect(clearedRows[1].mainsHumHz).toBeNull();
+      expect(dawTrackHeaderHTML(clearedRows[1])).not.toContain('daw-track-head-meta-warn');
     });
 
     it('resetLapCoaching seeds a fresh coaching state from liveAdjustmentsState', () => {

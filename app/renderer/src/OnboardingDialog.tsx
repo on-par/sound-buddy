@@ -11,13 +11,16 @@
 
 import { useEffect, type JSX } from 'react';
 import { iconSvg } from './report-card';
+import { isSimpleMode } from './simple-mode';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useOnboardingStore } from './stores/onboardingStore';
+import { useSettingsStore } from './stores/settingsStore';
 
 const DEFAULT_COPY = 'Sound Buddy scores your mix and hands back a clear report card — an overall '
   + 'grade, level and dynamics readouts, and the EQ moves that matter. No setup, no settings, and no '
   + 'audio gear required to get started. Run your first analysis on a sample recording and see your '
   + 'report card in seconds.';
+const SIMPLE_COPY = "Drop last Sunday's recording on the Report Card panel - or click Analyze - and Sound Buddy hands back a report card telling you what to fix.";
 
 export default function OnboardingDialog(): JSX.Element {
   const { dialogOpen, phase, copyOverride, runButtonLabel } = useStoreShallow(useOnboardingStore, (s) => ({
@@ -26,6 +29,8 @@ export default function OnboardingDialog(): JSX.Element {
     copyOverride: s.copyOverride,
     runButtonLabel: s.runButtonLabel,
   }));
+  const settings = useStoreShallow(useSettingsStore, (s) => s.settings);
+  const copy = copyOverride ?? (isSimpleMode(settings) ? SIMPLE_COPY : DEFAULT_COPY);
 
   /* c8 ignore start -- document-level Escape close, no jsdom in this harness;
      covered by app/tests/onboarding.spec.ts's skip-flow test. */
@@ -53,7 +58,7 @@ export default function OnboardingDialog(): JSX.Element {
       <div className="rig-dialog-card onboarding-card">
         <div className="onboarding-mark" aria-hidden="true" dangerouslySetInnerHTML={{ __html: iconSvg('waveform', 16) }} />
         <h2 id="onboarding-title" className="onboarding-title">Welcome to Sound Buddy</h2>
-        <p className="onboarding-copy" id="onboarding-copy">{copyOverride ?? DEFAULT_COPY}</p>
+        <p className="onboarding-copy" id="onboarding-copy">{copy}</p>
         <div className="onboarding-actions" id="onboarding-actions">
           <button
             type="button"

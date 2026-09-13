@@ -49,9 +49,7 @@ import dawWorkspaceStateSrc from '../daw-workspace-state.js?raw';
 import dawPlayheadStateSrc from '../daw-playhead-state.js?raw';
 import dawWaveformStateSrc from '../daw-waveform-state.js?raw';
 import liveAdjustmentsStateSrc from '../live-adjustments-state.js?raw';
-import reportFirstUxStateSrc from '../report-first-ux-state.js?raw';
 import singleColumnStateSrc from '../single-column-state.js?raw';
-import analyzeSourceStateSrc from '../analyze-source-state.js?raw';
 import batchAnalysisSrc from '../batch-analysis.js?raw';
 import skillTreeStateSrc from '../skill-tree-state.js?raw';
 import inlineAppSrc from './inline-app.js?raw';
@@ -83,6 +81,7 @@ import SkillTreeDialog from './SkillTreeDialog';
 import { useOnboardingStore } from './stores/onboardingStore';
 import { useSkillTreeStore } from './stores/skillTreeStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useSettingsStore } from './stores/settingsStore';
 import { useAnalysisStore } from './stores/analysisStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useRigStore } from './stores/rigStore';
@@ -90,18 +89,20 @@ import { getSoundBuddy } from './useElectron';
 import FeedbackDialog from './FeedbackDialog';
 import GradeOwnGuideDialog from './GradeOwnGuideDialog';
 import PhaseDoublingDialog from './PhaseDoublingDialog';
-import AnalyzeSourcePicker from './AnalyzeSourcePicker';
 import LiveArmHint from './LiveArmHint';
 import MeasurementBadge from './MeasurementBadge';
 import { installStoreBridge } from './stores/bridge';
 import { createCaptureLifecycle, type DawShellSeam, type PreflightApi, type RigReconcileApi, type ArmStateApi } from './capture-lifecycle';
 import { createDawShellRuntime, type DawShellRuntime, type DawPlayheadStateApi, type DawWaveformStateApi } from './daw-shell-runtime';
 import { getSessionTimelineScale } from './session-timeline-scale';
+import { registerLiveFrameHook, isLiveFrameLoopActive } from './live-frame-hooks';
 import { sessionTimelineMarks } from './timeline-state';
 import { installTimelineScaleTestHook } from './timeline-scale-harness';
+import { installLiveFrameProbeTestHook } from './live-frame-probe';
 import { sessionClipSelection } from './clip-selection';
 import { sessionTimeSelection } from './time-selection';
 import { sessionLoopRegion } from './loopBrace.render';
+import { installSimpleModeBodyClassSync } from './simple-mode-body';
 import LiveStatusLine from './LiveStatusLine';
 import LiveSessionOffers from './LiveSessionOffers';
 import WindowBadge from './WindowBadge';
@@ -158,9 +159,7 @@ const BOOT_SCRIPTS = [
   dawPlayheadStateSrc,
   dawWaveformStateSrc,
   liveAdjustmentsStateSrc,
-  reportFirstUxStateSrc,
   singleColumnStateSrc,
-  analyzeSourceStateSrc,
   batchAnalysisSrc,
   skillTreeStateSrc,
   inlineAppSrc,
@@ -269,9 +268,18 @@ export default function App() {
       clipSelection: sessionClipSelection,
       timeSelection: sessionTimeSelection,
       loopRegion: sessionLoopRegion,
+      // #1412: lets ingestPeaks tell whether the Live tab's shared frame loop
+      // (live-meter-controller.ts, mirrored via live-frame-hooks.ts) is already
+      // running, so it piggybacks on that loop's flushWaveform hook (registered
+      // right below) instead of scheduling a second, competing rAF.
+      isFrameLoopActive: () => isLiveFrameLoopActive(),
     });
     (window as unknown as { dawShellRuntime?: DawShellRuntime }).dawShellRuntime = dawShellRuntime;
     dawShellRuntime.bindLiveEvents();
+    // #1412: the shared Live frame loop's per-frame waveform work — drains whatever
+    // ingestPeaks appended since the last frame, coalesced by the loop itself rather
+    // than by a second rAF owned here.
+    registerLiveFrameHook(() => dawShellRuntime.flushWaveform());
     // TD-001 slice 6i (#712): install the capture-lifecycle module's runtime
     // onto window.liveCaptureRuntime (the identical LiveCaptureRuntime bridge
     // LiveControls.tsx's startLiveCapture/stopLiveCapture/recordCapture and
@@ -307,19 +315,35 @@ export default function App() {
     void useOnboardingStore.getState().init();
     // Renderer test hooks (#1294) — window.__soundBuddyTimelineScale exists only when the
     // app was launched with SOUND_BUDDY_TEST_HOOKS=1. catch → false so a build whose preload
-    // predates this method boots normally with no hook.
+    // predates this method boots normally with no hook. #1414 reuses the same gate for
+    // window.__soundBuddyFrameProbe rather than adding a second IPC round trip.
     void getSoundBuddy().areTestHooksEnabled()
       .catch(() => false)
-      .then((enabled) => { installTimelineScaleTestHook(window as unknown as Record<string, unknown>, enabled); });
+      .then((enabled) => {
+        installTimelineScaleTestHook(window as unknown as Record<string, unknown>, enabled);
+        installLiveFrameProbeTestHook(window as unknown as Record<string, unknown>, enabled);
+      });
     // Skill-tree onboarding (#382): hydrates progress after BOOT_SCRIPTS so
     // window.skillTreeState exists — same ordering guarantee as onboarding.
     useSkillTreeStore.getState().init();
+    const unsubscribeSimpleModeBodyClass = installSimpleModeBodyClassSync();
     // #report-card/#spectrum-island now exist (just injected above) —
     // trigger the second render that portals ReportCardIsland/SpectrumPanel
     // onto them (TD-001 slice 4, #422).
     const initialMode = useLiveCaptureStore.getState().appMode;
-    if (modeSwitch.isWorkspaceMode(initialMode)) modeSwitch.switchMode(initialMode);
+    if (modeSwitch.isWorkspaceMode(initialMode)) modeSwitch.switchMode(initialMode, { boot: true });
+    // #1405: restore the last-active mode (persisted by non-boot switchMode
+    // calls) once settings + device/rig hydration have both settled —
+    // window.rendererHydration is installed by inline-app.js's Init IIFE,
+    // right after it kicks off loadSettings()/loadDevices().then(loadRigs).
+    void modeSwitch.restoreBootMode({
+      hydration: (window as unknown as { rendererHydration?: Promise<unknown> }).rendererHydration ?? Promise.resolve(),
+      getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+      getCurrentMode: () => useLiveCaptureStore.getState().appMode,
+      getSettings: () => useSettingsStore.getState().settings,
+    });
     setBooted(true);
+    return unsubscribeSimpleModeBodyClass;
   }, []);
 
   // #license-island and #settings-island are static nodes in index.html (see
@@ -388,7 +412,6 @@ export default function App() {
       {booted && createPortal(<RigDialog />, document.getElementById('rig-dialog-island')!)}
       {booted && <LicenseChrome />}
       {booted && <ConsoleNetworkConsentDialog />}
-      {booted && <AnalyzeSourcePicker />}
       {booted && createPortal(<UpdateBanner />, document.getElementById('update-surface-island')!)}
       {booted && createPortal(<WhatsNewBanner />, document.getElementById('whats-new-banner-island')!)}
     </>

@@ -42,6 +42,10 @@ const liveCapturePanelTsx = fs.readFileSync(fileURLToPath(new URL('./LiveCapture
 const lifecycleTs = fs.readFileSync(fileURLToPath(new URL('./capture-lifecycle.ts', import.meta.url)), 'utf8');
 // TD-001 slice 6j (#713): the new home for the playhead/waveform painters.
 const dawShellRuntimeTs = fs.readFileSync(fileURLToPath(new URL('./daw-shell-runtime.ts', import.meta.url)), 'utf8');
+// #1412: the Live tab's one rAF-loop-owner contract — see the "one Live animation
+// loop" describe block below.
+const liveMeterControllerTs = fs.readFileSync(fileURLToPath(new URL('./live-meter-controller.ts', import.meta.url)), 'utf8');
+const liveFrameHooksTs = fs.readFileSync(fileURLToPath(new URL('./live-frame-hooks.ts', import.meta.url)), 'utf8');
 const dawPlayheadStateJs = fs.readFileSync(fileURLToPath(new URL('../daw-playhead-state.js', import.meta.url)), 'utf8');
 // #1277 / ADR-0104: BPM/real-seconds isolation guard — the coordinate owners below.
 const timelineScaleTs = fs.readFileSync(fileURLToPath(new URL('./timeline-scale.ts', import.meta.url)), 'utf8');
@@ -74,6 +78,9 @@ const loopFromSelectionTs = fs.readFileSync(fileURLToPath(new URL('./loopFromSel
 const timelineAccessibilityLabelsTs = fs.readFileSync(fileURLToPath(new URL('./timeline-accessibility-labels.ts', import.meta.url)), 'utf8');
 // #1318: return-to-start must stay position-only — it may not reach the loop model.
 const soundcheckStoreTs = fs.readFileSync(fileURLToPath(new URL('./stores/soundcheckStore.ts', import.meta.url)), 'utf8');
+// #1404: the track-head channel-routing badge/picker — the one sanctioned
+// exception to #849's overview-only head (ADR-0133).
+const trackChannelPickerTs = fs.readFileSync(fileURLToPath(new URL('./track-channel-picker.ts', import.meta.url)), 'utf8');
 
 function functionBody(src: string, name: string): string {
   const marker = `function ${name}(`;
@@ -387,8 +394,44 @@ describe('DAW playhead/waveform painters moved off inline-app.js (TD-001 slice 6
     expect(appTsx).toContain('getTimelineScale:');
   });
 
-  it('LiveCapturePanel.tsx drives the playhead with a requestAnimationFrame loop', () => {
-    expect(liveCapturePanelTsx).toContain('requestAnimationFrame(tick)');
+  it('LiveCapturePanel.tsx no longer drives the playhead with its own requestAnimationFrame loop', () => {
+    expect(liveCapturePanelTsx).not.toContain('requestAnimationFrame(tick)');
+    expect(liveCapturePanelTsx).toContain("from './live-frame-hooks'");
+    expect(liveCapturePanelTsx).toContain('registerLiveFrameHook(');
+  });
+});
+
+// #1412: the Live tab used to run three independent rAF loops while monitoring —
+// createLiveMeterController arming a frame on every store notification,
+// LiveCapturePanel's own playhead ticker, and daw-shell-runtime's
+// scheduleWaveformRender for peaks bursts. This block pins the consolidation: only
+// live-meter-controller.ts calls requestAnimationFrame to drive the Live tab's
+// per-frame work, and the other two register into its shared per-frame hooks
+// (live-frame-hooks.ts) instead of scheduling their own — the "fails if multiple
+// independent non-playback rAF loops are active" gate the issue's AC calls for.
+describe('the Live tab has exactly one animation-frame loop (#1412)', () => {
+  it('live-meter-controller.ts is the sole owner — it schedules requestAnimationFrame itself (via the injected raf dep) and runs every other module\'s per-frame work through runFrameHooks', () => {
+    expect(liveMeterControllerTs).toContain('deps.raf(frame)');
+    expect(liveMeterControllerTs).toContain('runFrameHooks?.()');
+    expect(liveMeterControllerTs).toContain('setFrameLoopActive?.(');
+  });
+
+  it('LiveCapturePanel.tsx and daw-shell-runtime.ts ride the shared loop instead of scheduling their own frame', () => {
+    expect(liveCapturePanelTsx).not.toMatch(/requestAnimationFrame\(\s*tick\s*\)/);
+    expect(dawShellRuntimeTs).toContain('function flushWaveform(');
+    expect(dawShellRuntimeTs).toContain('isFrameLoopActive');
+  });
+
+  it('live-frame-hooks.ts is the single shared registry both modules ride', () => {
+    expect(liveFrameHooksTs).toContain('export function registerLiveFrameHook(');
+    expect(liveFrameHooksTs).toContain('export function runLiveFrameHooks(');
+    expect(liveFrameHooksTs).toContain('export function isLiveFrameLoopActive(');
+    expect(liveFrameHooksTs).toContain('export function setLiveFrameLoopActive(');
+  });
+
+  it('App.tsx wires the waveform flush into the shared loop and reports loop status to the runtime', () => {
+    expect(appTsx).toContain('registerLiveFrameHook(');
+    expect(appTsx).toContain('isFrameLoopActive:');
   });
 });
 
@@ -577,8 +620,17 @@ describe('configured track rows render from one shared list (#1043)', () => {
     expect(body).not.toContain("!target.closest('button, select, [contenteditable], input')");
   });
 
-  it('keeps per-channel setting controls out of the head row (#849)', () => {
-    expect(functionBody(workspaceViewTs, 'dawTrackHeaderHTML')).not.toContain('<select');
+  it('keeps per-channel setting controls out of the head row, with one named #1404 carve-out', () => {
+    // #849's rule stays binding: dawTrackHeaderHTML's own markup never inlines a
+    // <select>. #1404 needs one — the channel-routing badge's popover — so the
+    // exception is explicit here rather than dodged by moving the markup into an
+    // imported function and leaving this guard passing by accident (ADR-0133):
+    // dawTrackHeaderHTML must call trackChannelPickerHTML, and that function (in
+    // track-channel-picker.ts, not this one) is where the <select> actually lives.
+    const headerBody = functionBody(workspaceViewTs, 'dawTrackHeaderHTML');
+    expect(headerBody).not.toContain('<select');
+    expect(headerBody).toContain('trackChannelPickerHTML(');
+    expect(trackChannelPickerTs).toContain('<select');
     expect(liveCapturePanelTsx).not.toContain('.daw-track-head-input');
     expect(liveCapturePanelTsx).not.toContain("closest('.daw-track-head select')");
   });

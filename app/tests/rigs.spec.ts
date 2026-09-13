@@ -400,7 +400,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await closeSettings(win);
   });
 
-  test('the rig picker locks while a capture is running and unlocks on stop', async () => {
+  test('rig save actions lock while capture is running and unlock on stop', async () => {
     // Stub capture so no real device/python is needed; switching rigs mid-capture
     // would desync the UI from the running stream, so the controls must lock.
     await app.evaluate(({ ipcMain }) => {
@@ -419,7 +419,9 @@ test.describe.serial('Rigs — save / load / switch', () => {
 
     await win.locator('#daw-session-record').click();
     await openAudioSettings(win);
-    await expect(win.locator('#rig-select')).toBeDisabled();
+    // The rig picker itself stays enabled: changing rigs stops and restarts
+    // capture on the selected setup. Mutating the current setup still locks.
+    await expect(win.locator('#rig-select')).toBeEnabled();
     await expect(win.locator('#rig-saveas-btn')).toBeDisabled();
     await closeSettings(win);
 

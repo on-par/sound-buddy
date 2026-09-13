@@ -21,9 +21,12 @@
     return { name: undefined, rms: -Infinity, peak: -Infinity, clipping: false, centroid: null, bands: bands, idle: true };
   }
 
-  /** Whether the workspace "Add track" control should be enabled. */
-  function addEnabled(usedChannels, totalChannels, capturing) {
-    return !capturing && usedChannels < totalChannels;
+  /**
+   * Whether the workspace "Add track" control should be enabled.
+   * `recording` is true while an active recording locks the capture set (#1403).
+   */
+  function addEnabled(usedChannels, totalChannels, recording) {
+    return !recording && usedChannels < totalChannels;
   }
 
   /** Whether the workspace should show the "Add your first track" empty state. */
@@ -31,7 +34,24 @@
     return !configuredCount;
   }
 
-  var api = { idleChannel: idleChannel, addEnabled: addEnabled, isEmpty: isEmpty };
+  /**
+   * Lowest device input not referenced by any configured strip (a, plus b for
+   * stereo) — where "+ Add track" lands a new strip (#1403). Falls back to the
+   * last valid index when every input is already referenced.
+   */
+  function nextUnusedChannel(config, totalChannels) {
+    var total = Math.max(1, Math.floor(totalChannels) || 1);
+    var used = {};
+    (config || []).forEach(function (s) {
+      if (!s) return;
+      used[s.a] = true;
+      if (s.kind === 'stereo') used[s.b] = true;
+    });
+    for (var i = 0; i < total; i++) if (!used[i]) return i;
+    return total - 1;
+  }
+
+  var api = { idleChannel: idleChannel, addEnabled: addEnabled, isEmpty: isEmpty, nextUnusedChannel: nextUnusedChannel };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.trackWorkspace = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -24,8 +24,16 @@ import {
   eqPaneLevelTilesView,
   selectedEqPaneLevelTilesView,
   boardRunning,
+  captureConfigLocked,
+  monitorRestartAllowed,
   liveWorkspaceViewState,
+  dawTrackLevelPatchView,
+  patchTrackHeadLevels,
+  createTrackNodeCache,
+  eqPaneTickPatchEnabled,
   type LiveWorkspaceViewState,
+  type TrackHeadLevelShellLike,
+  type QuerySelectorLike,
 } from './live-workspace-view';
 import { sessionTabSessionPickerView } from './session-tab-session-picker';
 import { levelPercent, type LiveDevice, type StripConfig, type ChannelGroup, type LiveEvent, type LiveMeterChannel } from './live-capture-panel';
@@ -78,12 +86,11 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
     idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null,
     usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
-    crashReportingEnabled: false, liveAdjustmentsEnabled: false,
-    reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false,
+    crashReportingEnabled: false, liveAdjustmentsEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false,
     weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
     measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
-    splCalibrationOffsetDb: null,
+    splCalibrationOffsetDb: null, lastAppMode: '',
     ...overrides,
   };
 }
@@ -114,6 +121,7 @@ function makeState(overrides: Partial<LiveWorkspaceViewState> = {}): LiveWorkspa
     liveWindows: [],
     settings: settings(),
     lapCoaching: null,
+    mainsHumWarnings: {},
     playheadElapsedMs: 0,
     ...overrides,
     sessionPicker: overrides.sessionPicker ?? null,
@@ -124,6 +132,7 @@ function makeState(overrides: Partial<LiveWorkspaceViewState> = {}): LiveWorkspa
     timelineBpm: overrides.timelineBpm ?? null,
     timelineZoom: overrides.timelineZoom ?? null,
     timelineFollow: overrides.timelineFollow ?? null,
+    channelPickerIndex: overrides.channelPickerIndex ?? null,
   };
 }
 
@@ -194,7 +203,7 @@ describe('Session toolbar playback (#1073)', () => {
   });
 
   it('keeps default callers free of Session playback markup', () => {
-    expect(liveWorkspaceViewState({ ...makeState(), demoting: false }, settings()).sessionPlayback).toBeNull();
+    expect(liveWorkspaceViewState({ ...makeState(), demoting: false, mainsHum: { eligibility: {}, warnings: {} } }, settings()).sessionPlayback).toBeNull();
     expect(dawShellHTML(makeState())).not.toContain('daw-session-playback-btn');
   });
 });
@@ -262,7 +271,7 @@ describe('Session BPM control (#1276)', () => {
   });
 
   it('leaves default callers with no BPM control', () => {
-    expect(liveWorkspaceViewState({ ...makeState(), demoting: false }, settings()).timelineBpm).toBeNull();
+    expect(liveWorkspaceViewState({ ...makeState(), demoting: false, mainsHum: { eligibility: {}, warnings: {} } }, settings()).timelineBpm).toBeNull();
   });
 });
 
@@ -286,7 +295,7 @@ describe('Session zoom/fit controls (#1284)', () => {
   });
 
   it('falls back to a full-range cluster when no zoom view is supplied', () => {
-    expect(liveWorkspaceViewState({ ...makeState(), demoting: false }, settings()).timelineZoom).toBeNull();
+    expect(liveWorkspaceViewState({ ...makeState(), demoting: false, mainsHum: { eligibility: {}, warnings: {} } }, settings()).timelineZoom).toBeNull();
     const html = dawShellHTML(makeState());
     expect(html).toContain('0:00 - 0:01');
   });
@@ -305,9 +314,15 @@ describe('Session follow-scroll toggle (#1286)', () => {
   });
 
   it('falls back to the default following toggle (aria-pressed="true") when no follow view is supplied', () => {
-    expect(liveWorkspaceViewState({ ...makeState(), demoting: false }, settings()).timelineFollow).toBeNull();
+    expect(liveWorkspaceViewState({ ...makeState(), demoting: false, mainsHum: { eligibility: {}, warnings: {} } }, settings()).timelineFollow).toBeNull();
     const html = dawShellHTML(makeState());
     expect(html).toContain(`id="${TIMELINE_FOLLOW_BUTTON_ID}" aria-pressed="true"`);
+  });
+});
+
+describe('Track channel picker open index (#1404)', () => {
+  it('defaults to every picker closed when no open index is supplied', () => {
+    expect(liveWorkspaceViewState({ ...makeState(), demoting: false, mainsHum: { eligibility: {}, warnings: {} } }, settings()).channelPickerIndex).toBeNull();
   });
 });
 
@@ -420,12 +435,66 @@ describe('addTrackDisabled', () => {
     expect(addTrackDisabled(makeState({ channelConfig: full }))).toBe(true);
   });
 
-  it('disables while a capture is running', () => {
-    expect(addTrackDisabled(makeState({ isCapturing: true }))).toBe(true);
+  it('#1403: enables while monitoring — the tab is always-monitoring, so a capture running alone must not lock it', () => {
+    expect(addTrackDisabled(makeState({ isCapturing: true, liveMode: 'monitor' }))).toBe(false);
+  });
+
+  it('disables while an active recording is running', () => {
+    expect(addTrackDisabled(makeState({ isCapturing: true, liveMode: 'record' }))).toBe(true);
   });
 
   it('enables otherwise', () => {
     expect(addTrackDisabled(makeState())).toBe(false);
+  });
+});
+
+describe('captureConfigLocked', () => {
+  it('is false while monitoring', () => {
+    expect(captureConfigLocked({ isCapturing: true, liveMode: 'monitor' })).toBe(false);
+  });
+
+  it('is true while an active recording is running', () => {
+    expect(captureConfigLocked({ isCapturing: true, liveMode: 'record' })).toBe(true);
+  });
+
+  it('is true during the record→monitor demote window (#847)', () => {
+    expect(captureConfigLocked({ isCapturing: false, liveMode: 'record', demoting: true })).toBe(true);
+  });
+
+  it('is false while idle', () => {
+    expect(captureConfigLocked({ isCapturing: false, liveMode: 'monitor' })).toBe(false);
+  });
+
+  it('treats an omitted demoting as false', () => {
+    expect(captureConfigLocked({ isCapturing: false, liveMode: 'record' })).toBe(false);
+  });
+});
+
+describe('monitorRestartAllowed', () => {
+  const base = { isCapturing: true, liveMode: 'monitor' as const, promoting: false, stopping: false, demoting: false };
+
+  it('is true only for a plain running monitor session', () => {
+    expect(monitorRestartAllowed(base)).toBe(true);
+  });
+
+  it('is false while recording', () => {
+    expect(monitorRestartAllowed({ ...base, liveMode: 'record' })).toBe(false);
+  });
+
+  it('is false while promoting', () => {
+    expect(monitorRestartAllowed({ ...base, promoting: true })).toBe(false);
+  });
+
+  it('is false while stopping', () => {
+    expect(monitorRestartAllowed({ ...base, stopping: true })).toBe(false);
+  });
+
+  it('is false while demoting', () => {
+    expect(monitorRestartAllowed({ ...base, demoting: true })).toBe(false);
+  });
+
+  it('is false while idle', () => {
+    expect(monitorRestartAllowed({ ...base, isCapturing: false })).toBe(false);
   });
 });
 
@@ -459,6 +528,13 @@ describe('liveWorkspaceToolbarHTML', () => {
     expect(recording).toMatch(/id="live-ws-disarm-all"[^>]*disabled/);
     const monitoring = liveWorkspaceToolbarHTML(makeState({ isCapturing: true, liveMode: 'monitor' }));
     expect(monitoring).not.toMatch(/id="live-ws-arm-all"[^>]*disabled/);
+  });
+
+  it('#1403: renders Add track enabled while monitoring and disabled while recording', () => {
+    const monitoring = liveWorkspaceToolbarHTML(makeState({ isCapturing: true, liveMode: 'monitor' }));
+    expect(monitoring).toContain('id="live-ws-add">');
+    const recording = liveWorkspaceToolbarHTML(makeState({ isCapturing: true, liveMode: 'record' }));
+    expect(recording).toMatch(/id="live-ws-add"[^>]*disabled/);
   });
 });
 
@@ -506,8 +582,14 @@ describe('dawShellHTML / dawShellPatchView', () => {
   });
 
   it('leaves the picker null for existing view-state callers', () => {
-    const state = liveWorkspaceViewState({ ...makeState(), demoting: false }, settings());
+    const state = liveWorkspaceViewState({ ...makeState(), demoting: false, mainsHum: { eligibility: {}, warnings: {} } }, settings());
     expect(state.sessionPicker).toBeNull();
+  });
+
+  it('copies lc.mainsHum.warnings into mainsHumWarnings (#1392)', () => {
+    const warnings = { 1: { channelIndex: 1, channelName: 'Bass DI', frequencyHz: 60 as const } };
+    const state = liveWorkspaceViewState({ ...makeState(), demoting: false, mainsHum: { eligibility: {}, warnings } }, settings());
+    expect(state.mainsHumWarnings).toBe(warnings);
   });
 
   it('AC1: renders the overview strip between the transport and the arrangement', () => {
@@ -609,6 +691,29 @@ describe('dawShellHTML / dawShellPatchView', () => {
     expect(dawTrackHeaderHTML(row)).toBe(dawTrackHeaderHTML(row));
   });
 
+  it('renders a mains-hum warning badge in the meta slot when mainsHumHz is set (#1392)', () => {
+    const html = dawTrackHeaderHTML({
+      index: 0, name: 'Kick &lt;3', armed: true, armDisabled: false, muted: false, soloed: false,
+      monitorActive: true, levelPercent: 0, takeClip: null, mainsHumHz: 60,
+    });
+    expect(html).toContain('class="daw-track-head-meta daw-track-head-meta-warn"');
+    expect(html).toContain('role="status"');
+    expect(html).toContain('>60 Hz hum</span>');
+    expect(html).not.toContain('>Live</span>');
+    const title = html.match(/daw-track-head-meta-warn"[^>]*title="([^"]*)"/)?.[1] ?? '';
+    expect(title).toContain('Kick &lt;3');
+    expect(title).toContain('60 Hz');
+  });
+
+  it('renders the unflagged meta span unchanged when mainsHumHz is absent', () => {
+    const html = dawTrackHeaderHTML({
+      index: 0, name: 'Kick', armed: true, armDisabled: false, muted: false, soloed: false,
+      monitorActive: true, levelPercent: 0, takeClip: null,
+    });
+    expect(html).toContain('<span class="daw-track-head-meta">Live</span>');
+    expect(html).not.toContain('daw-track-head-meta-warn');
+  });
+
   it('renders controls once per track but never in the master header', () => {
     const html = dawShellHTML(makeState());
     expect(html.split('daw-track-head-arm').length - 1).toBe(CONFIG.length);
@@ -620,6 +725,17 @@ describe('dawShellHTML / dawShellPatchView', () => {
     const html = dawShellHTML(makeState());
     const headColumn = html.slice(html.indexOf('<div class="daw-track-heads'), html.indexOf('<div class="daw-timeline">'));
     expect(headColumn).not.toContain('<select');
+  });
+
+  it('every track head shows a channel badge, and only the open index also shows a picker (#1404, ADR-0133)', () => {
+    const rows = dawTrackRows(makeState({ channelPickerIndex: 1 }));
+    const htmls = rows.map((row) => dawTrackHeaderHTML(row));
+    expect(htmls[0]).toContain('daw-track-head-channel-badge');
+    expect(htmls[0]).not.toContain('daw-track-channel-picker');
+    expect(htmls[0]).not.toContain('<select');
+    expect(htmls[1]).toContain('daw-track-head-channel-badge');
+    expect(htmls[1]).toContain('daw-track-channel-picker');
+    expect(htmls[1]).toContain('<select');
   });
 
   it('renders the transport header, ruler, and mix lane', () => {
@@ -926,6 +1042,21 @@ describe('dawTrackRows / configured track rows (#1043)', () => {
     expect(rows[0].name).toBe('Vocals');
   });
 
+  it('sets mainsHumHz only on the flagged row, and only while capturing (#1392)', () => {
+    const capturing = dawTrackRows(makeState({
+      isCapturing: true,
+      mainsHumWarnings: { 1: { channelIndex: 1, channelName: 'B', frequencyHz: 50 } },
+    }));
+    expect(capturing[0].mainsHumHz).toBeNull();
+    expect(capturing[1].mainsHumHz).toBe(50);
+
+    const idle = dawTrackRows(makeState({
+      isCapturing: false,
+      mainsHumWarnings: { 1: { channelIndex: 1, channelName: 'B', frequencyHz: 50 } },
+    }));
+    expect(idle.every((row) => row.mainsHumHz === null)).toBe(true);
+  });
+
   it('derives monitor activity from mute and solo without changing armed state (#1056)', () => {
     const ordinary = dawTrackRows(makeState());
     expect(ordinary.map((row) => row.monitorActive)).toEqual([true, true]);
@@ -942,6 +1073,24 @@ describe('dawTrackRows / configured track rows (#1043)', () => {
 
     const mutedSolo = dawTrackRows(makeState({ mutedChannels: { 1: true }, soloedChannels: { 1: true } }));
     expect(mutedSolo[1]).toMatchObject({ muted: true, soloed: true, monitorActive: false });
+  });
+
+  it('derives each row\'s channel picker from the strip, device channel count, and open index (#1404)', () => {
+    const rows = dawTrackRows(makeState());
+    expect(rows[0].channelPicker).toMatchObject({ index: 0, open: false, locked: false, badgeText: '1', kind: 'mono', a: 0, deviceChannels: 8 });
+    expect(rows[1].channelPicker).toMatchObject({ index: 1, open: false, badgeText: '2' });
+
+    const opened = dawTrackRows(makeState({ channelPickerIndex: 1 }));
+    expect(opened[0].channelPicker?.open).toBe(false);
+    expect(opened[1].channelPicker?.open).toBe(true);
+  });
+
+  it('locks the channel picker only during an active recording, never while merely monitoring (#1404, ADR-0132/0133)', () => {
+    const monitoring = dawTrackRows(makeState({ isCapturing: true, liveMode: 'monitor' }));
+    expect(monitoring[0].channelPicker?.locked).toBe(false);
+
+    const recording = dawTrackRows(makeState({ isCapturing: true, liveMode: 'record' }));
+    expect(recording[0].channelPicker?.locked).toBe(true);
   });
 
   it('marks only dimmed channel lanes and clears that modifier after the final solo (#1056)', () => {
@@ -1042,6 +1191,41 @@ describe('dawTrackRows / configured track rows (#1043)', () => {
     const withTracks = dawShellHTML(makeState());
     const withoutTracks = dawShellHTML(makeState({ channelConfig: [] }));
     expect(withTracks).not.toBe(withoutTracks);
+  });
+});
+
+describe('dawTrackLevelPatchView / patchTrackHeadLevels (#1411)', () => {
+  it('dawTrackLevelPatchView returns one entry per configured strip, matching dawTrackRows\' levelPercent', () => {
+    const state = makeState({ lastLiveChannels: TICK_CHANNELS });
+    const rows = dawTrackRows(state);
+    const patches = dawTrackLevelPatchView(state);
+    expect(patches).toEqual(rows.map((row) => ({ index: row.index, levelPercent: row.levelPercent })));
+    expect(patches[0].levelPercent).toBeCloseTo(levelPercent(TICK_CHANNELS[0].rms, false), 10);
+  });
+
+  function fakeShell(nodes: Record<string, { style: { width: string } }>): TrackHeadLevelShellLike {
+    return { querySelector: (selector: string) => nodes[selector] ?? null };
+  }
+
+  it('writes each patch\'s levelPercent onto its selected node', () => {
+    const fill = { style: { width: '' } };
+    const shell = fakeShell({ '.daw-track-head[data-ch="0"] .daw-track-head-level-fill': fill });
+    patchTrackHeadLevels(shell, [{ index: 0, levelPercent: 70 }]);
+    expect(fill.style.width).toBe('70%');
+  });
+
+  it('leaves other fills patched when one selector resolves to null', () => {
+    const fill1 = { style: { width: '' } };
+    const shell = fakeShell({ '.daw-track-head[data-ch="1"] .daw-track-head-level-fill': fill1 });
+    expect(() => patchTrackHeadLevels(shell, [
+      { index: 0, levelPercent: 10 },
+      { index: 1, levelPercent: 55 },
+    ])).not.toThrow();
+    expect(fill1.style.width).toBe('55%');
+  });
+
+  it('is a no-op for a null shell', () => {
+    expect(() => patchTrackHeadLevels(null, [{ index: 0, levelPercent: 10 }])).not.toThrow();
   });
 });
 
@@ -1271,5 +1455,74 @@ describe('liveStatsRowView', () => {
     expect(selectedEqPaneLevelTilesView([channel], 1)).toBeNull();
     expect(selectedEqPaneLevelTilesView([channel], -1)).toBeNull();
     expect(selectedEqPaneLevelTilesView([channel], 1.5)).toBeNull();
+  });
+});
+
+describe('createTrackNodeCache (#1413)', () => {
+  function fakeRoot(nodes: Record<string, { id: string } | null>): { root: QuerySelectorLike<{ id: string }>; calls: string[] } {
+    const calls: string[] = [];
+    return {
+      calls,
+      root: {
+        querySelector: (selector: string) => {
+          calls.push(selector);
+          return nodes[selector] ?? null;
+        },
+      },
+    };
+  }
+
+  it('reuses a node across ticks that share the same root and boardShapeVersion', () => {
+    const node = { id: 'a' };
+    const { root, calls } = fakeRoot({ '.a': node });
+    const cache = createTrackNodeCache<{ id: string }>();
+    const first = cache.scope(root, 1).querySelector('.a');
+    const second = cache.scope(root, 1).querySelector('.a');
+    expect(first).toBe(node);
+    expect(second).toBe(node);
+    expect(calls).toEqual(['.a']);
+  });
+
+  it('re-queries once boardShapeVersion changes, even with the same root', () => {
+    const { root, calls } = fakeRoot({ '.a': { id: 'a' } });
+    const cache = createTrackNodeCache<{ id: string }>();
+    cache.scope(root, 1).querySelector('.a');
+    cache.scope(root, 2).querySelector('.a');
+    expect(calls).toEqual(['.a', '.a']);
+  });
+
+  it('re-queries once the root identity changes, even with an unchanged boardShapeVersion (a discrete-change board rebuild)', () => {
+    const first = fakeRoot({ '.a': { id: 'a' } });
+    const second = fakeRoot({ '.a': { id: 'b' } });
+    const cache = createTrackNodeCache<{ id: string }>();
+    const firstResult = cache.scope(first.root, 1).querySelector('.a');
+    const secondResult = cache.scope(second.root, 1).querySelector('.a');
+    expect(firstResult).toEqual({ id: 'a' });
+    expect(secondResult).toEqual({ id: 'b' });
+    expect(first.calls).toEqual(['.a']);
+    expect(second.calls).toEqual(['.a']);
+  });
+
+  it('caches a null lookup instead of re-querying every call within the same scope', () => {
+    const { root, calls } = fakeRoot({});
+    const cache = createTrackNodeCache<{ id: string }>();
+    const scoped = cache.scope(root, 1);
+    expect(scoped.querySelector('.missing')).toBeNull();
+    expect(scoped.querySelector('.missing')).toBeNull();
+    expect(calls).toEqual(['.missing']);
+  });
+});
+
+describe('eqPaneTickPatchEnabled (#1413)', () => {
+  it('is false when the pane is unavailable', () => {
+    expect(eqPaneTickPatchEnabled(null)).toBe(false);
+  });
+
+  it('is false when the pane\'s inline display is none', () => {
+    expect(eqPaneTickPatchEnabled({ style: { display: 'none' } })).toBe(false);
+  });
+
+  it('is true once the pane\'s inline display is set to flex again', () => {
+    expect(eqPaneTickPatchEnabled({ style: { display: 'flex' } })).toBe(true);
   });
 });

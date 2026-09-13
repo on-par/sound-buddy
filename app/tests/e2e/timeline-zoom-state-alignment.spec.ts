@@ -402,4 +402,38 @@ test.describe('Session timeline alignment across zoom states (#1297)', () => {
     expect(zoomedIn).toBeGreaterThan(defaultScale);
     expect(defaultScale).toBeGreaterThan(zoomedOut);
   });
+
+  // #1395: Fit sel used to always zoom to the loaded take's full span, ignoring a drawn
+  // time selection — this drags a real ruler selection through the production gesture
+  // (LiveCapturePanel's pointerdown -> beginTimeSelectionDrag), clicks the real Fit sel /
+  // Prev toolbar buttons, and reads #daw-zoom-range, the same readout
+  // alignment-holds-after-a-toolbar-zoom-in (timeline-alignment.spec.ts) uses, to prove the
+  // shared visible range actually narrows to the drawn span and Prev restores the prior view.
+  test('Fit sel zooms to the drawn selection and Prev restores the prior view (#1395)', async () => {
+    const rangeReadout = window.locator('#daw-zoom-range');
+    // Session timelines below the #1284 overview floor (60s) boot at [0, 60] — this fixture's
+    // 20s take (LOUD_BUCKETS + SILENT_BUCKETS at 50 buckets/sec) is one of them.
+    await expect(rangeReadout).toHaveText('0:00 - 1:00');
+
+    const shell = window.locator('.daw-shell');
+    const scrollOffsetPx = parseFloat(await shell.evaluate((el) => getComputedStyle(el).getPropertyValue('--daw-scroll-x').trim()));
+    const rulerBox = (await window.locator('.daw-ruler').boundingBox())!;
+    const y = rulerBox.y + rulerBox.height / 2;
+    const xAt = (secs: number) => Math.round(rulerBox.x + secs * TIMELINE_PX_PER_SECOND - scrollOffsetPx);
+
+    // Drag a 5-10s selection. 5s at TIMELINE_PX_PER_SECOND (8px/s) is 40px, an order of
+    // magnitude past time-selection-drag.ts's 4px drag threshold, so this is unambiguously a
+    // drag, not a click.
+    await window.mouse.move(xAt(5), y);
+    await window.mouse.down();
+    await window.mouse.move(xAt(10), y, { steps: 10 });
+    await window.mouse.up();
+    await expect(window.locator('.daw-time-selection-ruler')).toBeVisible();
+
+    await window.locator('#daw-zoom-selection').click();
+    await expect(rangeReadout).toHaveText('0:05 - 0:10');
+
+    await window.locator('#daw-zoom-back').click();
+    await expect(rangeReadout).toHaveText('0:00 - 1:00');
+  });
 });

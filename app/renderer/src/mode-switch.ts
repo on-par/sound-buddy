@@ -22,6 +22,8 @@ import { SPECTRUM_TITLE } from './spectrum-chrome';
 import { decideLiveAutoStart } from './live-auto-start';
 import { startLiveCapture, runtime } from './LiveControls';
 import { captureOptsFromCadence } from './measurement-device-state';
+import { clampBootMode, isSimpleMode } from './simple-mode';
+import type { AppSettings } from '../../electron/ipc/api';
 
 export type WorkspaceMode = 'dir' | 'live' | 'console' | 'recent' | 'guide' | 'ringout' | 'reportcard';
 export type ModeSwitchRequest = WorkspaceMode | 'analyze' | 'history';
@@ -35,34 +37,31 @@ export function isWorkspaceMode(mode: string): mode is WorkspaceMode {
 
 export type ModeSwitchDecision =
   | { type: 'noop' }
-  | { type: 'openPicker' }
+  | { type: 'chooseFile' }
   | { type: 'redirect'; mode: WorkspaceMode }
   | { type: 'switch'; mode: WorkspaceMode };
 
 // Verbatim port of the special-casing at the top of the old .mode-tab click
 // listener (inline-app.js) — pure, no DOM.
-export function resolveModeSwitch(requestedMode: string, currentMode: string): ModeSwitchDecision {
-  if (requestedMode === 'analyze') return { type: 'openPicker' };
+export function resolveModeSwitch(
+  requestedMode: string,
+  currentMode: string,
+  _opts?: { simpleMode?: boolean },
+): ModeSwitchDecision {
+  if (requestedMode === 'analyze') return { type: 'chooseFile' };
   if (requestedMode === 'history') return { type: 'redirect', mode: 'recent' };
   if (requestedMode === currentMode) return { type: 'noop' };
   if (!isWorkspaceMode(requestedMode)) return { type: 'noop' };
   return { type: 'switch', mode: requestedMode };
 }
 
-// single-column-state.js/report-first-ux-state.js stay classic scripts —
-// read via a typed window cast, matching ReportCardIsland.tsx's
-// getGrading()-style pattern.
+// single-column-state.js stays a classic script — read via a typed window
+// cast, matching ReportCardIsland.tsx's getGrading()-style pattern.
 interface SingleColumnStateApi {
-  isSingleColumn(reportFirstUxEnabled: boolean, mode: string): boolean;
-}
-interface ReportFirstUxStateApi {
-  isEnabled(settings: unknown): boolean;
+  isSingleColumn(simpleMode: boolean, mode: string): boolean;
 }
 function getSingleColumnState(): SingleColumnStateApi {
   return (window as unknown as { singleColumnState: SingleColumnStateApi }).singleColumnState;
-}
-function getReportFirstUxState(): ReportFirstUxStateApi {
-  return (window as unknown as { reportFirstUxState: ReportFirstUxStateApi }).reportFirstUxState;
 }
 
 // The Live tab's meter board + docked EQ pane are React-owned now (TD-001
@@ -107,12 +106,11 @@ export function applySpectrumForMode(mode: string): void {
   }
 }
 
-// Verbatim port of syncSingleColumn (inline-app.js) — #542 (epic e17): fold
-// the workspace to one column for Recent/Build Guide/Ring-Out/Directory when
-// the report-first-ux flag is on.
+// Fold the workspace to one column for Simple-mode History (backed by the
+// Recent workspace). In Advanced mode, the normal multi-panel shell stays.
 export function applySingleColumnSync(): void {
   document.body.classList.toggle('single-column', getSingleColumnState().isSingleColumn(
-    getReportFirstUxState().isEnabled(useSettingsStore.getState().settings),
+    isSimpleMode(useSettingsStore.getState().settings),
     useLiveCaptureStore.getState().appMode));
 }
 
@@ -123,7 +121,13 @@ export function applySingleColumnSync(): void {
 // verdict to the exact startLiveCapture() path the Start Capture button
 // uses, so failures (Pro license, mic denied) surface through the same
 // existing onCaptureStarted -> spectrum panel error state.
-function maybeAutoStartLive(): void {
+// Exported (#1405) so restoreBootMode can invoke exactly this same decision
+// after hydration settles, instead of duplicating the gate-plus-start glue.
+// Always logs one 'live-auto-start' console line with the decision (and skip
+// reason, if any) — the acceptance criterion for #1405 is that a silent
+// no-op at boot is diagnosable from the console, not just from re-reading
+// this file's ADR.
+export function maybeAutoStartLive(): void {
   const live = useLiveCaptureStore.getState();
   const decision = decideLiveAutoStart({
     isCapturing: live.isCapturing,
@@ -131,6 +135,7 @@ function maybeAutoStartLive(): void {
     deviceHint: live.deviceHint,
     rigApplyNotice: live.rigApplyNotice,
   });
+  console.log('live-auto-start', decision);
   if (decision.type !== 'start') return;
   // #776: auto-start is monitoring ONLY (#728/ADR-0008) — a record-mode rig
   // hydrates liveMode='record' (rig-panel.ts applyRigPatch), so normalize back
@@ -142,7 +147,17 @@ function maybeAutoStartLive(): void {
 
 // Verbatim port of the .mode-tab click listener's body (inline-app.js) minus
 // the tab-active class toggle, which ModeTabs.tsx now owns reactively.
-export function switchMode(mode: WorkspaceMode): void {
+//
+// `opts.boot` (#1405) marks App.tsx's synchronous first-paint call, which
+// fires before settings have loaded and before inline-app.js's device/rig
+// hydration has settled. It is load-bearing in two ways: (1) it skips
+// persisting `mode` to settings, so the hardcoded initial 'reportcard'
+// default never clobbers a saved 'live' on disk before restoreBootMode gets
+// a chance to read it back; (2) it skips the auto-start call, since
+// decideLiveAutoStart would read rigStore's still-empty activeRigId and
+// skip with a false 'no-last-used-device'. restoreBootMode is what performs
+// the real (non-boot) switch/auto-start once hydration has settled.
+export function switchMode(mode: WorkspaceMode, opts?: { boot?: boolean }): void {
   const sb = getSoundBuddy();
   // Opt-in crash reporting (#473): the current screen is a safe breadcrumb
   // (a name, never content) a crash payload includes as `route`.
@@ -152,6 +167,7 @@ export function switchMode(mode: WorkspaceMode): void {
   if (mode === 'live') spectrumTransport.pauseIfPlaying();
 
   useLiveCaptureStore.getState().setAppMode(mode);
+  if (!opts?.boot) void useSettingsStore.getState().updateSettings({ lastAppMode: mode });
 
   // #727: the Live tab's #tab-live node relocated out of #source-panel into
   // #spectrum-panel, leaving #source-panel with nothing to show while Live
@@ -159,7 +175,7 @@ export function switchMode(mode: WorkspaceMode): void {
   // does for the Report Card tab.
   document.body.classList.toggle('live-active', mode === 'live');
 
-  if (mode === 'live') maybeAutoStartLive();
+  if (mode === 'live' && !opts?.boot) maybeAutoStartLive();
 
   if (mode === 'reportcard') {
     document.body.classList.add('rc-active');
@@ -173,4 +189,33 @@ export function switchMode(mode: WorkspaceMode): void {
     applySpectrumForMode(mode);
   }
   applySingleColumnSync();
+}
+
+export interface RestoreBootModeDeps {
+  // window.rendererHydration (inline-app.js) — settles once settings AND
+  // devices-then-rigs have both loaded (or failed). Awaiting it, rather than
+  // e.g. polling activeRigId, is what makes this run exactly once per boot.
+  hydration: Promise<unknown>;
+  getLastAppMode: () => string | null | undefined;
+  getCurrentMode: () => string;
+  getSettings: () => AppSettings | null;
+}
+
+// #1405: the second half of the boot sequence, paired with App.tsx's
+// synchronous `switchMode(initialMode, { boot: true })`. That first call
+// paints the hardcoded default (Report Card) immediately so first paint
+// never blocks on IPC; this restores the user's actual last-active mode (or,
+// if it was already Live, runs the auto-start decision) once hydration has
+// settled — never both, and never before hydration, so decideLiveAutoStart
+// always sees the real post-hydration rigStore/deviceHint state.
+export async function restoreBootMode(deps: RestoreBootModeDeps): Promise<void> {
+  await deps.hydration;
+  const lastMode = deps.getLastAppMode();
+  const currentMode = deps.getCurrentMode();
+  const restoredMode = lastMode ? clampBootMode(lastMode, deps.getSettings()) : lastMode;
+  if (restoredMode && isWorkspaceMode(restoredMode) && restoredMode !== currentMode) {
+    switchMode(restoredMode);
+    return;
+  }
+  if (currentMode === 'live') maybeAutoStartLive();
 }

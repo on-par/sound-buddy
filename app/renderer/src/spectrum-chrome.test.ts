@@ -10,22 +10,22 @@ describe('spectrumChromeView', () => {
     expect(view).toEqual({ showIsland: false, showImperative: true, title: null, showStats: null, showIdealProfile: null });
   });
 
-  it('empty: shows the island, hides stats/ideal-profile, curve title', () => {
+  it('empty: shows the island and pre-analysis ideal-profile entry point, hides stats, curve title', () => {
     const view = spectrumChromeView({ panelState: 'empty', hasCurve: false });
-    expect(view).toEqual({ showIsland: true, showImperative: false, title: SPECTRUM_TITLE.curve, showStats: false, showIdealProfile: false });
+    expect(view).toEqual({ showIsland: true, showImperative: false, title: SPECTRUM_TITLE.curve, showStats: false, showIdealProfile: true });
   });
 
   it('loading: same shape as empty', () => {
     const view = spectrumChromeView({ panelState: 'loading', hasCurve: false });
     expect(view.showStats).toBe(false);
-    expect(view.showIdealProfile).toBe(false);
+    expect(view.showIdealProfile).toBe(true);
     expect(view.title).toBe(SPECTRUM_TITLE.curve);
   });
 
   it('error: same shape as empty', () => {
     const view = spectrumChromeView({ panelState: 'error', hasCurve: false });
     expect(view.showStats).toBe(false);
-    expect(view.showIdealProfile).toBe(false);
+    expect(view.showIdealProfile).toBe(true);
   });
 
   it('populated with a curve: stats + ideal-profile shown, curve title', () => {
@@ -33,9 +33,9 @@ describe('spectrumChromeView', () => {
     expect(view).toEqual({ showIsland: true, showImperative: false, title: SPECTRUM_TITLE.curve, showStats: true, showIdealProfile: true });
   });
 
-  it('populated without a curve: stats shown, ideal-profile hidden, meters title', () => {
+  it('populated without a usable curve: stats and ideal-profile entry point shown, meters title', () => {
     const view = spectrumChromeView({ panelState: 'populated', hasCurve: false });
-    expect(view).toEqual({ showIsland: true, showImperative: false, title: SPECTRUM_TITLE.meters, showStats: true, showIdealProfile: false });
+    expect(view).toEqual({ showIsland: true, showImperative: false, title: SPECTRUM_TITLE.meters, showStats: true, showIdealProfile: true });
   });
 });
 

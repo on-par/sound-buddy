@@ -62,12 +62,11 @@ function fakeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
     idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null,
     usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
-    crashReportingEnabled: false, liveAdjustmentsEnabled: false,
-    reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false,
+    crashReportingEnabled: false, liveAdjustmentsEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false,
     weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
     measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
-    splCalibrationOffsetDb: null,
+    splCalibrationOffsetDb: null, lastAppMode: '',
     ...overrides,
   };
 }
@@ -112,6 +111,42 @@ describe('createRigStore', () => {
       useSettingsStore.setState({ settings: fakeSettings({ channelLabels: { 'Scarlett 18i20': { '0': 'Vocal' } } }) });
       await store.getState().loadRigs();
       expect(useLiveCaptureStore.getState().channelConfig[0].label).toBe('Vocal');
+    });
+
+    // #1405 regression: inline-app.js's boot chain runs
+    // liveCaptureStore.loadDevices() BEFORE rigStore.loadRigs() (so a saved
+    // rig can reconcile against the real device list) — but loadDevices
+    // itself resets measurementSource to null every time it reseeds the
+    // config (liveCaptureStore.ts). This exercises the two calls in that
+    // exact order to prove applyRigById's applyRigPatch (rig-panel.ts)
+    // restores the rig's saved measurementSource afterward, so the crowd mic
+    // track is still selected as the measurement source once boot settles —
+    // the #1405 issue's diagnosis suspected this was broken; it wasn't, but
+    // nothing exercised the ordering until now.
+    it('restores the active rig measurementSource after loadDevices resets it to null', async () => {
+      const rig = {
+        ...makeRig({
+          channelConfig: [
+            { kind: 'mono' as const, a: 0, b: 0 },
+            { kind: 'mono' as const, a: 1, b: 1 },
+            { kind: 'mono' as const, a: 2, b: 2 },
+          ],
+        }),
+        measurementSource: 2,
+      };
+      const mock = createMockSoundBuddy({
+        listDevices: async () => ({ success: true, micAccess: 'granted', devices: DEVICES }),
+        getSettings: async () => fakeSettings({ rigs: [rig], activeRigId: 'rig-1' }),
+      });
+      (globalThis as { window?: unknown }).window = { rigReconcile, preflight, armState, channelLabels, rigDialog, soundBuddy: mock.api };
+      const store = createRigStore(() => mock.api as unknown as RigApiSubset);
+
+      await useLiveCaptureStore.getState().loadDevices();
+      expect(useLiveCaptureStore.getState().measurementSource).toBeNull();
+
+      await store.getState().loadRigs();
+
+      expect(useLiveCaptureStore.getState().measurementSource).toBe(2);
     });
   });
 

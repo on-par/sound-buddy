@@ -127,11 +127,10 @@ describe('SettingsPanel markup', () => {
       settings: {
         idealProfile: '', customIdealProfiles: [], storageDir: '/Volumes/Audio', rigs: [], activeRigId: null,
         usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
-        crashReportingEnabled: false, liveAdjustmentsEnabled: false,
-        reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
+        crashReportingEnabled: false, liveAdjustmentsEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
         liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
         soundcheckBuses: [],
-        splCalibrationOffsetDb: null,
+        splCalibrationOffsetDb: null, lastAppMode: '',
       },
     });
     const html = renderMarkup();
@@ -217,9 +216,10 @@ describe('contextual help strip (#1007)', () => {
     }
   });
 
-  it('keeps all nine note ids present in the markup', () => {
+  it('keeps the current note ids present in the markup', () => {
     const html = renderMarkup();
     const noteIds = [
+      'advanced-features-note',
       'grading-profile-note',
       'weekly-reminder-note',
       'share-church-name-note',
@@ -246,6 +246,7 @@ describe('contextual help strip (#1007)', () => {
   it('wires aria-describedby from each control to its note element', () => {
     const html = renderMarkup();
     const pairs: [string, string][] = [
+      ['advanced-features-toggle', 'advanced-features-note'],
       ['usage-signal-toggle', 'usage-signal-note'],
       ['crash-reporting-toggle', 'crash-reporting-note'],
       ['live-adjustments-toggle', 'live-adjustments-note'],
@@ -367,13 +368,14 @@ describe('Audio pane composition (#727)', () => {
     expect(html).not.toContain('id="settings-audio-capture-lock-note"');
   });
 
-  it('shows the capture-lock note while capturing, without claiming measurement source or the secondary device are locked', () => {
+  it('shows the capture-lock note while capturing, without claiming rig, measurement source or the secondary device are locked', () => {
     useLiveCaptureStore.setState({ isCapturing: true });
     const html = renderMarkup(true);
     expect(html).toContain('id="settings-audio-capture-lock-note"');
     const note = html.match(/<p class="ai-dialog-note" id="settings-audio-capture-lock-note">(.*?)<\/p>/)?.[1] ?? '';
+    expect(note).not.toMatch(/rig[^.]*locked/i);
+    expect(note).toMatch(/Rig and input device changes restart capture/i);
     expect(note).not.toMatch(/input device[^.]*locked/i);
-    expect(note).toMatch(/Input device changes restart capture/i);
     expect(note).not.toMatch(/measurement source[^.]*locked/i);
     expect(note).not.toMatch(/secondary measurement[^.]*locked/i);
   });
@@ -568,7 +570,7 @@ describe('the Done action (#1021)', () => {
   });
 });
 
-// Instant-apply Settings controls (#1018, epic #1000): the seven non-storage,
+// Instant-apply Settings controls (#1018, epic #1000): the non-storage,
 // non-church-name controls render straight from settingsStore's persisted
 // `settings` (via instantSettingValues) and commit on change (via
 // commitInstantSetting) — no local staged state, no Save-gated seeding.
@@ -577,6 +579,7 @@ describe('the Done action (#1021)', () => {
 // Revoke button and the storage-toggle-seeding tests used previously.
 describe('instant-apply Settings controls (#1018)', () => {
   const NON_DEFAULT_SETTINGS = {
+    advancedFeaturesEnabled: false,
     usageSignalEnabled: true,
     crashReportingEnabled: true,
     liveAdjustmentsEnabled: true,
@@ -593,6 +596,7 @@ describe('instant-apply Settings controls (#1018)', () => {
     }
     expect(html).toMatch(/<option[^>]*value="3"[^>]*selected|<option[^>]*selected[^>]*value="3"/);
     expect(html).toMatch(/<option[^>]*value="broadcast"[^>]*selected|<option[^>]*selected[^>]*value="broadcast"/);
+    expect(html).not.toMatch(/id="advanced-features-toggle"[^>]*checked=""/);
   });
 
   it('renders no control checked and the defaults selected when no settings are loaded', () => {
@@ -602,6 +606,18 @@ describe('instant-apply Settings controls (#1018)', () => {
     }
     expect(html).toMatch(/<option[^>]*value="0"[^>]*selected|<option[^>]*selected[^>]*value="0"/);
     expect(html).toMatch(/<option[^>]*value="casual"[^>]*selected|<option[^>]*selected[^>]*value="casual"/);
+    expect(html).toMatch(/id="advanced-features-toggle"[^>]*checked=""/);
+  });
+
+  it('renders the Advanced features row in General, checked from persisted settings and wired to its note', () => {
+    useSettingsStore.setState({ settings: { advancedFeaturesEnabled: true } as unknown as AppSettings });
+    const html = renderMarkup();
+    const generalPane = html.match(/id="settings-pane-general"[\s\S]*?id="settings-pane-storage"/)?.[0] ?? '';
+    expect(generalPane).toContain('<h3 class="settings-group-title">Workspace</h3>');
+    expect(generalPane.indexOf('Workspace')).toBeLessThan(generalPane.indexOf('Grading'));
+    expect(generalPane).toContain('<span class="settings-row-label">Advanced features</span>');
+    expect(generalPane).toMatch(/id="advanced-features-toggle"[^>]*checked=""/);
+    expect(generalPane).toMatch(/id="advanced-features-toggle"[^>]*aria-describedby="advanced-features-note"/);
   });
 
   it('derives control values from instantSettingValues(settings) in source', () => {
@@ -613,6 +629,7 @@ describe('instant-apply Settings controls (#1018)', () => {
     const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
     for (const key of [
       'gradingProfile',
+      'advancedFeaturesEnabled',
       'weeklyReminderEnabled',
       'weeklyReminderServiceDay',
       'usageSignalEnabled',
@@ -623,7 +640,7 @@ describe('instant-apply Settings controls (#1018)', () => {
     }
   });
 
-  it('no longer stages the six controls in local useState', () => {
+  it('no longer stages the instant controls in local useState', () => {
     const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
     for (const setter of [
       'setUsageSignalEnabled',
@@ -632,6 +649,7 @@ describe('instant-apply Settings controls (#1018)', () => {
       'setWeeklyReminderEnabled',
       'setWeeklyReminderServiceDay',
       'setGradingProfile',
+      'setAdvancedFeaturesEnabled',
     ]) {
       expect(src).not.toContain(setter);
     }
@@ -657,6 +675,7 @@ describe('SettingsSection', () => {
   it('maps every current Settings control to its target section', () => {
     const expectations: Record<SettingsControl, SettingsSection> = {
       gradingProfile: 'general',
+      advancedFeatures: 'general',
       weeklyReminder: 'general',
       weeklyReminderServiceDay: 'general',
       shareChurchName: 'general',
@@ -687,7 +706,7 @@ describe('SettingsSection', () => {
 describe('Settings row grid (#1009)', () => {
   it('renders a group header for every ungated group', () => {
     const html = renderMarkup();
-    for (const title of ['Grading', 'Reminders', 'Sharing', 'Network access', 'Location', 'Diagnostics', 'Experiments', 'Application']) {
+    for (const title of ['Workspace', 'Grading', 'Reminders', 'Sharing', 'Network access', 'Location', 'Diagnostics', 'Experiments', 'Application']) {
       expect(html).toContain(`<h3 class="settings-group-title">${title}</h3>`);
     }
   });
@@ -720,7 +739,7 @@ describe('Settings row grid (#1009)', () => {
 
   it('keeps every toggle a real checkbox input', () => {
     const html = renderMarkup();
-    for (const id of ['weekly-reminder-toggle', 'usage-signal-toggle', 'crash-reporting-toggle', 'live-adjustments-toggle']) {
+    for (const id of ['advanced-features-toggle', 'weekly-reminder-toggle', 'usage-signal-toggle', 'crash-reporting-toggle', 'live-adjustments-toggle']) {
       expect(html).toMatch(new RegExp(`type="checkbox" id="${id}"`));
     }
   });
@@ -729,7 +748,7 @@ describe('Settings row grid (#1009)', () => {
     const html = renderMarkup(true);
     expect(html).not.toContain('role="switch"');
     expect(html).not.toContain('role="checkbox"');
-    for (const id of ['weekly-reminder-toggle', 'usage-signal-toggle', 'crash-reporting-toggle', 'live-adjustments-toggle']) {
+    for (const id of ['advanced-features-toggle', 'weekly-reminder-toggle', 'usage-signal-toggle', 'crash-reporting-toggle', 'live-adjustments-toggle']) {
       expect(html).not.toMatch(new RegExp(`<button[^>]*id="${id}"`));
     }
   });
