@@ -97,6 +97,32 @@ describe('settingsHelpHandlers', () => {
   });
 });
 
+describe('Listen live help copy (#1482)', () => {
+  const entry = () => SETTINGS_HELP_ENTRIES.find((e) => e.control === 'secondaryMeasurementDevice');
+
+  it('gives the room-mic row its own note id', () => {
+    expect(settingsHelpNoteId('secondaryMeasurementDevice')).toBe('secondary-measurement-note');
+  });
+
+  it('names Advanced features and Listen live as the enabling condition', () => {
+    const text = entry()?.text ?? '';
+    expect(text).toContain('Advanced features');
+    expect(text).toContain('Listen live');
+  });
+
+  it('shows that copy instead of the Audio section fallback when the row is active', () => {
+    expect(resolveSettingsHelp('secondaryMeasurementDevice', 'audio')).toBe(entry()?.text);
+    expect(resolveSettingsHelp('secondaryMeasurementDevice', 'audio')).not.toBe(SETTINGS_SECTION_HELP.audio);
+  });
+
+  it('leaves no Listen live copy implying a line-check calibration dependency', () => {
+    for (const e of SETTINGS_HELP_ENTRIES) {
+      if (!e.text.includes('Listen live')) continue;
+      expect(e.text).not.toMatch(/line[- ]?check|calibrat/i);
+    }
+  });
+});
+
 describe('SETTINGS_HELP_ENTRIES table integrity', () => {
   it('has a unique noteId ending in -note for every entry', () => {
     const seen = new Set<string>();

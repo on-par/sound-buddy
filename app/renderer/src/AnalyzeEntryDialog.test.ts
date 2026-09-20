@@ -36,4 +36,13 @@ describe('AnalyzeEntryDialog (#1468)', () => {
     expect(html).toMatch(/Choose file/);
     expect(html).toMatch(/Listen live/);
   });
+
+  it('describes Listen live with no line-check calibration reference (#1482)', () => {
+    useAnalyzeEntryStore.setState({ dialogOpen: true });
+
+    const html = renderMarkup();
+
+    expect(html).toMatch(/Listen live/);
+    expect(html).not.toMatch(/line[- ]?check|calibrat/i);
+  });
 });
