@@ -9,15 +9,14 @@
 
 import type { AppSettings } from '../../electron/ipc/api';
 
-// Gated behind Advanced features (nested location of the toggle,
-// SettingsPanel.tsx) AND lineCheckCalibrationEnabled itself — requiring both
-// keeps #1419's Simple-mode default preserved by construction, since the
-// issue's AC2 names only the flag but the flag's own toggle only renders
-// under Advanced.
+// Gated behind Advanced features alone (#1479) — live EQ listening is not a
+// line-check workflow, so lineCheckCalibrationEnabled no longer factors in.
+// Advanced features remains the sole feature-tier gate, preserving #1419's
+// Simple-mode default. Room-mic routing is a separate concern handled by
+// resolveListenLiveChoice below.
 export function shouldOfferListenLive(settings: AppSettings | null): boolean {
   return settings !== null
-    && settings.advancedFeaturesEnabled === true
-    && settings.lineCheckCalibrationEnabled === true;
+    && settings.advancedFeaturesEnabled === true;
 }
 
 export type ListenLiveChoice = 'startListening' | 'needsSecondarySource';
