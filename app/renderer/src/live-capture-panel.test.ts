@@ -67,6 +67,7 @@ import {
 } from './live-capture-panel';
 
 const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
+const tokensCss = fs.readFileSync(fileURLToPath(new URL('./styles/tokens.css', import.meta.url)), 'utf8');
 
 const devices: LiveDevice[] = [
   { index: 0, name: 'Scarlett 18i20', channels: 18, default_sr: 48000 },
@@ -1673,6 +1674,31 @@ describe('app.css: single-row EQ band labels (#666)', () => {
     const block = containerBlock ? containerBlock[0] : '';
     expect(block).toContain('.veq-label-full { display:none; }');
     expect(block).toContain('.veq-label-abbr { display:inline; }');
+  });
+});
+
+describe('#1497 ideal-curve overlay CSS prominence', () => {
+  it('tokens.css defines the azure target-line/target-glow pair', () => {
+    expect(tokensCss).toMatch(/--target-line:\s*var\(--azure-400\)/);
+    expect(tokensCss).toMatch(/--target-glow:/);
+  });
+
+  it('.sb-target-line strokes the azure token at 2.75px with a drop-shadow, not the old grey chrome', () => {
+    const rule = css.match(/\.sb-target-line\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(rule).toContain('stroke:var(--target-line)');
+    expect(rule).toContain('stroke-width:2.75');
+    expect(rule).toContain('drop-shadow');
+    expect(rule).not.toContain('var(--text-tertiary)');
+  });
+
+  it('the spectrum legend target swatch shares the same --target-line token as the line', () => {
+    const rule = css.match(/\.spectrum-legend \.sl-swatch\.target\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(rule).toContain('var(--target-line)');
+  });
+
+  it('.sb-curve-line still strokes the gold ramp (measured vs target stay on different hue families)', () => {
+    const rule = css.match(/\.sb-curve-line\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(rule).toContain('var(--gold-500)');
   });
 });
 
