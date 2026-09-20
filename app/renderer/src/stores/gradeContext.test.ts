@@ -67,3 +67,49 @@ describe('createGradeContextResolver', () => {
     expect(gradeContext.liveBaseline()?.label).toBe('Worship service');
   });
 });
+
+describe('forStrip', () => {
+  const strip = { deviceName: 'Scarlett 18i20', token: '0' };
+
+  it('is content-identical to forSpectrum, and reuses its idealProfile reference, when the strip has no captured profile', () => {
+    const r = resolver();
+    const base = r.forSpectrum(null);
+    const ctx = r.forStrip(strip, null);
+    expect(ctx).toEqual(base);
+    // Built-in profiles are Map-cached (ideal-profiles.ts's IP_BY_ID), so
+    // strict identity here proves forStrip returned forSpectrum's object
+    // untouched rather than rebuilding an equal-but-new one (AC2).
+    expect(ctx.idealProfile).toBe(base.idealProfile);
+  });
+
+  it('is content-identical to forSpectrum when settings/overrides are absent', () => {
+    const r = resolver('', [], null);
+    const base = r.forSpectrum({ contentType: 'music' });
+    expect(r.forStrip(strip, { contentType: 'music' })).toEqual(base);
+  });
+
+  it('swaps idealProfile to the captured profile and flags isAutoProfile false when the strip has one (AC2)', () => {
+    const overrides = { 'Scarlett 18i20': { '0': `custom:${custom.id}` } };
+    const r = resolver('', [custom], { inputInstrumentProfiles: overrides });
+
+    const ctx = r.forStrip(strip, null);
+
+    expect(ctx.idealProfile).toEqual(custom);
+    expect(ctx.isAutoProfile).toBe(false);
+  });
+
+  it('preserves symptomThresholdOffsetDb from settings when swapping to a captured profile', () => {
+    const overrides = { 'Scarlett 18i20': { '0': `custom:${custom.id}` } };
+    const r = resolver('', [custom], { inputInstrumentProfiles: overrides, gradingRubric: { 'symptoms.thresholdOffsetDb': 3 } });
+
+    expect(r.forStrip(strip, null).symptomThresholdOffsetDb).toBe(3);
+  });
+
+  it('does not use another strip\'s captured profile', () => {
+    const overrides = { 'Scarlett 18i20': { '0': `custom:${custom.id}` } };
+    const r = resolver('', [custom], { inputInstrumentProfiles: overrides });
+    const base = r.forSpectrum(null);
+
+    expect(r.forStrip({ deviceName: 'Scarlett 18i20', token: '1' }, null)).toEqual(base);
+  });
+});

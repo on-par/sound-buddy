@@ -13,6 +13,7 @@
 import type { AppSettings, CustomIdealProfile } from '../../../electron/ipc/api';
 import { gradeBaselineFor, symptomThresholdOffsetFrom, type GradeBaseline, type GradeContext } from '../report-card';
 import { resolveActiveProfile, isAutoSelected } from '../ideal-profiles';
+import { capturedStripProfile, type CapturedStripRef } from '../line-check-baseline';
 import { useIdealProfilesStore } from './idealProfilesStore';
 import { useSettingsStore } from './settingsStore';
 
@@ -26,6 +27,11 @@ export interface GradeContextResolver {
   forSpectrum(spectrum: { contentType?: string } | null): GradeContext;
   /** The live-capture baseline (Auto → the live default), attached to live sources. */
   liveBaseline(): GradeBaseline | null;
+  /** The context for one live-capture strip: forSpectrum's context, with the
+   *  Ideal profile swapped for the strip's captured baseline (lc-02, #1465)
+   *  when one exists — the exact forSpectrum object otherwise, unchanged, so
+   *  a strip with no capture grades byte-for-byte like today. */
+  forStrip(strip: CapturedStripRef, spectrum?: { contentType?: string } | null): GradeContext;
 }
 
 export function createGradeContextResolver(deps: GradeContextDeps): GradeContextResolver {
@@ -38,9 +44,17 @@ export function createGradeContextResolver(deps: GradeContextDeps): GradeContext
       symptomThresholdOffsetDb: symptomThresholdOffsetFrom(deps.settings()),
     };
   };
+  const forStrip = (strip: CapturedStripRef, spectrum: { contentType?: string } | null = null): GradeContext => {
+    const base = forSpectrum(spectrum);
+    const { customProfiles } = deps.idealProfiles();
+    const overrides = deps.settings()?.inputInstrumentProfiles;
+    const captured = capturedStripProfile(overrides, customProfiles, strip);
+    return captured ? { ...base, idealProfile: captured, isAutoProfile: false } : base;
+  };
   return {
     forSpectrum,
     liveBaseline: () => gradeBaselineFor(forSpectrum(null)),
+    forStrip,
   };
 }
 
