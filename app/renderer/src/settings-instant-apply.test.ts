@@ -26,6 +26,7 @@ const FULL_SETTINGS: AppSettings = {
   crashReportingEnabled: true,
   liveAdjustmentsEnabled: true,
   advancedFeaturesEnabled: true,
+  lineCheckCalibrationEnabled: false,
   shareChurchName: '',
   weeklyReminderEnabled: true,
   weeklyReminderServiceDay: 3,
@@ -48,6 +49,7 @@ describe('instantSettingValues', () => {
       usageSignalEnabled: false,
       crashReportingEnabled: false,
       liveAdjustmentsEnabled: false,
+      lineCheckCalibrationEnabled: false,
     });
   });
 
@@ -60,6 +62,7 @@ describe('instantSettingValues', () => {
       usageSignalEnabled: true,
       crashReportingEnabled: true,
       liveAdjustmentsEnabled: true,
+      lineCheckCalibrationEnabled: false,
     });
   });
 
@@ -82,6 +85,15 @@ describe('instantSettingValues', () => {
     expect(instantSettingValues({ ...FULL_SETTINGS, advancedFeaturesEnabled: false }).advancedFeaturesEnabled).toBe(false);
     expect(instantSettingValues({ ...FULL_SETTINGS, advancedFeaturesEnabled: true }).advancedFeaturesEnabled).toBe(true);
   });
+
+  it('defaults lineCheckCalibrationEnabled to false when settings is absent', () => {
+    expect(instantSettingValues(null).lineCheckCalibrationEnabled).toBe(false);
+  });
+
+  it('mirrors lineCheckCalibrationEnabled true and false', () => {
+    expect(instantSettingValues({ ...FULL_SETTINGS, lineCheckCalibrationEnabled: true }).lineCheckCalibrationEnabled).toBe(true);
+    expect(instantSettingValues({ ...FULL_SETTINGS, lineCheckCalibrationEnabled: false }).lineCheckCalibrationEnabled).toBe(false);
+  });
 });
 
 describe('commitInstantSetting', () => {
@@ -93,6 +105,7 @@ describe('commitInstantSetting', () => {
     { key: 'usageSignalEnabled', value: true },
     { key: 'crashReportingEnabled', value: true },
     { key: 'liveAdjustmentsEnabled', value: true },
+    { key: 'lineCheckCalibrationEnabled', value: true },
   ];
 
   for (const { key, value } of CASES) {

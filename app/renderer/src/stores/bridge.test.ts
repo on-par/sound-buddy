@@ -287,6 +287,7 @@ describe('installStoreBridge', () => {
     crashReportingEnabled: false,
     liveAdjustmentsEnabled: false,
     advancedFeaturesEnabled: true,
+    lineCheckCalibrationEnabled: false,
     shareChurchName: '',
     weeklyReminderEnabled: false,
     weeklyReminderServiceDay: 0,

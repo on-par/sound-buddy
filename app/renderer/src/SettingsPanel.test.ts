@@ -127,7 +127,7 @@ describe('SettingsPanel markup', () => {
       settings: {
         idealProfile: '', customIdealProfiles: [], storageDir: '/Volumes/Audio', rigs: [], activeRigId: null,
         usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
-        crashReportingEnabled: false, liveAdjustmentsEnabled: false, advancedFeaturesEnabled: true, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
+        crashReportingEnabled: false, liveAdjustmentsEnabled: false, advancedFeaturesEnabled: true, lineCheckCalibrationEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
         liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual', gradingRubric: {}, consoleNetworkConsentGranted: false,
         soundcheckBuses: [],
         splCalibrationOffsetDb: null, lastAppMode: '',
@@ -639,6 +639,7 @@ describe('instant-apply Settings controls (#1018)', () => {
       'usageSignalEnabled',
       'crashReportingEnabled',
       'liveAdjustmentsEnabled',
+      'lineCheckCalibrationEnabled',
     ]) {
       expect(src).toContain(`commitInstantSetting(useSettingsStore, '${key}'`);
     }
@@ -663,6 +664,29 @@ describe('instant-apply Settings controls (#1018)', () => {
     const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
     expect(src).not.toContain('pendingDir');
     expect(src).not.toContain('setPendingDir');
+  });
+
+  it('hides the line-check calibration row entirely while Advanced features is off', () => {
+    useSettingsStore.setState({ settings: { advancedFeaturesEnabled: false, lineCheckCalibrationEnabled: true } as unknown as AppSettings });
+    const html = renderMarkup();
+    expect(html).not.toContain('line-check-calibration-toggle');
+    expect(html).not.toContain('Line check calibration');
+  });
+
+  it('shows the line-check calibration row in Labs, checked from persisted settings, when Advanced features is on', () => {
+    useSettingsStore.setState({ settings: { advancedFeaturesEnabled: true, lineCheckCalibrationEnabled: true } as unknown as AppSettings });
+    const html = renderMarkup();
+    const labsPane = html.match(/id="settings-pane-labs"[\s\S]*?id="settings-pane-audio"/)?.[0] ?? '';
+    expect(labsPane).toContain('<span class="settings-row-label">Line check calibration</span>');
+    expect(labsPane).toMatch(/id="line-check-calibration-toggle"[^>]*checked=""/);
+    expect(labsPane).toMatch(/id="line-check-calibration-toggle"[^>]*aria-describedby="line-check-calibration-note"/);
+  });
+
+  it('renders the line-check calibration row unchecked when the flag is off', () => {
+    useSettingsStore.setState({ settings: { advancedFeaturesEnabled: true, lineCheckCalibrationEnabled: false } as unknown as AppSettings });
+    const html = renderMarkup();
+    expect(html).toContain('line-check-calibration-toggle');
+    expect(html).not.toMatch(/id="line-check-calibration-toggle"[^>]*checked=""/);
   });
 });
 
@@ -699,6 +723,7 @@ describe('SettingsSection', () => {
       usageSignal: 'privacy',
       crashReporting: 'privacy',
       liveAdjustments: 'labs',
+      lineCheckCalibration: 'labs',
       version: 'about',
       license: 'about',
     };

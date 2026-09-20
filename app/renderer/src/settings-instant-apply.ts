@@ -18,7 +18,8 @@ export type InstantSettingKey =
   | 'weeklyReminderServiceDay'
   | 'usageSignalEnabled'
   | 'crashReportingEnabled'
-  | 'liveAdjustmentsEnabled';
+  | 'liveAdjustmentsEnabled'
+  | 'lineCheckCalibrationEnabled';
 
 // The render-time projection of the instant-apply Settings controls,
 // derived straight from persisted AppSettings.
@@ -30,6 +31,7 @@ export interface InstantSettingValues {
   usageSignalEnabled: boolean;
   crashReportingEnabled: boolean;
   liveAdjustmentsEnabled: boolean;
+  lineCheckCalibrationEnabled: boolean;
 }
 
 export type InstantSettingsStore = UseBoundStore<StoreApi<SettingsState>>;
@@ -47,6 +49,7 @@ export function instantSettingValues(settings: AppSettings | null): InstantSetti
     usageSignalEnabled: !!settings?.usageSignalEnabled,
     crashReportingEnabled: !!settings?.crashReportingEnabled,
     liveAdjustmentsEnabled: !!settings?.liveAdjustmentsEnabled,
+    lineCheckCalibrationEnabled: !!settings?.lineCheckCalibrationEnabled,
   };
 }
 

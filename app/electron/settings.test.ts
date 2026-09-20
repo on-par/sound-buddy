@@ -67,6 +67,7 @@ beforeEach(() => {
   delete process.env.SOUND_BUDDY_IDEAL_PROFILE;
   delete process.env.SOUND_BUDDY_STORAGE_DIR;
   delete process.env.SOUND_BUDDY_ADVANCED_FEATURES;
+  delete process.env.SOUND_BUDDY_LINE_CHECK_CALIBRATION;
   vi.mocked(logWarn).mockClear();
 });
 
@@ -386,6 +387,53 @@ describe('advancedFeaturesEnabled (#1421/#1425 — Simple mode default with exis
     writeFile({ activeRigId: 'r1' });
     process.env.SOUND_BUDDY_ADVANCED_FEATURES = '0';
     expect(getSettings().advancedFeaturesEnabled).toBe(false);
+  });
+});
+
+describe('lineCheckCalibrationEnabled (#1463 — dark feature flag for epic #1462, default off)', () => {
+  it('defaults to false on a fresh install with no settings.json', () => {
+    expect(getSettings().lineCheckCalibrationEnabled).toBe(false);
+  });
+
+  it('round-trips true through updateSettings, the raw file, and a fresh read', () => {
+    const on = updateSettings({ lineCheckCalibrationEnabled: true });
+    expect(on.lineCheckCalibrationEnabled).toBe(true);
+    expect(readFile().lineCheckCalibrationEnabled).toBe(true);
+    expect(getSettings().lineCheckCalibrationEnabled).toBe(true);
+
+    expect(updateSettings({ lineCheckCalibrationEnabled: false }).lineCheckCalibrationEnabled).toBe(false);
+    expect(readFile().lineCheckCalibrationEnabled).toBe(false);
+  });
+
+  it('repairs a non-boolean stored value to false (fails closed)', () => {
+    // Deliberate corrupt-file fixture: a hand-edited settings.json with a
+    // non-boolean value for a dark kill switch must repair to false, not
+    // coerce truthy.
+    writeFile({ lineCheckCalibrationEnabled: 'yes' } as unknown as Partial<AppSettings>);
+    expect(getSettings().lineCheckCalibrationEnabled).toBe(false);
+  });
+
+  it('drops a non-boolean patch', () => {
+    expect(SETTING_SPECS.lineCheckCalibrationEnabled.sanitizePatch?.('nope')).toBeUndefined();
+  });
+
+  it("SOUND_BUDDY_LINE_CHECK_CALIBRATION='1' forces it on over a file-layer false", () => {
+    writeFile({ lineCheckCalibrationEnabled: false });
+    process.env.SOUND_BUDDY_LINE_CHECK_CALIBRATION = '1';
+    expect(getSettings().lineCheckCalibrationEnabled).toBe(true);
+  });
+
+  it("SOUND_BUDDY_LINE_CHECK_CALIBRATION='0' forces it off over a file-layer true", () => {
+    writeFile({ lineCheckCalibrationEnabled: true });
+    process.env.SOUND_BUDDY_LINE_CHECK_CALIBRATION = '0';
+    expect(getSettings().lineCheckCalibrationEnabled).toBe(false);
+  });
+
+  it('never bakes a transient env override into settings.json', () => {
+    writeFile({ lineCheckCalibrationEnabled: false });
+    process.env.SOUND_BUDDY_LINE_CHECK_CALIBRATION = '1';
+    updateSettings({ shareChurchName: 'Grace Chapel' });
+    expect(readFile().lineCheckCalibrationEnabled).toBe(false);
   });
 });
 
@@ -997,6 +1045,7 @@ describe('SETTING_SPECS — the single owner of every field invariant (#747)', (
     crashReportingEnabled: false,
     liveAdjustmentsEnabled: false,
     advancedFeaturesEnabled: false,
+    lineCheckCalibrationEnabled: false,
     shareChurchName: '',
     weeklyReminderEnabled: false,
     weeklyReminderServiceDay: 0,
@@ -1026,6 +1075,7 @@ describe('SETTING_SPECS — the single owner of every field invariant (#747)', (
     expect(SETTING_SPECS.gradingProfile.default).toBe('casual');
     expect(SETTING_SPECS.advancedFeaturesEnabled.default).toBe(false);
     expect(SETTING_SPECS.consoleNetworkConsentGranted.default).toBe(false);
+    expect(SETTING_SPECS.lineCheckCalibrationEnabled.default).toBe(false);
   });
 });
 

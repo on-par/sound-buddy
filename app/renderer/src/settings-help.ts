@@ -77,6 +77,11 @@ export const SETTINGS_HELP_ENTRIES: readonly SettingsHelpEntry[] = [
     text: 'Off unless you turn it on. An early, experimental area for mix suggestions while you monitor or record in Live Capture. Nothing is analyzed or sent anywhere — turn this off anytime to hide it.',
   },
   {
+    control: 'lineCheckCalibration',
+    noteId: 'line-check-calibration-note',
+    text: 'Off unless you turn it on. An early, experimental line check that measures each input against its own reference before the mix is graded. Nothing about grading changes while this is off. Shown only while Advanced features is on.',
+  },
+  {
     control: 'consoleNetworkConsent',
     noteId: 'console-network-consent-note',
     text: 'Granted only when you explicitly allow it from the prompt shown the first time a live-console feature is turned on — there is no toggle here to turn it on. Revoking takes effect immediately and blocks further console reads until you grant it again.',

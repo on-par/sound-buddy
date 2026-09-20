@@ -390,6 +390,26 @@ describe('update-settings IPC whitelist — liveAdjustmentsEnabled (#522)', () =
   });
 });
 
+describe('update-settings IPC whitelist — lineCheckCalibrationEnabled (#1463)', () => {
+  it('accepts a boolean and persists it', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { lineCheckCalibrationEnabled: true })) as {
+      lineCheckCalibrationEnabled: boolean;
+    };
+    expect(result.lineCheckCalibrationEnabled).toBe(true);
+    expect(readFile().lineCheckCalibrationEnabled).toBe(true);
+  });
+
+  it('ignores a string value, leaving the setting at its default', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { lineCheckCalibrationEnabled: 'yes' })) as {
+      lineCheckCalibrationEnabled: boolean;
+    };
+    expect(result.lineCheckCalibrationEnabled).toBe(false);
+    expect(readFile().lineCheckCalibrationEnabled).toBe(false);
+  });
+});
+
 describe('update-settings IPC whitelist — measurementDeviceName (#460)', () => {
   it('accepts a string, trims it, and persists it', async () => {
     const handler = handlers.get('update-settings');
@@ -594,6 +614,7 @@ describe('update-settings whitelist exactness (#747)', () => {
       crashReportingEnabled: true,
       liveAdjustmentsEnabled: true,
       advancedFeaturesEnabled: false,
+      lineCheckCalibrationEnabled: true,
       shareChurchName: 'Grace Chapel',
       weeklyReminderEnabled: true,
       weeklyReminderServiceDay: 0,

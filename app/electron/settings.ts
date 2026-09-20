@@ -340,6 +340,17 @@ export const SETTING_SPECS: { [K in keyof AppSettings]: SettingSpec<AppSettings[
     sanitizePatch: (v) => (typeof v === 'boolean' ? v : undefined),
     envRead: (f) => envBool('SOUND_BUDDY_ADVANCED_FEATURES') ?? f,
   },
+  // Dark feature flag for epic #1462 (#1463). Unlike advancedFeaturesEnabled
+  // there is no derived default — a fresh install is always off. sanitizeFile
+  // uses the explicit typeof check rather than the `?? default` form so a
+  // hand-edited non-boolean (e.g. "yes") repairs to false: a dark kill switch
+  // must fail closed, never coerce truthy.
+  lineCheckCalibrationEnabled: {
+    default: false,
+    sanitizeFile: (v) => (typeof v === 'boolean' ? v : SETTING_SPECS.lineCheckCalibrationEnabled.default),
+    sanitizePatch: (v) => (typeof v === 'boolean' ? v : undefined),
+    envRead: (f) => envBool('SOUND_BUDDY_LINE_CHECK_CALIBRATION') ?? f,
+  },
   shareChurchName: {
     default: '',
     sanitizeFile: (v) => (typeof v === 'string' ? v : SETTING_SPECS.shareChurchName.default),
