@@ -51,6 +51,10 @@
       --band-sub:#4C63D2; --band-bass:#3D82D6; --band-low-mid:#2BA2C9; --band-mid:#23BBA6;
       --band-high-mid:#5FC96F; --band-presence:#D9B23E; --band-brilliance:#EC8B3E;
 
+      /* Ideal/target curve overlay — deliberately off the gold ramp so the
+         target reads as a different curve from the measured one (#1497) */
+      --target-line:var(--azure-400); --target-glow:rgba(111,168,245,0.40);
+
       /* Meters */
       --meter-track:var(--neutral-1000); --meter-good:var(--good-500); --meter-hot:var(--check-500);
       --meter-clip:var(--issue-500); --meter-idle:var(--neutral-700);

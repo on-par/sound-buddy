@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { BAND_META, DB_MIN, DB_MAX, DIM_DB, toPct } from './spectrum-display';
+import { BAND_META, DB_MIN, DB_MAX, DIM_DB, toPct, type IdealProfileLike } from './spectrum-display';
 import {
   LIVE_BAND_KEYS,
   VEQ_FREQS,
@@ -28,6 +28,8 @@ import {
   eqPaneView,
   eqPaneHTML,
   eqPaneRoomSectionHTML,
+  liveTargetDb,
+  veqArcSVG,
   eqPaneClassificationHTML,
   eqPaneInspectorHTML,
   eqPaneSignature,
@@ -67,6 +69,7 @@ import {
 } from './live-capture-panel';
 
 const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
+const tokensCss = fs.readFileSync(fileURLToPath(new URL('./styles/tokens.css', import.meta.url)), 'utf8');
 
 const devices: LiveDevice[] = [
   { index: 0, name: 'Scarlett 18i20', channels: 18, default_sr: 48000 },
@@ -1443,6 +1446,88 @@ describe('eqPaneRoomSectionHTML (#1469, lc-06)', () => {
   });
 });
 
+describe('#1497 ideal-curve overlay on the Analyze room arc', () => {
+  const flatProfile: IdealProfileLike = { id: 'flat', label: 'Flat / neutral', dbOffsets: new Array(ANALYZER_GRID_POINTS).fill(0) };
+  const gridCurve = { freqs: ANALYZER_GRID_FREQS, db: new Array(ANALYZER_GRID_POINTS).fill(-30) };
+  const bandDbs = [-40, -34, -28, -24, -32, -44, -60];
+  const bandCurve = { freqs: VEQ_FREQS, db: bandDbs };
+  const bands: Record<string, number> = LIVE_BAND_KEYS.reduce(
+    (acc, k, i) => ({ ...acc, [k]: bandDbs[i] }), {} as Record<string, number>);
+
+  function mean(xs: number[]): number {
+    return xs.reduce((a, b) => a + b, 0) / xs.length;
+  }
+
+  describe('liveTargetDb', () => {
+    it('returns null when profile is null or undefined', () => {
+      expect(liveTargetDb(gridCurve, null)).toBeNull();
+      expect(liveTargetDb(gridCurve, undefined)).toBeNull();
+    });
+
+    it('returns null for a 7-point band curve against a 48-entry profile (misalignment guard)', () => {
+      expect(liveTargetDb(bandCurve, flatProfile)).toBeNull();
+    });
+
+    it('level-matches a 48-point curve onto the profile, preserving shape', () => {
+      const profile: IdealProfileLike = {
+        id: 'speech', label: 'Speech clarity',
+        dbOffsets: ANALYZER_GRID_FREQS.map((f) => (f > 1000 ? 3 : -2)),
+      };
+      const result = liveTargetDb(gridCurve, profile) as number[];
+      expect(result).not.toBeNull();
+      expect(mean(result)).toBeCloseTo(mean(gridCurve.db), 6);
+      const diffs = result.map((v) => v - result[0]);
+      const profileDiffs = profile.dbOffsets.map((v) => v - profile.dbOffsets[0]);
+      expect(diffs).toEqual(profileDiffs);
+    });
+  });
+
+  describe('veqArcSVG', () => {
+    it('draws no sb-target-line when no targetDb is passed', () => {
+      const html = veqArcSVG(gridCurve, 1000, 'x') as string;
+      expect(html).not.toContain('sb-target-line');
+    });
+
+    it('draws exactly one sb-target-line when a targetDb is passed', () => {
+      const target = liveTargetDb(gridCurve, flatProfile) as number[];
+      const html = veqArcSVG(gridCurve, 1000, 'x', false, target) as string;
+      expect(html.match(/sb-target-line/g)?.length).toBe(1);
+    });
+  });
+
+  describe('eqPaneRoomSectionHTML overlay wiring', () => {
+    it('draws no overlay when no profile is passed', () => {
+      const override: EqPaneRoomOverride = { ch: { bands, rms: -20, peak: -10 }, label: 'Mic' };
+      expect(eqPaneRoomSectionHTML(override)).not.toContain('sb-target-line');
+    });
+
+    it('draws exactly one overlay path when the channel carries the 48-point grid curve', () => {
+      const override: EqPaneRoomOverride = {
+        ch: { bands, rms: -20, peak: -10, curve: new Array(ANALYZER_GRID_POINTS).fill(-30) },
+        label: 'Mic',
+      };
+      const html = eqPaneRoomSectionHTML(override, flatProfile);
+      expect(html.match(/sb-target-line/g)?.length).toBe(1);
+    });
+
+    it('draws no overlay when the channel only has the 7-band fallback curve, even with a profile', () => {
+      const override: EqPaneRoomOverride = { ch: { bands, rms: -20, peak: -10 }, label: 'Mic' };
+      expect(eqPaneRoomSectionHTML(override, flatProfile)).not.toContain('sb-target-line');
+    });
+  });
+
+  it('isolation guard: eqPaneHTML (Session\'s docked pane) never draws sb-target-line', () => {
+    const config: StripConfig[] = [{ kind: 'mono', a: 0, b: 1, label: 'Kick' }];
+    const view = eqPaneView(LIVE_CHANNELS, config, 0, 1);
+    expect(eqPaneHTML(view)).not.toContain('sb-target-line');
+  });
+
+  it('never emits sb-target-line itself — the only path is spectrumCurveSVG via the threaded targetDb', () => {
+    const source = fs.readFileSync(fileURLToPath(new URL('./live-capture-panel.ts', import.meta.url)), 'utf8');
+    expect(source).not.toContain('sb-target-line');
+  });
+});
+
 describe('eqPaneSignature', () => {
   const config: StripConfig[] = [
     { kind: 'mono', a: 0, b: 1, label: 'Kick' },
@@ -1673,6 +1758,31 @@ describe('app.css: single-row EQ band labels (#666)', () => {
     const block = containerBlock ? containerBlock[0] : '';
     expect(block).toContain('.veq-label-full { display:none; }');
     expect(block).toContain('.veq-label-abbr { display:inline; }');
+  });
+});
+
+describe('#1497 ideal-curve overlay CSS prominence', () => {
+  it('tokens.css defines the azure target-line/target-glow pair', () => {
+    expect(tokensCss).toMatch(/--target-line:\s*var\(--azure-400\)/);
+    expect(tokensCss).toMatch(/--target-glow:/);
+  });
+
+  it('.sb-target-line strokes the azure token at 2.75px with a drop-shadow, not the old grey chrome', () => {
+    const rule = css.match(/\.sb-target-line\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(rule).toContain('stroke:var(--target-line)');
+    expect(rule).toContain('stroke-width:2.75');
+    expect(rule).toContain('drop-shadow');
+    expect(rule).not.toContain('var(--text-tertiary)');
+  });
+
+  it('the spectrum legend target swatch shares the same --target-line token as the line', () => {
+    const rule = css.match(/\.spectrum-legend \.sl-swatch\.target\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(rule).toContain('var(--target-line)');
+  });
+
+  it('.sb-curve-line still strokes the gold ramp (measured vs target stay on different hue families)', () => {
+    const rule = css.match(/\.sb-curve-line\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(rule).toContain('var(--gold-500)');
   });
 });
 
