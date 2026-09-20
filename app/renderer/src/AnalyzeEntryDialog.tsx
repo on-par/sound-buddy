@@ -3,9 +3,11 @@
 
 // The Analyze tab's two-choice entry point (#1468, lc-05): ModeTabs.tsx opens
 // this instead of jumping straight to the file chooser once analyze-entry.ts's
-// shouldOfferListenLive gate is on (Advanced features + lineCheckCalibrationEnabled).
-// "Listen live" starts the existing room-mic secondary-source machinery
-// (measurement-device-state.ts) via analyzeEntryStore — never a console/
+// shouldOfferListenLive gate is on (Advanced features alone — #1479/#1480
+// dropped lineCheckCalibrationEnabled from the gate; live EQ listening is not
+// a line-check workflow). "Listen live" starts the existing room-mic
+// secondary-source machinery (measurement-device-state.ts) via
+// analyzeEntryStore — never a console/
 // multitrack connection. Mounted directly in App.tsx (not portaled), same
 // rig-dialog/rig-dialog-card markup family as ConsoleNetworkConsentDialog.tsx —
 // no new island div, no new CSS.

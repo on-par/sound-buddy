@@ -3,7 +3,8 @@
 
 // Backs AnalyzeEntryDialog.tsx, the two-choice modal ModeTabs.tsx opens for
 // the Analyze tab once analyze-entry.ts's shouldOfferListenLive gate is on
-// (#1468, lc-05). "Listen live" starts the existing room-mic secondary-source
+// (#1468, lc-05; gate narrowed to Advanced features alone by #1479/#1480).
+// "Listen live" starts the existing room-mic secondary-source
 // state machine (measurement-device-state.ts / liveCaptureStore) — deliberately
 // the ONLY path this dialog can take: no startLiveCapture, no console connect,
 // no channelConfig, no appMode: 'live' (ADR: Analyze's live entry stays
