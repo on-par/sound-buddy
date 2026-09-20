@@ -1320,6 +1320,54 @@ describe('overall-mix row and status line (#1044)', () => {
   });
 });
 
+describe('Currently checking indicator (#1464)', () => {
+  function checkingState(overrides: Partial<LiveWorkspaceViewState> = {}) {
+    return makeState({ settings: settings({ lineCheckCalibrationEnabled: true }), ...overrides });
+  }
+
+  it('renders "Currently checking: {displayName}" when exactly one channel is soloed and the flag is on', () => {
+    const state = checkingState({ soloedChannels: { 0: true } });
+    expect(dawStatusLineView(state).currentlyChecking).toBe(`Currently checking: ${dawTrackRows(state)[0].name}`);
+  });
+
+  it('shows no indicator when no channel is soloed', () => {
+    expect(dawStatusLineView(checkingState({ soloedChannels: {} })).currentlyChecking).toBeNull();
+  });
+
+  it('shows no indicator when more than one channel is soloed (ambiguous)', () => {
+    expect(dawStatusLineView(checkingState({ soloedChannels: { 0: true, 1: true } })).currentlyChecking).toBeNull();
+  });
+
+  it('shows no indicator when the flag is off, regardless of solo state', () => {
+    const state = makeState({ settings: settings({ lineCheckCalibrationEnabled: false }), soloedChannels: { 0: true } });
+    expect(dawStatusLineView(state).currentlyChecking).toBeNull();
+  });
+
+  it('shows no indicator when settings has not loaded yet', () => {
+    const state = makeState({ settings: null, soloedChannels: { 0: true } });
+    expect(dawStatusLineView(state).currentlyChecking).toBeNull();
+  });
+
+  it('resolves the same displayName the track head already resolves, including escaping a user-entered label', () => {
+    const state = checkingState({
+      channelConfig: [{ ...CONFIG[0], label: 'Kick <3' }],
+      soloedChannels: { 0: true },
+    });
+    expect(dawStatusLineView(state).currentlyChecking).toBe('Currently checking: Kick &lt;3');
+  });
+
+  it('dawShellHTML renders the indicator span between capture and device when present, and omits it otherwise', () => {
+    const withIndicator = dawShellHTML(checkingState({ soloedChannels: { 0: true } }));
+    const view = dawStatusLineView(checkingState({ soloedChannels: { 0: true } }));
+    expect(withIndicator).toContain(`<span class="daw-status-currently-checking">${view.currentlyChecking}</span>`);
+    expect(withIndicator.indexOf('daw-status-capture')).toBeLessThan(withIndicator.indexOf('daw-status-currently-checking'));
+    expect(withIndicator.indexOf('daw-status-currently-checking')).toBeLessThan(withIndicator.indexOf('daw-status-device'));
+
+    const withoutIndicator = dawShellHTML(checkingState({ soloedChannels: {} }));
+    expect(withoutIndicator).not.toContain('daw-status-currently-checking');
+  });
+});
+
 describe('liveAdjustmentsPanelHTML', () => {
   it('returns empty when the experimental flag is off', () => {
     expect(liveAdjustmentsPanelHTML(makeState())).toBe('');
