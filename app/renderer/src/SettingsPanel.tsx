@@ -127,6 +127,7 @@ export type SettingsControl =
   | 'usageSignal'
   | 'crashReporting'
   | 'liveAdjustments'
+  | 'lineCheckCalibration'
   | 'version'
   | 'license';
 
@@ -152,6 +153,7 @@ const SETTING_SECTION_TARGETS: readonly { setting: SettingsControl; section: Set
   { setting: 'usageSignal', section: 'privacy' },
   { setting: 'crashReporting', section: 'privacy' },
   { setting: 'liveAdjustments', section: 'labs' },
+  { setting: 'lineCheckCalibration', section: 'labs' },
   { setting: 'version', section: 'about' },
   { setting: 'license', section: 'about' },
 ];
@@ -509,6 +511,21 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
             </label>
             <SettingsNote control="liveAdjustments" />
           </SettingsGroup>
+          {controlValues.advancedFeaturesEnabled ? (
+            <SettingsGroup title="Line check">
+              <label className="ai-enable-row" {...helpFor('lineCheckCalibration')}>
+                <span className="settings-row-label">Line check calibration</span>
+                <input
+                  type="checkbox"
+                  id="line-check-calibration-toggle"
+                  aria-describedby={settingsHelpNoteId('lineCheckCalibration')}
+                  checked={controlValues.lineCheckCalibrationEnabled}
+                  onChange={(e) => void commitInstantSetting(useSettingsStore, 'lineCheckCalibrationEnabled', e.target.checked)}
+                />
+              </label>
+              <SettingsNote control="lineCheckCalibration" />
+            </SettingsGroup>
+          ) : null}
         </div>
         <div className="settings-pane" id="settings-pane-audio" style={{ display: section === 'audio' ? 'flex' : 'none' }}>
           <div className="pro-gate" id="settings-audio-pro-gate">
