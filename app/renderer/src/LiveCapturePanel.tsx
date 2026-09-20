@@ -63,6 +63,7 @@ import {
   MS_PER_SECOND,
 } from './live-workspace-view';
 import LiveAdjustmentsPanel from './LiveAdjustmentsPanel';
+import LineCheckCapturePanel from './LineCheckCapturePanel';
 import { mainsHumWarningsSignature } from './mains-hum-warnings';
 import { setSessionTimelineScale, sessionTimelineScaleForRange } from './session-timeline-scale';
 import { registerLiveFrameHook } from './live-frame-hooks';
@@ -1323,6 +1324,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     >
       <div className="live-board-shell" dangerouslySetInnerHTML={{ __html: board }} />
       <LiveAdjustmentsPanel />
+      <LineCheckCapturePanel />
     </div>
   );
 }
