@@ -7,9 +7,19 @@ import { EventEmitter } from 'events';
 const createSocketMock = vi.hoisted(() => vi.fn());
 vi.mock('dgram', () => ({ createSocket: (...args: unknown[]) => createSocketMock(...args) }));
 
-import { captureSceneFromConsole, captureSceneToFile, type SceneCaptureDeps } from './console-scene-capture';
+import {
+  captureSceneFromConsole,
+  captureSceneToFile,
+  type SceneCaptureDeps,
+  type SceneCaptureWalkDeps,
+} from './console-scene-capture';
 import type { ConsoleDiscoverySocket, ConsoleDiscoveryDeps } from './console-discovery';
 import { ConsoleNetworkConsentError } from '../console-network-consent';
+import {
+  CONSECUTIVE_FAILURE_BREAKER_LIMIT,
+  DEFERRED_PATH_CAP,
+  SWEEP_SETTLE_PAUSE_MS,
+} from './scene-capture-retry';
 import {
   encodeOscMessage,
   decodeOscMessage,
@@ -64,6 +74,10 @@ function fullResponder(sockets: FakeSocket[]): ConsoleDiscoveryDeps['createSocke
 
 const GRANTED = { consoleNetworkConsentGranted: true };
 const DENIED = { consoleNetworkConsentGranted: false };
+// The sweep pass's settle pause defaults to a real setTimeout; tests inject
+// a no-op so a deferred-path scenario doesn't add SWEEP_SETTLE_PAUSE_MS of
+// real wall-clock time to every run.
+const NO_WAIT = async () => {};
 
 afterEach(() => {
   createSocketMock.mockReset();
@@ -78,6 +92,31 @@ describe('captureSceneFromConsole', () => {
       captureSceneFromConsole(deps, DENIED, '192.168.1.77', { name: 'n', note: 'note' })
     ).rejects.toBeInstanceOf(ConsoleNetworkConsentError);
     expect(createSocket).not.toHaveBeenCalled();
+  });
+
+  it('aborting the signal mid-walk rejects with the cancellation message and stops short of the full table', async () => {
+    const controller = new AbortController();
+    const abortAfterPath = SCENE_NODE_PATHS[3];
+    let sendCount = 0;
+    const deps: SceneCaptureWalkDeps = {
+      createSocket: () =>
+        makeRespondingSocket((path, s) => {
+          sendCount++;
+          if (path === abortAfterPath) controller.abort();
+          s.emit('message', Buffer.from(replyDatagram(syntheticLine(path))), { address: '192.168.1.77' });
+        }),
+      log: vi.fn(),
+    };
+
+    await expect(
+      captureSceneFromConsole(deps, GRANTED, '192.168.1.77', {
+        name: 'n',
+        note: 'note',
+        signal: controller.signal,
+      })
+    ).rejects.toThrow('Scene capture cancelled. Nothing was saved.');
+
+    expect(sendCount).toBeLessThan(SCENE_NODE_PATH_COUNT);
   });
 
   it('captures every path and assembles a scene identical to assembleSceneFile of the same synthetic map (AC1)', async () => {
@@ -97,19 +136,20 @@ describe('captureSceneFromConsole', () => {
     expect(nonEmptyLines).toHaveLength(SCENE_NODE_PATH_COUNT + 1);
   }, 20000);
 
-  it('rejects when a mid-walk path never replies, naming that path (AC2)', async () => {
+  it('rejects when a path never replies to either the walk or the sweep, naming that path (AC2)', async () => {
     const droppedPath = SCENE_NODE_PATHS[500];
     const sockets: FakeSocket[] = [];
-    const deps: ConsoleDiscoveryDeps = {
+    const deps: SceneCaptureWalkDeps = {
       createSocket: () => {
         const socket = makeRespondingSocket((path, s) => {
-          if (path === droppedPath) return; // drop the reply
+          if (path === droppedPath) return; // drop every reply for this path, walk and sweep alike
           s.emit('message', Buffer.from(replyDatagram(syntheticLine(path))), { address: '192.168.1.77' });
         });
         sockets.push(socket);
         return socket;
       },
       log: vi.fn(),
+      wait: NO_WAIT,
     };
 
     await expect(
@@ -119,7 +159,122 @@ describe('captureSceneFromConsole', () => {
         queryOptions: { timeoutMs: 1, maxRetries: 0 },
       })
     ).rejects.toThrow(droppedPath);
+  }, 20000);
+
+  it('recovers via the sweep when a path misses only its first (walk-phase) attempt (AC1 fix)', async () => {
+    const recoveredPath = SCENE_NODE_PATHS[500];
+    let firstAttemptDropped = false;
+    const sockets: FakeSocket[] = [];
+    const deps: SceneCaptureWalkDeps = {
+      createSocket: () => {
+        const socket = makeRespondingSocket((path, s) => {
+          if (path === recoveredPath && !firstAttemptDropped) {
+            firstAttemptDropped = true;
+            return; // drop only the walk-phase reply — the sweep retry succeeds
+          }
+          s.emit('message', Buffer.from(replyDatagram(syntheticLine(path))), { address: '192.168.1.77' });
+        });
+        sockets.push(socket);
+        return socket;
+      },
+      log: vi.fn(),
+      wait: NO_WAIT,
+    };
+
+    const text = await captureSceneFromConsole(deps, GRANTED, '192.168.1.77', {
+      name: 'n',
+      note: 'note',
+      queryOptions: { timeoutMs: 1, maxRetries: 0 },
+    });
+
+    const expectedMap = new Map(SCENE_NODE_PATHS.map((p) => [p, syntheticLine(p)]));
+    expect(text).toBe(assembleSceneFile(buildSceneHeader('n', 'note'), expectedMap));
+    expect(firstAttemptDropped).toBe(true);
+  }, 20000);
+
+  it('trips the breaker after consecutive misses reach the limit, failing fast instead of walking the full table', async () => {
+    let sendCount = 0;
+    const deps: SceneCaptureWalkDeps = {
+      createSocket: () =>
+        makeRespondingSocket(() => {
+          sendCount++; // never emits a reply — every query in the run times out
+        }),
+      log: vi.fn(),
+    };
+
+    await expect(
+      captureSceneFromConsole(deps, GRANTED, '192.168.1.77', {
+        name: 'n',
+        note: 'note',
+        queryOptions: { timeoutMs: 1, maxRetries: 0 },
+      })
+    ).rejects.toThrow(/Scene capture failed/);
+
+    expect(sendCount).toBe(CONSECUTIVE_FAILURE_BREAKER_LIMIT);
   });
+
+  it('trips the breaker once the deferred cap is reached via scattered (non-consecutive) misses', async () => {
+    let sendCount = 0;
+    const deps: SceneCaptureWalkDeps = {
+      createSocket: () =>
+        makeRespondingSocket((path, s) => {
+          sendCount++;
+          if (SCENE_NODE_PATHS.indexOf(path) % 2 === 0) return; // every other path misses — never 2 in a row
+          s.emit('message', Buffer.from(replyDatagram(syntheticLine(path))), { address: '192.168.1.77' });
+        }),
+      log: vi.fn(),
+    };
+
+    await expect(
+      captureSceneFromConsole(deps, GRANTED, '192.168.1.77', {
+        name: 'n',
+        note: 'note',
+        queryOptions: { timeoutMs: 1, maxRetries: 0 },
+      })
+    ).rejects.toThrow(/Scene capture failed/);
+
+    // 2x the deferred cap plus a safety margin — proves this aborted long
+    // before the 2103-path table finished, even though no run of consecutive
+    // misses ever reached the breaker's own limit.
+    expect(sendCount).toBeLessThan(DEFERRED_PATH_CAP * 2 + 4);
+  });
+
+  it('invokes the injected settle pause exactly once, with the sweep budget, before sweeping a deferred path', async () => {
+    const droppedPath = SCENE_NODE_PATHS[5];
+    let firstAttemptDropped = false;
+    const wait = vi.fn().mockResolvedValue(undefined);
+    const deps: SceneCaptureWalkDeps = {
+      createSocket: () =>
+        makeRespondingSocket((path, s) => {
+          if (path === droppedPath && !firstAttemptDropped) {
+            firstAttemptDropped = true;
+            return;
+          }
+          s.emit('message', Buffer.from(replyDatagram(syntheticLine(path))), { address: '192.168.1.77' });
+        }),
+      log: vi.fn(),
+      wait,
+    };
+
+    await captureSceneFromConsole(deps, GRANTED, '192.168.1.77', {
+      name: 'n',
+      note: 'note',
+      queryOptions: { timeoutMs: 1, maxRetries: 0 },
+    });
+
+    expect(wait).toHaveBeenCalledTimes(1);
+    expect(wait).toHaveBeenCalledWith(SWEEP_SETTLE_PAUSE_MS);
+  }, 20000);
+
+  it('never invokes the settle pause when the walk completes with no deferred paths', async () => {
+    const sockets: FakeSocket[] = [];
+    const wait = vi.fn().mockResolvedValue(undefined);
+    const deps: SceneCaptureWalkDeps = { createSocket: fullResponder(sockets), log: vi.fn(), wait };
+
+    await captureSceneFromConsole(deps, GRANTED, '192.168.1.77', { name: 'n', note: 'note' });
+
+    expect(wait).not.toHaveBeenCalled();
+  }, 20000);
 
   it('sends nothing but /node, and every argument is a member of SCENE_NODE_PATHS (AC4)', async () => {
     const sockets: FakeSocket[] = [];
@@ -155,6 +310,71 @@ describe('captureSceneFromConsole', () => {
     expect(onProgress).toHaveBeenCalledTimes(SCENE_NODE_PATH_COUNT);
     expect(onProgress).toHaveBeenLastCalledWith(SCENE_NODE_PATH_COUNT, SCENE_NODE_PATH_COUNT);
   }, 20000);
+
+  it('defaults the settle pause to a real setTimeout when no wait is injected', async () => {
+    vi.useFakeTimers();
+    try {
+      const droppedPath = SCENE_NODE_PATHS[9];
+      let firstAttemptDropped = false;
+      const deps: SceneCaptureWalkDeps = {
+        createSocket: () =>
+          makeRespondingSocket((path, s) => {
+            if (path === droppedPath && !firstAttemptDropped) {
+              firstAttemptDropped = true;
+              return;
+            }
+            s.emit('message', Buffer.from(replyDatagram(syntheticLine(path))), { address: '192.168.1.77' });
+          }),
+        log: vi.fn(),
+        // no `wait` override — exercises the real setTimeout-based default
+      };
+
+      const resultPromise = captureSceneFromConsole(deps, GRANTED, '192.168.1.77', {
+        name: 'n',
+        note: 'note',
+        queryOptions: { timeoutMs: 1, maxRetries: 0 },
+      });
+
+      await vi.advanceTimersByTimeAsync(SWEEP_SETTLE_PAUSE_MS + 100);
+      const text = await resultPromise;
+
+      const expectedMap = new Map(SCENE_NODE_PATHS.map((p) => [p, syntheticLine(p)]));
+      expect(text).toBe(assembleSceneFile(buildSceneHeader('n', 'note'), expectedMap));
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 20000);
+
+  it('rethrows the query error (not the wrapped failure message) when the signal is already aborted by the time a sweep query rejects', async () => {
+    const droppedPath = SCENE_NODE_PATHS[7];
+    let firstAttemptDropped = false;
+    const controller = new AbortController();
+    const deps: SceneCaptureWalkDeps = {
+      createSocket: () =>
+        makeRespondingSocket((path, s) => {
+          if (path === droppedPath) {
+            if (!firstAttemptDropped) {
+              firstAttemptDropped = true;
+              return; // walk-phase miss — deferred to the sweep
+            }
+            controller.abort(); // cancellation races in while the sweep retry is in flight
+            return; // still no reply — the sweep retry rejects on its own
+          }
+          s.emit('message', Buffer.from(replyDatagram(syntheticLine(path))), { address: '192.168.1.77' });
+        }),
+      log: vi.fn(),
+      wait: NO_WAIT,
+    };
+
+    await expect(
+      captureSceneFromConsole(deps, GRANTED, '192.168.1.77', {
+        name: 'n',
+        note: 'note',
+        signal: controller.signal,
+        queryOptions: { timeoutMs: 1, maxRetries: 0 },
+      })
+    ).rejects.toThrow(/No reply from console/);
+  }, 20000);
 });
 
 describe('captureSceneToFile', () => {
@@ -178,12 +398,13 @@ describe('captureSceneToFile', () => {
     const deps: SceneCaptureDeps = {
       createSocket: () => {
         return makeRespondingSocket((path, s) => {
-          if (path === droppedPath) return;
+          if (path === droppedPath) return; // drop every reply for this path, walk and sweep alike
           s.emit('message', Buffer.from(replyDatagram(syntheticLine(path))), { address: '192.168.1.77' });
         });
       },
       log: vi.fn(),
       writeFile,
+      wait: NO_WAIT,
     };
 
     await expect(
@@ -194,5 +415,5 @@ describe('captureSceneToFile', () => {
       })
     ).rejects.toThrow();
     expect(writeFile).not.toHaveBeenCalled();
-  });
+  }, 20000);
 });
