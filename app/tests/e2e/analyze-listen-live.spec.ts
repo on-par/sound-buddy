@@ -2,13 +2,16 @@ import { test, expect, type ElectronApplication, type Page } from '@playwright/t
 import * as path from 'path';
 import { launchApp } from './e2e-helpers';
 
-// The Analyze tab's "Listen live" entry point, driven end to end (#1480).
-// #1483 already narrowed analyze-entry.ts's shouldOfferListenLive to
-// advancedFeaturesEnabled alone and ModeTabs.tsx already passes exactly that
-// predicate into resolveModeSwitch — but no spec drove #nav-analyze itself,
-// so the defect (ModeTabs handing across a line-check-specific predicate)
-// could have shipped again with every downstream unit suite still green.
-// This is the named e2e gate ModeTabs.tsx's handleClick c8-ignore points at.
+// The Analyze tab's entry point, driven end to end (#1480, updated for
+// #1485's inverted default). #1485 made a configured secondary measurement
+// device the Analyze tab's sole precondition for live listening — in both
+// Simple and Advanced mode — with the two-choice AnalyzeEntryDialog as the
+// no-device fallback and Listen live as its primary, focused affordance. No
+// nav click may ever open the native file dialog by itself; file load stays
+// available as an explicit second action (the dialog's "Choose file…", the
+// live-EQ island's "Load file…", the Report Card toolbar's load button) that
+// tears an active listen down first. This is the named e2e gate
+// ModeTabs.tsx's handleClick c8-ignore points at.
 //
 // Fully IPC-stubbed (start-measurement/stop-measurement here, everything
 // else via e2e-helpers' launchApp defaults) — deliberately NOT added to
@@ -43,7 +46,7 @@ async function openFileDialogCallCount(electronApp: ElectronApplication): Promis
   );
 }
 
-test.describe('Analyze tab Listen live entry point (#1480), Advanced features on', () => {
+test.describe('Analyze tab entry point (#1485), Advanced features on', () => {
   let electronApp: ElectronApplication;
   let window: Page;
 
@@ -56,11 +59,12 @@ test.describe('Analyze tab Listen live entry point (#1480), Advanced features on
     await electronApp.close();
   });
 
-  test('AC: routes to Settings > Audio when no room mic is selected', async () => {
+  test('AC: no room mic configured — offers the entry dialog with Listen live focused, routes to Settings > Audio', async () => {
     await stubOpenFileDialogTracked(electronApp, null);
 
     await window.locator('#nav-analyze').click();
     await expect(window.locator('#analyze-entry-dialog')).toBeVisible();
+    await expect(window.locator('#analyze-entry-listen-live')).toBeFocused();
 
     await window.locator('#analyze-entry-listen-live').click();
     await expect(window.locator('#analyze-entry-dialog')).toBeHidden();
@@ -73,7 +77,7 @@ test.describe('Analyze tab Listen live entry point (#1480), Advanced features on
     await expect(window.locator('#settings-dialog')).toBeHidden();
   });
 
-  test('AC: reaches the live-EQ view directly, without loading a file, when a room mic is selected', async () => {
+  test('AC: room mic selected — goes straight to the live-EQ view, no dialog, no file picker (AC1)', async () => {
     await stubOpenFileDialogTracked(electronApp, null);
 
     await window.locator('#settings-btn').click();
@@ -84,21 +88,25 @@ test.describe('Analyze tab Listen live entry point (#1480), Advanced features on
     await expect(window.locator('#settings-dialog')).toBeHidden();
 
     await window.locator('#nav-analyze').click();
-    await expect(window.locator('#analyze-entry-dialog')).toBeVisible();
-
-    await window.locator('#analyze-entry-listen-live').click();
     await expect(window.locator('#analyze-entry-dialog')).toBeHidden();
     await expect(window.locator('#analyze-live-eq-stop')).toBeVisible();
     await expect(window.locator('body')).toHaveClass(/analyze-listening/);
 
     expect(await openFileDialogCallCount(electronApp)).toBe(0);
 
-    await window.locator('#analyze-live-eq-stop').click();
+    // AC2: Load file… tears the live listen down before the picker opens.
+    const fixturePath = path.join(__dirname, '..', 'fixtures', 'silence.wav');
+    await stubOpenFileDialogTracked(electronApp, fixturePath);
+
+    await window.locator('#analyze-live-eq-choose-file').click();
+
+    await expect(window.locator('#rc-filename')).toHaveText('silence.wav');
+    expect(await openFileDialogCallCount(electronApp)).toBe(1);
     await expect(window.locator('#analyze-live-eq-stop')).toBeHidden();
   });
 });
 
-test.describe('Analyze tab Listen live entry point (#1480), Advanced features off (Simple mode)', () => {
+test.describe('Analyze tab entry point (#1485), Advanced features off (Simple mode)', () => {
   let electronApp: ElectronApplication;
   let window: Page;
   const fixturePath = path.join(__dirname, '..', 'fixtures', 'silence.wav');
@@ -111,13 +119,17 @@ test.describe('Analyze tab Listen live entry point (#1480), Advanced features of
     await electronApp.close();
   });
 
-  test('AC: opens the file chooser in one click and never offers Listen live', async () => {
+  test('AC: never opens the file chooser automatically; offers the entry dialog with Listen live primary', async () => {
     await stubOpenFileDialogTracked(electronApp, fixturePath);
 
     await window.locator('#nav-analyze').click();
 
+    expect(await openFileDialogCallCount(electronApp)).toBe(0);
+    await expect(window.locator('#analyze-entry-dialog')).toBeVisible();
+
+    await window.locator('#analyze-entry-choose-file').click();
+
     await expect(window.locator('#rc-filename')).toHaveText('silence.wav');
-    await expect(window.locator('#analyze-entry-dialog')).toBeHidden();
     expect(await openFileDialogCallCount(electronApp)).toBe(1);
   });
 });

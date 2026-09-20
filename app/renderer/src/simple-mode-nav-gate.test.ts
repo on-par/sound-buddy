@@ -43,9 +43,9 @@ describe('Simple-mode nav invariant', () => {
     }
   });
 
-  it('Analyze opens the direct file chooser and History still reaches Recent', () => {
-    expect(resolveModeSwitch('analyze', 'reportcard')).toEqual({ type: 'chooseFile' });
-    expect(resolveModeSwitch('analyze', 'analyze')).toEqual({ type: 'chooseFile' });
+  it('Analyze always opens the entry point (never a direct file chooser) and History still reaches Recent', () => {
+    expect(resolveModeSwitch('analyze', 'reportcard')).toEqual({ type: 'analyzeEntry' });
+    expect(resolveModeSwitch('analyze', 'analyze')).toEqual({ type: 'analyzeEntry' });
     expect(resolveModeSwitch('history', 'reportcard')).toEqual({ type: 'redirect', mode: 'recent' });
   });
 

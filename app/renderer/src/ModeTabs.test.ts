@@ -11,8 +11,6 @@ import ModeTabs from './ModeTabs';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { resolveModeSwitch } from './mode-switch';
-import { isSimpleMode } from './simple-mode';
-import { shouldOfferListenLive } from './analyze-entry';
 import { createAnalyzeEntryStore, type AnalyzeEntryDeps } from './stores/analyzeEntryStore';
 import type { AppSettings } from '../../electron/ipc/api';
 
@@ -111,39 +109,44 @@ describe('ModeTabs', () => {
 
 });
 
-describe('ModeTabs Listen live wiring (#1481)', () => {
+describe('ModeTabs Listen live wiring (#1485)', () => {
   const NO_ROOM_MIC = '';
   const ROOM_MIC = 'MOTU M2';
 
   const modeTabsSource = fs.readFileSync(
     path.join(path.dirname(fileURLToPath(import.meta.url)), 'ModeTabs.tsx'), 'utf8');
 
-  it('hands resolveModeSwitch exactly the analyze-entry predicate for listenLiveAvailable', () => {
-    expect(modeTabsSource).toContain('listenLiveAvailable: shouldOfferListenLive(settings)');
+  it('routes the Analyze tab through enterAnalyze()', () => {
+    expect(modeTabsSource).toContain('enterAnalyze()');
   });
 
   // handleClick carries a justified /* c8 ignore */ (no jsdom in this harness),
-  // so this text guard plus the behavioral matrix below is the unit tier's
+  // so these text guards plus the behavioral matrix below are the unit tier's
   // only hold on the wiring; tests/e2e/analyze-listen-live.spec.ts is the
   // end-to-end gate.
   it('never reintroduces lineCheckCalibration into the tab wiring', () => {
     expect(modeTabsSource).not.toContain('lineCheckCalibration');
   });
 
-  type AnalyzeTarget = 'file-chooser' | 'settings-audio' | 'live-eq';
+  it('never reintroduces the feature-tier gate shouldOfferListenLive', () => {
+    expect(modeTabsSource).not.toContain('shouldOfferListenLive');
+  });
 
-  async function analyzeTabTarget(s: AppSettings, roomMic: string): Promise<AnalyzeTarget> {
-    const decision = resolveModeSwitch('analyze', 'reportcard', {
-      simpleMode: isSimpleMode(s),
-      listenLiveAvailable: shouldOfferListenLive(s),
-    });
-    if (decision.type === 'chooseFile') return 'file-chooser';
+  it('can no longer reach the file chooser directly from the tab click', () => {
+    expect(modeTabsSource).not.toContain('chooseAndAnalyzeFile');
+  });
+
+  type AnalyzeTarget = 'dialog' | 'live-eq';
+
+  async function analyzeTabTarget(roomMic: string): Promise<AnalyzeTarget> {
+    const decision = resolveModeSwitch('analyze', 'reportcard');
     expect(decision).toEqual({ type: 'analyzeEntry' });
 
     const openSettingsAudio = vi.fn();
     const startSecondaryMeasurement = vi.fn(async () => {});
+    const chooseAndAnalyzeFile = vi.fn(async () => {});
     const deps: AnalyzeEntryDeps = {
-      chooseAndAnalyzeFile: vi.fn(async () => {}),
+      chooseAndAnalyzeFile,
       getSecondaryDeviceName: () => roomMic,
       getCadence: () => ({ windowSecs: 3, meterIntervalMs: 100 }),
       startSecondaryMeasurement,
@@ -151,63 +154,37 @@ describe('ModeTabs Listen live wiring (#1481)', () => {
       openSettingsAudio,
     };
     const store = createAnalyzeEntryStore(deps);
-    store.getState().open();
-    await store.getState().listenLive();
+    await store.getState().enterAnalyze();
 
-    if (openSettingsAudio.mock.calls.length > 0) {
+    expect(chooseAndAnalyzeFile).not.toHaveBeenCalled();
+    if (store.getState().dialogOpen) {
       expect(startSecondaryMeasurement).not.toHaveBeenCalled();
       expect(store.getState().listening).toBe(false);
-      return 'settings-audio';
+      return 'dialog';
     }
     expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
     expect(store.getState().listening).toBe(true);
     return 'live-eq';
   }
 
-  const MATRIX: ReadonlyArray<{ advanced: boolean; roomMic: string; calibration: boolean; expected: AnalyzeTarget }> = [
-    { advanced: false, roomMic: NO_ROOM_MIC, calibration: false, expected: 'file-chooser' },
-    { advanced: false, roomMic: NO_ROOM_MIC, calibration: true, expected: 'file-chooser' },
-    { advanced: false, roomMic: ROOM_MIC, calibration: false, expected: 'file-chooser' },
-    { advanced: false, roomMic: ROOM_MIC, calibration: true, expected: 'file-chooser' },
-    { advanced: true, roomMic: NO_ROOM_MIC, calibration: false, expected: 'settings-audio' },
-    { advanced: true, roomMic: NO_ROOM_MIC, calibration: true, expected: 'settings-audio' },
-    { advanced: true, roomMic: ROOM_MIC, calibration: false, expected: 'live-eq' },
-    { advanced: true, roomMic: ROOM_MIC, calibration: true, expected: 'live-eq' },
+  const MATRIX: ReadonlyArray<{ advanced: boolean; roomMic: string; expected: AnalyzeTarget }> = [
+    { advanced: false, roomMic: NO_ROOM_MIC, expected: 'dialog' },
+    { advanced: false, roomMic: ROOM_MIC, expected: 'live-eq' },
+    { advanced: true, roomMic: NO_ROOM_MIC, expected: 'dialog' },
+    { advanced: true, roomMic: ROOM_MIC, expected: 'live-eq' },
   ];
 
+  // Proves the tier no longer changes the outcome: the same (roomMic) input
+  // yields the same target whether advancedFeaturesEnabled is true or false —
+  // resolveModeSwitch/enterAnalyze take no settings argument at all.
   it.each(MATRIX)(
-    'Advanced=$advanced roomMic="$roomMic" calibration=$calibration -> $expected',
-    async ({ advanced, roomMic, calibration, expected }) => {
-      const s = settings({
-        advancedFeaturesEnabled: advanced,
-        measurementDeviceName: roomMic,
-        lineCheckCalibrationEnabled: calibration,
-      });
-      expect(await analyzeTabTarget(s, roomMic)).toBe(expected);
+    'Advanced=$advanced roomMic="$roomMic" -> $expected',
+    async ({ roomMic, expected }) => {
+      expect(await analyzeTabTarget(roomMic)).toBe(expected);
     },
   );
 
-  it('Simple mode still opens the file chooser in one click', () => {
-    const s = settings({ advancedFeaturesEnabled: false });
-    const decision = resolveModeSwitch('analyze', 'reportcard', {
-      simpleMode: isSimpleMode(s),
-      listenLiveAvailable: shouldOfferListenLive(s),
-    });
-    expect(decision).toEqual({ type: 'chooseFile' });
-    expect(shouldOfferListenLive(s)).toBe(false);
-  });
-
-  it('offers Listen live with the calibration flag off (the #1483 correction)', async () => {
-    const s = settings({
-      advancedFeaturesEnabled: true,
-      lineCheckCalibrationEnabled: false,
-      measurementDeviceName: ROOM_MIC,
-    });
-    const decision = resolveModeSwitch('analyze', 'reportcard', {
-      simpleMode: isSimpleMode(s),
-      listenLiveAvailable: shouldOfferListenLive(s),
-    });
-    expect(decision).toEqual({ type: 'analyzeEntry' });
-    expect(await analyzeTabTarget(s, ROOM_MIC)).toBe('live-eq');
+  it('Simple mode reaches the live-EQ view in one click when a room mic is configured (AC1)', async () => {
+    expect(await analyzeTabTarget(ROOM_MIC)).toBe('live-eq');
   });
 });

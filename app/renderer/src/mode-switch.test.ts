@@ -18,6 +18,7 @@ import { useSpectrumStore } from './stores/spectrumStore';
 import { useAnalysisStore } from './stores/analysisStore';
 import { spectrumTransport } from './spectrum-transport';
 import { createMockSoundBuddy } from './mock-sound-buddy';
+import { ALL_TAB_MODES } from './simple-mode';
 import type { AppSettings } from '../../electron/ipc/api';
 
 function makeClassList() {
@@ -116,24 +117,27 @@ describe('resolveModeSwitch', () => {
     expect(isWorkspaceMode("soundcheck")).toBe(false);
   });
 
-  it('opens the file picker for "analyze"', () => {
-    expect(resolveModeSwitch('analyze', 'reportcard')).toEqual({ type: 'chooseFile' });
+  // #1485: the Analyze tab always resolves to the entry point, regardless of
+  // the current workspace mode or whether 'analyze' is itself "current" —
+  // analyze is not a workspace mode, so the noop same-mode rule must not
+  // swallow it.
+  it('opens the Analyze entry point from the Report Card workspace', () => {
+    expect(resolveModeSwitch('analyze', 'reportcard')).toEqual({ type: 'analyzeEntry' });
   });
 
-  it('opens the file picker for "analyze" in Simple mode', () => {
-    expect(resolveModeSwitch('analyze', 'reportcard', { simpleMode: true })).toEqual({ type: 'chooseFile' });
+  it('opens the Analyze entry point even when "analyze" is already the current mode', () => {
+    expect(resolveModeSwitch('analyze', 'analyze')).toEqual({ type: 'analyzeEntry' });
   });
 
-  // #1468 (lc-05): the "Listen live" entry point only replaces the direct
-  // file-chooser when its caller (ModeTabs.tsx, via analyze-entry.ts's
-  // shouldOfferListenLive) says it's available — every other caller/test
-  // above omits the flag and must keep the #1419 default untouched.
-  it('opens the two-choice Analyze entry dialog when listen-live is available', () => {
-    expect(resolveModeSwitch('analyze', 'reportcard', { listenLiveAvailable: true })).toEqual({ type: 'analyzeEntry' });
+  it('opens the Analyze entry point from the Session (live) workspace', () => {
+    expect(resolveModeSwitch('analyze', 'live')).toEqual({ type: 'analyzeEntry' });
   });
 
-  it('still opens the direct file picker when listen-live is explicitly unavailable', () => {
-    expect(resolveModeSwitch('analyze', 'reportcard', { listenLiveAvailable: false })).toEqual({ type: 'chooseFile' });
+  it('never returns a chooseFile decision for any input', () => {
+    for (const mode of ALL_TAB_MODES) {
+      const decision = resolveModeSwitch(mode, 'reportcard');
+      expect(decision.type as string).not.toBe('chooseFile');
+    }
   });
 
   it('redirects "history" to "recent"', () => {
