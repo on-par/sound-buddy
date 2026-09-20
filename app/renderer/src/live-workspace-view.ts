@@ -68,6 +68,7 @@ import {
 } from './timeline-accessibility-labels';
 import { mainsHumBadgeText, mainsHumWarningText, type MainsHumFrequencyHz, type MainsHumTracker, type MainsHumWarningMap } from './mains-hum-warnings';
 import { trackChannelPickerView, trackChannelPickerHTML, type TrackChannelPickerView } from './track-channel-picker';
+import { lineCheckIndicatorLabel } from './line-check-indicator';
 
 export type { DawShellRuntime } from './daw-shell-runtime';
 
@@ -807,13 +808,18 @@ const DAW_MASTER_ROW_NAME = 'Overall mix';
 const DAW_STATUS_NO_TRACKS = 'No tracks';
 const DAW_STATUS_NO_DEVICE = 'No device selected';
 
-/** The arrangement status line's three derived strings (#1044): the track-count
- *  summary and capture state on the left, the selected device on the right
- *  (docs/design/session-tab.md, "Vertical structure"). `device` is already
- *  HTML-escaped — a device name is an OS-supplied string. */
+/** The arrangement status line's derived strings (#1044, #1464): the
+ *  track-count summary and capture state on the left, the line-check
+ *  indicator (when applicable), and the selected device on the right
+ *  (docs/design/session-tab.md, "Vertical structure"). `device` and
+ *  `currentlyChecking` are already HTML-escaped — a device name is
+ *  OS-supplied and a channel's displayName may be user-entered. */
 export interface DawStatusLineView {
   tracks: string;
   capture: string;
+  /** #1464: "Currently checking: {displayName}" for the sole soloed channel
+   *  while lineCheckCalibrationEnabled is on, else null (no indicator). */
+  currentlyChecking: string | null;
   device: string;
 }
 
@@ -821,13 +827,21 @@ export interface DawStatusLineView {
  *  dawTrackRows list and the capture label from dawShellPatchView's transport
  *  chip (ADR-0088), so the status line can never disagree with the head column,
  *  the lane column, or the transport chip about the same state. No DOM read, no
- *  store access — everything comes off the supplied snapshot. */
+ *  store access — everything comes off the supplied snapshot. The line-check
+ *  indicator (#1464) resolves through the SAME resolveStripLabel triple
+ *  dawTrackRows uses for the track head name, so it can never name the
+ *  soloed channel differently than its own head row does (ADR-0139). */
 export function dawStatusLineView(state: LiveWorkspaceViewState): DawStatusLineView {
   const count = dawTrackRows(state).length;
   const device = deviceNameFor(state);
   return {
     tracks: count === 0 ? DAW_STATUS_NO_TRACKS : `${count} ${count === 1 ? 'track' : 'tracks'}`,
     capture: dawShellPatchView(state).transportChip,
+    currentlyChecking: lineCheckIndicatorLabel(
+      !!state.settings?.lineCheckCalibrationEnabled,
+      state.soloedChannels,
+      (index) => escapeHtml(getRigReconcile().resolveStripLabel(state.channelConfig[index] ?? null, liveChannelAt(state, index), index)),
+    ),
     device: device === '' ? DAW_STATUS_NO_DEVICE : escapeHtml(device),
   };
 }
@@ -1026,6 +1040,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
     + `<div class="daw-status-line">`
     + `<span class="daw-status-tracks">${status.tracks}</span>`
     + `<span class="daw-status-capture">${status.capture}</span>`
+    + (status.currentlyChecking ? `<span class="daw-status-currently-checking">${status.currentlyChecking}</span>` : '')
     + `<span class="daw-status-device">${status.device}</span>`
     + `</div>`
     + `<section class="daw-session-routing-drawer" id="daw-session-routing-drawer" aria-label="Routing"${state.sessionRoutingDrawerOpen ? '' : ' hidden'}>`
