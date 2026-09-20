@@ -302,3 +302,42 @@ describe('Settings chrome token audit (#1183)', () => {
     );
   });
 });
+
+describe('Report Card rectype pills wrap instead of clipping (#1484)', () => {
+  it('lets the base rectype box wrap and never exceed its column', () => {
+    expect(appCss).toContain(
+      '.rc-rectype { display:inline-flex; align-items:center; gap:8px; padding:5px 12px; border-radius:var(--radius-pill); max-width:min(420px, 100%); white-space:normal; overflow-wrap:anywhere; text-align:center; }',
+    );
+  });
+
+  it('keeps the tone icon and the copy span laying out correctly when wrapped', () => {
+    expect(appCss).toContain(
+      '.rc-rectype .txt { font:var(--fw-medium) var(--fs-body-sm)/1.35 var(--font-sans); min-width:0; }',
+    );
+    expect(appCss).toContain('.rc-rectype > svg { flex-shrink:0; }');
+  });
+
+  it('reasserts the rectype padding/gap/wrap AFTER the bare .pill rule', () => {
+    const reassert =
+      '.rc-rectype.pill { padding:5px 12px; gap:8px; white-space:normal; line-height:1.35; }';
+    expect(appCss).toContain(reassert);
+    // Source order is load-bearing: equal-specificity .pill would otherwise win.
+    expect(appCss.indexOf(reassert)).toBeGreaterThan(appCss.indexOf('.pill { display:inline-flex;'));
+  });
+
+  it('leaves the shared .pill and .pill.sm rules byte-unchanged', () => {
+    expect(appCss).toContain(
+      '.pill { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:var(--radius-pill); font:var(--fw-semibold) var(--fs-label)/1 var(--font-sans); letter-spacing:var(--tracking-caps); white-space:nowrap; }',
+    );
+    expect(appCss).toContain('.pill.sm { padding:2px 8px; font-size:var(--fs-micro); }');
+  });
+
+  it('keeps every tone rule color-only so no tone can reintroduce clipping', () => {
+    for (const tone of ['good', 'check', 'issue', 'info']) {
+      const from = appCss.indexOf(`.pill.${tone} {`);
+      expect(from, `.pill.${tone} rule missing`).toBeGreaterThan(-1);
+      const body = appCss.slice(from + `.pill.${tone} {`.length, appCss.indexOf('}', from));
+      expect(body).not.toMatch(/white-space|padding|max-width|overflow/);
+    }
+  });
+});

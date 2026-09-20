@@ -159,6 +159,23 @@ export const SHORT_ANALYSIS = {
   spectrum: { ...FAKE_ANALYSIS.spectrum, frames: [{ t: 0, db: CURVE.db, rms: -18, class: 'music' }] },
 };
 
+// #1484 — the recording-type branch with the longest copy grading.js can emit
+// ("Low Recording Gain — Mix is fine but USB record level is low. Raise console
+// USB output toward -18 dBFS RMS."). analyzeRecordingType reaches it via
+// peak > -15 && rms < -30 && dynamicRange > 15; contentType stays 'speech' so
+// the earlier dynamic_service branch (mixed/music only) is skipped.
+export const LOW_GAIN_ANALYSIS = {
+  ...FAKE_ANALYSIS,
+  sox: { ...FAKE_ANALYSIS.sox, rmsDbfs: -34, peakDbfs: -10, dynamicRangeDb: 24 },
+};
+
+// The 'issue' tone counterpart, so #1484's wrap fix is proven across tones and
+// not just on the amber 'check' pill.
+export const CLIPPING_ANALYSIS = {
+  ...FAKE_ANALYSIS,
+  sox: { ...FAKE_ANALYSIS.sox, clipping: true, peakDbfs: -0.2 },
+};
+
 // Loads a fixture and runs analysis directly via the globals index.html exposes
 // for exactly this purpose (see the "Global (used by smoke test + menu-open)"
 // comment above loadFile in the source). Needed for every load after the very
