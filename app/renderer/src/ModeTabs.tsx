@@ -57,8 +57,9 @@ export default function ModeTabs(): JSX.Element {
 
   /* c8 ignore start -- click dispatch; needs a real DOM click event to
      exercise (no jsdom in this harness). Covered by e2e specs that drive the
-     .mode-tab click idiom. resolveModeSwitch/switchMode themselves are
-     exhaustively unit-tested in mode-switch.test.ts. */
+     .mode-tab click idiom, notably tests/e2e/analyze-listen-live.spec.ts for
+     the listenLiveAvailable branch (#1480). resolveModeSwitch/switchMode
+     themselves are exhaustively unit-tested in mode-switch.test.ts. */
   function handleClick(mode: ModeSwitchRequest): void {
     const settings = useSettingsStore.getState().settings;
     const decision = resolveModeSwitch(
