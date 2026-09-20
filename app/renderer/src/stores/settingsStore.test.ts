@@ -186,6 +186,38 @@ describe('createSettingsStore', () => {
     expect(store.getState().dialogOpen).toBe(false);
   });
 
+  it('openDialog() with no argument requests no particular section', () => {
+    const mock = createMockSoundBuddy();
+    const store = createSettingsStore(() => mock.api);
+
+    store.getState().openDialog();
+
+    expect(store.getState().dialogSection).toBeNull();
+  });
+
+  // #1468 (lc-05): AnalyzeEntryDialog's "Listen live" choice routes here with
+  // 'audio' when no secondary measurement device is configured yet.
+  it('openDialog(section) records the requested landing section', () => {
+    const mock = createMockSoundBuddy();
+    const store = createSettingsStore(() => mock.api);
+
+    store.getState().openDialog('audio');
+
+    expect(store.getState().dialogOpen).toBe(true);
+    expect(store.getState().dialogSection).toBe('audio');
+  });
+
+  it('a later plain openDialog() clears a previously requested section', () => {
+    const mock = createMockSoundBuddy();
+    const store = createSettingsStore(() => mock.api);
+
+    store.getState().openDialog('audio');
+    store.getState().closeDialog();
+    store.getState().openDialog();
+
+    expect(store.getState().dialogSection).toBeNull();
+  });
+
   it('binds the default hook to the window preload bridge', async () => {
     const mock = createMockSoundBuddy({
       getSettings: async () => ({

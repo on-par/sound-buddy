@@ -95,6 +95,15 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   'about',
 ];
 
+// Narrows settingsStore's nullable dialogSection request (#1468, lc-05) to a
+// concrete landing section for the dialog-open effect below: a caller that
+// asked for a specific section (e.g. AnalyzeEntryDialog routing to Audio)
+// lands there; a plain openDialog() (dialogSection === null, e.g. the gear
+// icon) keeps the existing 'general' default.
+export function initialSettingsSection(requested: SettingsSection | null): SettingsSection {
+  return requested ?? 'general';
+}
+
 const SECTION_LABELS: Record<SettingsSection, string> = {
   general: 'General',
   audio: 'Audio',
@@ -207,9 +216,10 @@ function SettingsGroup({ title, children }: { title: string; children: ReactNode
 
 export default function SettingsPanel({ booted = false }: { booted?: boolean }) {
   const api = useElectron();
-  const { settings, dialogOpen } = useStoreShallow(useSettingsStore, (s) => ({
+  const { settings, dialogOpen, dialogSection } = useStoreShallow(useSettingsStore, (s) => ({
     settings: s.settings,
     dialogOpen: s.dialogOpen,
+    dialogSection: s.dialogSection,
   }));
   const isCapturing = useStoreShallow(useLiveCaptureStore, (s) => s.isCapturing);
 
@@ -253,7 +263,7 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
      so effects never run under renderToString. */
   useEffect(() => {
     if (!dialogOpen) return;
-    setSection('general');
+    setSection(initialSettingsSection(dialogSection));
     setActiveHelp(null);
     setUsageText('Calculating disk usage…');
     let cancelled = false;
@@ -273,7 +283,7 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
     return () => {
       cancelled = true;
     };
-  }, [dialogOpen]);
+  }, [dialogOpen, dialogSection]);
   /* c8 ignore stop */
 
   /* c8 ignore start -- document-level Escape close (inline-app.js:3671–3676, same pattern as LicensePanel). */

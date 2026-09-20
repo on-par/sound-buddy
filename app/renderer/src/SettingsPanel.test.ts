@@ -11,6 +11,7 @@ import SettingsPanel, {
   type SettingsSection,
   commitShareChurchName,
   settingsSectionFor,
+  initialSettingsSection,
   type SettingsControl,
 } from './SettingsPanel';
 import { SETTINGS_HELP_ENTRIES, SETTINGS_SECTION_HELP, resolveSettingsHelp } from './settings-help';
@@ -35,7 +36,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
-  useSettingsStore.setState({ settings: null, settingsError: null, dialogOpen: false });
+  useSettingsStore.setState({ settings: null, settingsError: null, dialogOpen: false, dialogSection: null });
   useLiveCaptureStore.setState({ isCapturing: false });
   useLicensingStore.setState({ licenseStatus: null });
 });
@@ -731,6 +732,19 @@ describe('SettingsSection', () => {
       expect(settingsSectionFor(setting)).toBe(section);
       expect(SETTINGS_SECTIONS).toContain(section);
     }
+  });
+});
+
+// #1468 (lc-05): narrows settingsStore.dialogSection for the dialog-open
+// effect — a plain open (no request) keeps the existing 'general' default; a
+// targeted open (e.g. AnalyzeEntryDialog routing to Audio) lands there.
+describe('initialSettingsSection', () => {
+  it('falls back to general when no section was requested', () => {
+    expect(initialSettingsSection(null)).toBe('general');
+  });
+
+  it('passes through a requested section unchanged', () => {
+    expect(initialSettingsSection('audio')).toBe('audio');
   });
 });
 

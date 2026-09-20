@@ -4,6 +4,7 @@
 import { create } from 'zustand';
 import { getSoundBuddy } from '../useElectron';
 import type { SettingsApi, AppSettings, UpdateSettingsPatch } from '../../../electron/ipc/api';
+import type { SettingsSection } from '../SettingsPanel';
 
 export type SettingsStoreApi = SettingsApi;
 
@@ -11,6 +12,12 @@ export interface SettingsState {
   settings: AppSettings | null;
   settingsError: string | null;
   dialogOpen: boolean;
+  // Requested landing section for the next open (#1468, lc-05) — null means
+  // "no request", which SettingsPanel.tsx's initialSettingsSection narrows to
+  // 'general'. Set fresh on every openDialog() call so a targeted open (e.g.
+  // AnalyzeEntryDialog routing to Audio) never leaks into the next plain
+  // open (the gear icon, which calls openDialog() with no argument).
+  dialogSection: SettingsSection | null;
   loadSettings(): Promise<void>;
   updateSettings(patch: UpdateSettingsPatch): Promise<void>;
   // ADR-0006 (#747) — grants Tier 2 console-network consent through the
@@ -18,7 +25,7 @@ export interface SettingsState {
   // Keeps the in-memory settings state in sync so requestConsent()'s
   // already-granted fast path keeps working.
   grantConsoleNetworkConsent(): Promise<void>;
-  openDialog(): void;
+  openDialog(section?: SettingsSection): void;
   closeDialog(): void;
 }
 
@@ -27,6 +34,7 @@ export function createSettingsStore(getApi: () => SettingsStoreApi) {
     settings: null,
     settingsError: null,
     dialogOpen: false,
+    dialogSection: null,
     async loadSettings() {
       try {
         const settings = await getApi().getSettings();
@@ -49,8 +57,8 @@ export function createSettingsStore(getApi: () => SettingsStoreApi) {
         set({ settingsError: err instanceof Error ? err.message : String(err) });
       }
     },
-    openDialog() {
-      set({ dialogOpen: true });
+    openDialog(section) {
+      set({ dialogOpen: true, dialogSection: section ?? null });
     },
     closeDialog() {
       set({ dialogOpen: false });

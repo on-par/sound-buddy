@@ -38,17 +38,23 @@ export function isWorkspaceMode(mode: string): mode is WorkspaceMode {
 export type ModeSwitchDecision =
   | { type: 'noop' }
   | { type: 'chooseFile' }
+  | { type: 'analyzeEntry' }
   | { type: 'redirect'; mode: WorkspaceMode }
   | { type: 'switch'; mode: WorkspaceMode };
 
 // Verbatim port of the special-casing at the top of the old .mode-tab click
 // listener (inline-app.js) — pure, no DOM.
+// #1468 (lc-05): `opts.listenLiveAvailable` (analyze-entry.ts's
+// shouldOfferListenLive) swaps the Analyze tab's direct file-chooser for the
+// two-choice AnalyzeEntryDialog. Omitted/false preserves #1419's exact
+// one-click-to-file default — every existing caller that doesn't pass it
+// keeps getting 'chooseFile'.
 export function resolveModeSwitch(
   requestedMode: string,
   currentMode: string,
-  _opts?: { simpleMode?: boolean },
+  opts?: { simpleMode?: boolean; listenLiveAvailable?: boolean },
 ): ModeSwitchDecision {
-  if (requestedMode === 'analyze') return { type: 'chooseFile' };
+  if (requestedMode === 'analyze') return opts?.listenLiveAvailable ? { type: 'analyzeEntry' } : { type: 'chooseFile' };
   if (requestedMode === 'history') return { type: 'redirect', mode: 'recent' };
   if (requestedMode === currentMode) return { type: 'noop' };
   if (!isWorkspaceMode(requestedMode)) return { type: 'noop' };

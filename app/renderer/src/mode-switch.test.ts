@@ -124,6 +124,18 @@ describe('resolveModeSwitch', () => {
     expect(resolveModeSwitch('analyze', 'reportcard', { simpleMode: true })).toEqual({ type: 'chooseFile' });
   });
 
+  // #1468 (lc-05): the "Listen live" entry point only replaces the direct
+  // file-chooser when its caller (ModeTabs.tsx, via analyze-entry.ts's
+  // shouldOfferListenLive) says it's available — every other caller/test
+  // above omits the flag and must keep the #1419 default untouched.
+  it('opens the two-choice Analyze entry dialog when listen-live is available', () => {
+    expect(resolveModeSwitch('analyze', 'reportcard', { listenLiveAvailable: true })).toEqual({ type: 'analyzeEntry' });
+  });
+
+  it('still opens the direct file picker when listen-live is explicitly unavailable', () => {
+    expect(resolveModeSwitch('analyze', 'reportcard', { listenLiveAvailable: false })).toEqual({ type: 'chooseFile' });
+  });
+
   it('redirects "history" to "recent"', () => {
     expect(resolveModeSwitch('history', 'reportcard')).toEqual({ type: 'redirect', mode: 'recent' });
   });
