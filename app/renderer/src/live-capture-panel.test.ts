@@ -27,6 +27,7 @@ import {
   levelPercent,
   eqPaneView,
   eqPaneHTML,
+  eqPaneRoomSectionHTML,
   eqPaneClassificationHTML,
   eqPaneInspectorHTML,
   eqPaneSignature,
@@ -1394,6 +1395,51 @@ describe('eqPaneHTML', () => {
     const labelMatch = primarySection.match(/<span class="veq-label(?: loud)?" [^>]*>/g) || [];
     expect(labelMatch[1]).toContain('loud');
     expect(labelMatch[3]).not.toContain('loud');
+  });
+});
+
+describe('eqPaneRoomSectionHTML (#1469, lc-06)', () => {
+  const override: EqPaneRoomOverride = { ch: LIVE_CHANNELS[0], label: 'MacBook Pro Microphone' };
+
+  it('renders the same "Room — <label>" header + .veq chart/bars/labels shape as eqPaneHTML\'s primary section', () => {
+    const html = eqPaneRoomSectionHTML(override);
+    expect(html).toContain('Room — MacBook Pro Microphone');
+    expect(html).toContain('class="veq"');
+    expect(html).toContain('veq-chart');
+    expect(html).toContain('veq-bars');
+    expect(html).toContain('veq-labels');
+  });
+
+  it('escapes the device-name label', () => {
+    const html = eqPaneRoomSectionHTML({ ch: LIVE_CHANNELS[0], label: '<Evil> & "Mic"' });
+    expect(html).toContain('Room — &lt;Evil&gt; &amp; &quot;Mic&quot;');
+    expect(html).not.toContain('<Evil>');
+  });
+
+  it('renders the override channel\'s own data, not a board strip', () => {
+    // LIVE_CHANNELS[1]'s loudest band is bass (index 1) — proves the markup
+    // reflects the passed-in override channel, not some other source.
+    const html = eqPaneRoomSectionHTML({ ch: LIVE_CHANNELS[1], label: 'USB Mic' });
+    const labelMatch = html.match(/<span class="veq-label(?: loud)?" [^>]*>/g) || [];
+    expect(labelMatch[1]).toContain('loud');
+  });
+
+  it('uses a uid distinct from the docked pane\'s pane-a/pane-b slots (no SVG id collisions)', () => {
+    const html = eqPaneRoomSectionHTML(override);
+    expect(html).toContain('liveanalyze-room');
+    expect(html).not.toContain('livepane-a');
+    expect(html).not.toContain('livepane-b');
+  });
+
+  it('is byte-identical to eqPaneHTML\'s primary section for the same override (shared, not copied, rendering)', () => {
+    const config: StripConfig[] = [{ kind: 'mono', a: 0, b: 1, label: 'Kick' }];
+    const view = eqPaneView(LIVE_CHANNELS, config, 0, null, override);
+    const fullHtml = eqPaneHTML(view);
+    const primarySection = fullHtml.split('eq-pane-secondary')[0];
+    // Both wrap the identical veq/bars/labels rendering for the same channel +
+    // label — eqPaneRoomSectionHTML omits only the pane-a uid and the
+    // eq-pane-section/eq-pane-primary wrapper div eqPaneHTML adds around it.
+    expect(primarySection).toContain(eqPaneRoomSectionHTML(override).replace(/liveanalyze-room/g, 'livepane-a'));
   });
 });
 

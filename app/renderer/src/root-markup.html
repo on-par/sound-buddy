@@ -156,8 +156,13 @@
            React's LiveWorkspace (TD-001 slice 6c, #701) — the live meter
            board. inline-app.js toggles which is visible per mode
            (syncSpectrumForMode); LiveWorkspace owns #live-island's own
-           visibility directly from liveCaptureStore's appMode. -->
-      <div id="spectrum-body"><div id="spectrum-imperative"></div><div id="spectrum-island"></div><div id="live-island"></div></div>
+           visibility directly from liveCaptureStore's appMode.
+           #analyze-live-island (#1469, lc-06): React's AnalyzeLiveEqPanel —
+           Analyze's live-listening room-mic EQ, front-and-center in its own
+           island rather than reusing the docked Session pane. app.css's
+           body.analyze-listening block hides the other three and gives this
+           one flex:1, mirroring body.live-active's #live-island precedent. -->
+      <div id="spectrum-body"><div id="spectrum-imperative"></div><div id="spectrum-island"></div><div id="live-island"></div><div id="analyze-live-island"></div></div>
     </section>
 
     <!-- Docked live EQ pane (#668): one resizable pane replaces the per-strip EQs. -->

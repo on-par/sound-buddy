@@ -24,15 +24,23 @@ export interface AnalyzeEntryDeps {
   getSecondaryDeviceName(): string;
   getCadence(): { windowSecs: number; meterIntervalMs: number };
   startSecondaryMeasurement(opts: StartCaptureOpts): Promise<void>;
+  stopSecondaryMeasurement(): Promise<void>;
   openSettingsAudio(): void;
 }
 
 export interface AnalyzeEntryState {
   dialogOpen: boolean;
+  // #1469 (lc-06): Analyze's own "am I in the live-listening state" flag —
+  // deliberately NOT inferred from secondaryMeasurement.status === 'active',
+  // which is also true for a Settings-started room mic during a Session
+  // capture. Set only by listenLive()'s startListening branch, cleared only
+  // by stopListening(); AnalyzeLiveEqPanel.tsx gates its entire view on it.
+  listening: boolean;
   open(): void;
   close(): void;
   chooseFile(): Promise<void>;
   listenLive(): Promise<void>;
+  stopListening(): Promise<void>;
 }
 
 export function createAnalyzeEntryStore(
@@ -40,6 +48,7 @@ export function createAnalyzeEntryStore(
 ): UseBoundStore<StoreApi<AnalyzeEntryState>> {
   return create<AnalyzeEntryState>()((set) => ({
     dialogOpen: false,
+    listening: false,
 
     open() {
       set({ dialogOpen: true });
@@ -61,8 +70,14 @@ export function createAnalyzeEntryStore(
         deps.openSettingsAudio();
         return;
       }
+      set({ listening: true });
       const { windowSecs, meterIntervalMs } = deps.getCadence();
       await deps.startSecondaryMeasurement(captureOptsFromCadence(windowSecs, meterIntervalMs));
+    },
+
+    async stopListening() {
+      set({ listening: false });
+      await deps.stopSecondaryMeasurement();
     },
   }));
 }
@@ -75,5 +90,6 @@ export const useAnalyzeEntryStore = createAnalyzeEntryStore({
     return { windowSecs: state.windowSecs, meterIntervalMs: state.meterIntervalMs };
   },
   startSecondaryMeasurement: (opts) => useLiveCaptureStore.getState().startSecondaryMeasurement(opts),
+  stopSecondaryMeasurement: () => useLiveCaptureStore.getState().stopSecondaryMeasurement(),
   openSettingsAudio: () => useSettingsStore.getState().openDialog('audio'),
 });
