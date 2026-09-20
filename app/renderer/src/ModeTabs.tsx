@@ -12,8 +12,10 @@ import { useState, type JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
+import { useAnalyzeEntryStore } from './stores/analyzeEntryStore';
 import { resolveModeSwitch, switchMode, type ModeSwitchRequest } from './mode-switch';
 import { isSimpleMode, visibleTabModes } from './simple-mode';
+import { shouldOfferListenLive } from './analyze-entry';
 import { iconSvg } from './report-card';
 import { chooseAndAnalyzeFile } from './report-card-chrome';
 
@@ -58,13 +60,15 @@ export default function ModeTabs(): JSX.Element {
      .mode-tab click idiom. resolveModeSwitch/switchMode themselves are
      exhaustively unit-tested in mode-switch.test.ts. */
   function handleClick(mode: ModeSwitchRequest): void {
+    const settings = useSettingsStore.getState().settings;
     const decision = resolveModeSwitch(
       mode,
       useLiveCaptureStore.getState().appMode,
-      { simpleMode: isSimpleMode(useSettingsStore.getState().settings) },
+      { simpleMode: isSimpleMode(settings), listenLiveAvailable: shouldOfferListenLive(settings) },
     );
     if (decision.type === 'noop') return;
     if (decision.type === 'chooseFile') { void chooseAndAnalyzeFile(); return; }
+    if (decision.type === 'analyzeEntry') { useAnalyzeEntryStore.getState().open(); return; }
     if (decision.type === 'redirect') {
       handleClick(decision.mode);
       setHistoryActive(true);

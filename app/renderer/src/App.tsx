@@ -73,6 +73,7 @@ import RingoutPanel from './RingoutPanel';
 import DirectoryPanel from './DirectoryPanel';
 import LicenseChrome from './LicenseChrome';
 import ConsoleNetworkConsentDialog from './ConsoleNetworkConsentDialog';
+import AnalyzeEntryDialog from './AnalyzeEntryDialog';
 import ConsolePanel from './ConsolePanel';
 import UpdateBanner from './UpdateBanner';
 import WhatsNewBanner from './WhatsNewBanner';
@@ -414,6 +415,7 @@ export default function App() {
       {booted && createPortal(<RigDialog />, document.getElementById('rig-dialog-island')!)}
       {booted && <LicenseChrome />}
       {booted && <ConsoleNetworkConsentDialog />}
+      {booted && <AnalyzeEntryDialog />}
       {booted && createPortal(<UpdateBanner />, document.getElementById('update-surface-island')!)}
       {booted && createPortal(<WhatsNewBanner />, document.getElementById('whats-new-banner-island')!)}
     </>
