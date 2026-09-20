@@ -9,16 +9,21 @@ function createFakeDeps(overrides: Partial<AnalyzeEntryDeps> = {}) {
   const getSecondaryDeviceName = vi.fn(() => '');
   const getCadence = vi.fn(() => ({ windowSecs: 3, meterIntervalMs: 100 }));
   const startSecondaryMeasurement = vi.fn(async () => {});
+  const stopSecondaryMeasurement = vi.fn(async () => {});
   const openSettingsAudio = vi.fn();
   const deps: AnalyzeEntryDeps = {
     chooseAndAnalyzeFile,
     getSecondaryDeviceName,
     getCadence,
     startSecondaryMeasurement,
+    stopSecondaryMeasurement,
     openSettingsAudio,
     ...overrides,
   };
-  return { deps, chooseAndAnalyzeFile, getSecondaryDeviceName, getCadence, startSecondaryMeasurement, openSettingsAudio };
+  return {
+    deps, chooseAndAnalyzeFile, getSecondaryDeviceName, getCadence,
+    startSecondaryMeasurement, stopSecondaryMeasurement, openSettingsAudio,
+  };
 }
 
 describe('createAnalyzeEntryStore (#1468)', () => {
@@ -89,5 +94,42 @@ describe('createAnalyzeEntryStore (#1468)', () => {
     expect(store.getState().dialogOpen).toBe(false);
     expect(openSettingsAudio).toHaveBeenCalledTimes(1);
     expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+  });
+
+  it('starts with listening false', () => {
+    const { deps } = createFakeDeps();
+    const store = createAnalyzeEntryStore(deps);
+
+    expect(store.getState().listening).toBe(false);
+  });
+
+  it('listenLive() with a configured secondary device sets listening true (#1469)', async () => {
+    const { deps } = createFakeDeps({ getSecondaryDeviceName: () => 'MOTU M2' });
+    const store = createAnalyzeEntryStore(deps);
+
+    await store.getState().listenLive();
+
+    expect(store.getState().listening).toBe(true);
+  });
+
+  it('listenLive() with no secondary device configured never sets listening true (#1469)', async () => {
+    const { deps } = createFakeDeps({ getSecondaryDeviceName: () => '' });
+    const store = createAnalyzeEntryStore(deps);
+
+    await store.getState().listenLive();
+
+    expect(store.getState().listening).toBe(false);
+  });
+
+  it('stopListening() clears listening and stops the secondary measurement (#1469)', async () => {
+    const { deps, stopSecondaryMeasurement } = createFakeDeps({ getSecondaryDeviceName: () => 'MOTU M2' });
+    const store = createAnalyzeEntryStore(deps);
+    await store.getState().listenLive();
+    expect(store.getState().listening).toBe(true);
+
+    await store.getState().stopListening();
+
+    expect(store.getState().listening).toBe(false);
+    expect(stopSecondaryMeasurement).toHaveBeenCalledTimes(1);
   });
 });

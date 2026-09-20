@@ -192,6 +192,15 @@
     body.not-pro #live-island,
     body.not-pro #live-eq-pane { display:none !important; }
 
+    /* #1469 (lc-06): Analyze's "Listen live" entry point (lc-05, #1468) only
+       ever offers itself once lineCheckCalibrationEnabled is on, and that
+       toggle lives inside the Pro-gated #settings-pane-audio pane above — a
+       free-tier user can never turn it on from the UI. This is the same
+       belt-and-suspenders hide #live-island/#live-eq-pane already get: a
+       stale settings.json (e.g. an expired trial) must not leave the room-mic
+       EQ visible to a free-tier body. */
+    body.not-pro #analyze-live-island { display:none !important; }
+
     /* Free/Pro badge in the header (click to manage the license). */
     #license-badge {
       display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 9px;
@@ -789,6 +798,21 @@
        source order (both are specificity (1,1,1) and this one is ~590 lines
        later, so an unscoped version would silently win). */
     body.live-active:not(.not-pro) #live-island { display:flex !important; }
+
+    /* #1469 (lc-06): Analyze's live-listening room-mic EQ is the primary,
+       central element of #spectrum-panel — mirrors body.live-active's
+       #live-island precedent above exactly, just for a different sibling.
+       AnalyzeLiveEqPanel.tsx (React) owns body.analyze-listening's presence
+       by returning null when its own analyzeLiveEqView is 'hidden', so no
+       inline-style toggle is needed here the way #live-island's own effect
+       still carries (belt-and-suspenders there; not needed here). */
+    #analyze-live-island { flex:1; min-height:0; display:none; flex-direction:column; gap:14px; }
+    body.analyze-listening #spectrum-imperative,
+    body.analyze-listening #spectrum-island { display:none !important; }
+    body.analyze-listening #analyze-live-island { display:flex !important; }
+    .analyze-live-eq { display:flex; flex-direction:column; gap:14px; flex:1; min-height:0; }
+    .analyze-live-eq .eq-pane-empty { display:flex; flex-direction:column; flex:1; align-items:center; justify-content:center; }
+    #analyze-live-eq-stop { align-self:flex-start; }
     .spectrum-empty { flex:1; min-height:360px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; color:var(--text-muted); text-align:center; }
     .spectrum-empty p { font:var(--fw-regular) var(--fs-body)/1 var(--font-sans); margin:0; }
     .spectrum-empty .spin { width:34px; height:34px; border-radius:50%; border:3px solid var(--surface-raised); border-top-color:var(--gold-500); animation:sbspin 0.8s linear infinite; }

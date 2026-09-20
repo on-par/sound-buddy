@@ -458,6 +458,18 @@ export function eqPaneHTML(view: EqPaneView): string {
   return html;
 }
 
+// Analyze's live-listening room-mic EQ (#1469, lc-06) reuses this exact same
+// veq/arc/bars/labels markup as the Session pane's Room section — wrapping
+// the already-private eqPaneSectionParts/eqPaneSectionHTML so the rendering
+// is shared by export, not by copy. A uid distinct from the docked pane's
+// 'pane-a'/'pane-b' keeps SVG element ids from colliding, since both the
+// Session pane and this island can be mounted (if not both visible) at once.
+export function eqPaneRoomSectionHTML(override: EqPaneRoomOverride): string {
+  const section: EqPaneSection = { idx: EQ_PANE_ROOM_OVERRIDE_IDX, label: override.label, ch: override.ch };
+  const header = `Room — ${escapeHtml(override.label)}`;
+  return eqPaneSectionHTML(section, header, 'analyze-room', eqPaneSectionParts(section));
+}
+
 // Cheap identity string the runtime diffs to decide "rebuild the pane's DOM
 // from scratch vs patch the existing arcs in place" — changes exactly when
 // eqPaneHTML/eqPaneInspectorHTML's visible discrete content (which channel,
