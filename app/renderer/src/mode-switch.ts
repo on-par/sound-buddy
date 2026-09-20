@@ -37,24 +37,17 @@ export function isWorkspaceMode(mode: string): mode is WorkspaceMode {
 
 export type ModeSwitchDecision =
   | { type: 'noop' }
-  | { type: 'chooseFile' }
   | { type: 'analyzeEntry' }
   | { type: 'redirect'; mode: WorkspaceMode }
   | { type: 'switch'; mode: WorkspaceMode };
 
 // Verbatim port of the special-casing at the top of the old .mode-tab click
 // listener (inline-app.js) — pure, no DOM.
-// #1468 (lc-05): `opts.listenLiveAvailable` (analyze-entry.ts's
-// shouldOfferListenLive) swaps the Analyze tab's direct file-chooser for the
-// two-choice AnalyzeEntryDialog. Omitted/false preserves #1419's exact
-// one-click-to-file default — every existing caller that doesn't pass it
-// keeps getting 'chooseFile'.
-export function resolveModeSwitch(
-  requestedMode: string,
-  currentMode: string,
-  opts?: { simpleMode?: boolean; listenLiveAvailable?: boolean },
-): ModeSwitchDecision {
-  if (requestedMode === 'analyze') return opts?.listenLiveAvailable ? { type: 'analyzeEntry' } : { type: 'chooseFile' };
+// #1485: the Analyze tab always resolves to the entry point — never a direct
+// file-chooser — in both Simple and Advanced mode. analyzeEntryStore.enterAnalyze()
+// applies analyze-entry.ts's device-based resolveAnalyzeEntry rule from there.
+export function resolveModeSwitch(requestedMode: string, currentMode: string): ModeSwitchDecision {
+  if (requestedMode === 'analyze') return { type: 'analyzeEntry' };
   if (requestedMode === 'history') return { type: 'redirect', mode: 'recent' };
   if (requestedMode === currentMode) return { type: 'noop' };
   if (!isWorkspaceMode(requestedMode)) return { type: 'noop' };

@@ -812,7 +812,7 @@
     body.analyze-listening #analyze-live-island { display:flex !important; }
     .analyze-live-eq { display:flex; flex-direction:column; gap:14px; flex:1; min-height:0; }
     .analyze-live-eq .eq-pane-empty { display:flex; flex-direction:column; flex:1; align-items:center; justify-content:center; }
-    #analyze-live-eq-stop { align-self:flex-start; }
+    .analyze-live-eq-actions { display:flex; gap:8px; align-self:flex-start; }
     .spectrum-empty { flex:1; min-height:360px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; color:var(--text-muted); text-align:center; }
     .spectrum-empty p { font:var(--fw-regular) var(--fs-body)/1 var(--font-sans); margin:0; }
     .spectrum-empty .spin { width:34px; height:34px; border-radius:50%; border:3px solid var(--surface-raised); border-top-color:var(--gold-500); animation:sbspin 0.8s linear infinite; }

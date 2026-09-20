@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// Backs AnalyzeEntryDialog.tsx, the two-choice modal ModeTabs.tsx opens for
-// the Analyze tab once analyze-entry.ts's shouldOfferListenLive gate is on
-// (#1468, lc-05; gate narrowed to Advanced features alone by #1479/#1480).
-// "Listen live" starts the existing room-mic secondary-source
+// Backs AnalyzeEntryDialog.tsx, the two-choice modal for the Analyze tab's
+// no-room-mic-configured fallback (#1468, lc-05), and enterAnalyze(), the
+// Analyze tab's single entry action (#1485): a configured secondary
+// measurement device starts live listening directly, a missing one opens the
+// dialog. "Listen live" starts the existing room-mic secondary-source
 // state machine (measurement-device-state.ts / liveCaptureStore) — deliberately
 // the ONLY path this dialog can take: no startLiveCapture, no console connect,
 // no channelConfig, no appMode: 'live' (ADR: Analyze's live entry stays
@@ -14,7 +15,7 @@
 
 import { create } from 'zustand';
 import type { StoreApi, UseBoundStore } from 'zustand';
-import { resolveListenLiveChoice } from '../analyze-entry';
+import { resolveAnalyzeEntry, resolveListenLiveChoice } from '../analyze-entry';
 import { captureOptsFromCadence, type StartCaptureOpts } from '../measurement-device-state';
 import { chooseAndAnalyzeFile } from '../report-card-chrome';
 import { useLiveCaptureStore } from './liveCaptureStore';
@@ -42,12 +43,13 @@ export interface AnalyzeEntryState {
   chooseFile(): Promise<void>;
   listenLive(): Promise<void>;
   stopListening(): Promise<void>;
+  enterAnalyze(): Promise<void>;
 }
 
 export function createAnalyzeEntryStore(
   deps: AnalyzeEntryDeps
 ): UseBoundStore<StoreApi<AnalyzeEntryState>> {
-  return create<AnalyzeEntryState>()((set) => ({
+  return create<AnalyzeEntryState>()((set, get) => ({
     dialogOpen: false,
     listening: false,
 
@@ -59,9 +61,29 @@ export function createAnalyzeEntryStore(
       set({ dialogOpen: false });
     },
 
+    // #1485: the single teardown point for every file-load entry point (this
+    // dialog, the Analyze island's Load file… button, the Report Card
+    // toolbar's load button) — stops an active room-mic listen before the
+    // picker opens, so no file analysis can ever render behind a still-running
+    // live listen.
     async chooseFile() {
       set({ dialogOpen: false });
+      if (get().listening) await get().stopListening();
       await deps.chooseAndAnalyzeFile();
+    },
+
+    // #1485: the Analyze tab's entry action. Live room-mic listening is the
+    // default; the dialog is the no-device-configured fork. Never opens a file
+    // picker on its own. Already-listening is a no-op — re-clicking the
+    // Analyze tab (it never becomes the "active" workspace mode, so nothing
+    // marks it as already selected) must not restart an in-progress capture.
+    async enterAnalyze() {
+      if (get().listening) return;
+      if (resolveAnalyzeEntry(deps.getSecondaryDeviceName()) === 'openDialog') {
+        set({ dialogOpen: true });
+        return;
+      }
+      await get().listenLive();
     },
 
     async listenLive() {

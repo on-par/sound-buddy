@@ -14,8 +14,9 @@ import { useSpectrumStore } from './stores/spectrumStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useFeedbackDialogStore } from './stores/feedbackDialogStore';
 import { useGradeOwnGuideStore } from './stores/gradeOwnGuideStore';
+import { useAnalyzeEntryStore } from './stores/analyzeEntryStore';
 import { spectrumTransport } from './spectrum-transport';
-import { resolveReportCardChromeSource, reportCardChromeView, getReportCardSource, persistSummary, chooseAndAnalyzeFile } from './report-card-chrome';
+import { resolveReportCardChromeSource, reportCardChromeView, getReportCardSource, persistSummary } from './report-card-chrome';
 import { iconSvg, buildMetricRows, type ReportCardSource, type GradingPillApi } from './report-card';
 import { statsRowView, patchStatsRow } from './live-workspace-view';
 import type { AnalysisPayload } from '@sound-buddy/shared';
@@ -185,7 +186,7 @@ export default function ReportCardToolbar(): JSX.Element {
           disabled={view.loadDisabled}
           dangerouslySetInnerHTML={{ __html: iconSvg('file-audio', 16) + 'Load a file…' }}
           /* c8 ignore next -- click dispatch, no jsdom */
-          onClick={() => { void chooseAndAnalyzeFile(); }}
+          onClick={() => { void useAnalyzeEntryStore.getState().chooseFile(); }}
         />
         <button
           type="button"

@@ -65,15 +65,26 @@ export default function AnalyzeLiveEqPanel(): JSX.Element | null {
           <div className="eq-pane-header">Room</div>
           <div className="eq-pane-empty-hint">{view.text}</div>
         </div>}
-      <button
-        type="button"
-        id="analyze-live-eq-stop"
-        className="btn btn-secondary sm"
-        /* c8 ignore next -- click dispatch, no jsdom */
-        onClick={() => { void useAnalyzeEntryStore.getState().stopListening(); }}
-      >
-        Stop listening
-      </button>
+      <div className="analyze-live-eq-actions">
+        <button
+          type="button"
+          id="analyze-live-eq-stop"
+          className="btn btn-secondary sm"
+          /* c8 ignore next -- click dispatch, no jsdom */
+          onClick={() => { void useAnalyzeEntryStore.getState().stopListening(); }}
+        >
+          Stop listening
+        </button>
+        <button
+          type="button"
+          id="analyze-live-eq-choose-file"
+          className="btn btn-secondary sm"
+          /* c8 ignore next -- click dispatch, no jsdom */
+          onClick={() => { void useAnalyzeEntryStore.getState().chooseFile(); }}
+        >
+          Load file…
+        </button>
+      </div>
     </div>
   );
 }
