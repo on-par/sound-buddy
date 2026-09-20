@@ -24,8 +24,10 @@ import { useEffect, type JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useAnalyzeEntryStore } from './stores/analyzeEntryStore';
+import { useSpectrumStore } from './stores/spectrumStore';
 import { roomPaneOverride } from './measurement-device-state';
 import { eqPaneRoomSectionHTML } from './live-capture-panel';
+import { spectrumLegendHTML } from './spectrum-display';
 import { analyzeLiveEqView } from './analyze-live-eq';
 
 export default function AnalyzeLiveEqPanel(): JSX.Element | null {
@@ -34,6 +36,14 @@ export default function AnalyzeLiveEqPanel(): JSX.Element | null {
     appMode: st.appMode,
     secondaryMeasurement: st.secondaryMeasurement,
     secondaryWindows: st.secondaryWindows,
+  }));
+  // idealProfilesStore.syncActiveProfile() already pushes the resolved
+  // profile into spectrumStore on hydrate and on every select() — the same
+  // seam IdealProfileSelect drives, read here to feed the room arc's overlay
+  // (#1497) without touching grading-profile resolution.
+  const profile = useStoreShallow(useSpectrumStore, (st) => ({
+    idealProfile: st.idealProfile,
+    isAutoProfile: st.isAutoProfile,
   }));
   const override = roomPaneOverride(
     s.secondaryMeasurement.status === 'active',
@@ -57,10 +67,18 @@ export default function AnalyzeLiveEqPanel(): JSX.Element | null {
   return (
     <div className="analyze-live-eq" aria-label="Room-mic EQ">
       {view.kind === 'room'
-        ? <div
-          className="eq-pane-section eq-pane-primary"
-          dangerouslySetInnerHTML={{ __html: eqPaneRoomSectionHTML(view.override) }}
-        />
+        ? <>
+          <div
+            className="eq-pane-section eq-pane-primary"
+            dangerouslySetInnerHTML={{ __html: eqPaneRoomSectionHTML(view.override, profile.idealProfile) }}
+          />
+          {/* Names the overlay ("Target · <label>") beneath the room arc so
+              "Measured" vs "Target" is readable without hovering. cmp is null
+              — a rolling live window has no whole-file match score. */}
+          {profile.idealProfile && (
+            <div dangerouslySetInnerHTML={{ __html: spectrumLegendHTML(profile.idealProfile, null, profile.isAutoProfile) }} />
+          )}
+        </>
         : <div className="eq-pane-section eq-pane-primary eq-pane-empty">
           <div className="eq-pane-header">Room</div>
           <div className="eq-pane-empty-hint">{view.text}</div>
