@@ -65,6 +65,19 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
     expect(html).toContain('Room — MacBook Pro Microphone');
     expect(html).toContain('analyze-live-eq-stop');
     expect(html).toContain('Stop listening');
+    expect(html).toContain('id="analyze-live-eq-choose-file"');
+    expect(html).toContain('Load file');
+  });
+
+  it('renders nothing (including the Load file button) while not listening', () => {
+    useAnalyzeEntryStore.setState({ listening: false });
+    useLiveCaptureStore.setState({
+      appMode: 'reportcard',
+      secondaryMeasurement: { status: 'off', deviceName: '' },
+      lastMeasurementChannels: null,
+    });
+
+    expect(renderMarkup()).toBe('');
   });
 
   it('never renders LiveEqPane\'s docked-pane markup (AC2 — no reuse of the Session pane)', () => {
