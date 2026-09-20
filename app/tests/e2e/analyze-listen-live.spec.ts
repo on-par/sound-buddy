@@ -92,6 +92,18 @@ test.describe('Analyze tab entry point (#1485), Advanced features on', () => {
     await expect(window.locator('#analyze-live-eq-stop')).toBeVisible();
     await expect(window.locator('body')).toHaveClass(/analyze-listening/);
 
+    // #1496 AC1/AC2: the room-mic EQ is the primary stage — the 260px source
+    // panel and the 640px report-card column fold away, so on the 1200px
+    // default window the island spans nearly the whole workspace starting at
+    // its left edge. Before #1496 it got ~520px (~43%) beside a 640px card.
+    await expect(window.locator('#source-panel')).toBeHidden();
+    await expect(window.locator('#reportcard-view')).toBeHidden();
+    const bodyWidth = await window.evaluate(() => document.body.clientWidth);
+    const island = await window.locator('#analyze-live-island').boundingBox();
+    expect(island).not.toBeNull();
+    expect(island!.width).toBeGreaterThanOrEqual(bodyWidth * 0.75);
+    expect(island!.x).toBeLessThanOrEqual(40);
+
     expect(await openFileDialogCallCount(electronApp)).toBe(0);
 
     // AC2: Load file… tears the live listen down before the picker opens.

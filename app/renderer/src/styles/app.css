@@ -810,9 +810,31 @@
     body.analyze-listening #spectrum-imperative,
     body.analyze-listening #spectrum-island { display:none !important; }
     body.analyze-listening #analyze-live-island { display:flex !important; }
+    /* #1496: while Analyze is listening, the room-mic EQ is the primary stage,
+       not a leftover column. body.analyze-listening joins body.rc-active /
+       body.live-active as a full-stage workspace mode class: the 260px source
+       panel and the 640px report-card column fold away (fold, never shrink —
+       a squeezed card clips its own content and still competes), so
+       #spectrum-panel's existing flex:1 spans the whole workspace and the
+       island starts at its left edge. #spectrum-panel is force-shown because
+       clicking Analyze never changes appMode: a Simple-mode user sitting on
+       History carries body.single-column, whose `#spectrum-panel{display:none}`
+       would otherwise hide this island entirely. Every rule is scoped to the
+       class, so the layout reverts the instant the panel drops it. */
+    body.analyze-listening #source-panel { display:none !important; }
+    body.analyze-listening #reportcard-view { display:none !important; }
+    body.analyze-listening #spectrum-panel { display:flex !important; }
     .analyze-live-eq { display:flex; flex-direction:column; gap:14px; flex:1; min-height:0; }
-    .analyze-live-eq .eq-pane-empty { display:flex; flex-direction:column; flex:1; align-items:center; justify-content:center; }
-    .analyze-live-eq-actions { display:flex; gap:8px; align-self:flex-start; }
+    /* #1496: the EQ card fills the freed stage. .spectrum-chart's inset-card
+       chrome, so the live view reads like the analysis curve it replaces.
+       The arc keeps width:100%/height:auto — veqArcSVG's 900x280 viewBox uses
+       the default xMidYMid meet while .veq-bars/.veq-db-scale are positioned by
+       VEQ_INSET percentages off CURVE_VB, so a forced height or
+       preserveAspectRatio="none" would letterbox the plot area and misalign the
+       bars from the curve. Growing with the container is the whole mechanism. */
+    .analyze-live-eq .eq-pane-primary { flex:1; min-height:0; display:flex; flex-direction:column; justify-content:center; background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-xl); box-shadow:var(--elevation-canvas); padding:18px 24px; }
+    .analyze-live-eq .eq-pane-empty { align-items:center; justify-content:center; }
+    .analyze-live-eq-actions { display:flex; gap:8px; align-self:flex-start; flex-shrink:0; }
     .spectrum-empty { flex:1; min-height:360px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; color:var(--text-muted); text-align:center; }
     .spectrum-empty p { font:var(--fw-regular) var(--fs-body)/1 var(--font-sans); margin:0; }
     .spectrum-empty .spin { width:34px; height:34px; border-radius:50%; border:3px solid var(--surface-raised); border-top-color:var(--gold-500); animation:sbspin 0.8s linear infinite; }
