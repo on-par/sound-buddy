@@ -27,9 +27,11 @@ import {
   toPct,
   patchBarsAndLabels,
   patchGridBarsAndBandLabels,
+  levelMatchedTarget,
   type BarColumn,
   type SpectrumCurve,
   type SpectrumCurvePaths,
+  type IdealProfileLike,
 } from './spectrum-display';
 import { fmt, type ReportCardSource, type GradeBaseline } from './report-card';
 import { soundcheckChannelOptions, type SessionManifestTrack } from './soundcheck-panel';
@@ -184,13 +186,28 @@ export function liveBandCurve(bands: Record<string, number>): SpectrumCurve {
   };
 }
 
+// The one place a live EQ arc obtains an ideal-curve overlay (ADR for #1497).
+// spectrumCurveSVG pairs targetDb[i] with curve.freqs[i] positionally and only
+// checks `targetDb.length >= curve.db.length` — true for a 48-entry profile
+// against the 7-band fallback curve, which would plot the profile's seven
+// LOWEST grid points against the seven band centres. Exact length equality is
+// therefore required: a 7-band fallback arc shows no overlay rather than a
+// misaligned one.
+export function liveTargetDb(curve: SpectrumCurve, profile: IdealProfileLike | null | undefined): number[] | null {
+  if (!profile || !Array.isArray(profile.dbOffsets)) return null;
+  if (profile.dbOffsets.length !== curve.db.length) return null;
+  return levelMatchedTarget(curve, profile);
+}
+
 // Fixed dB scale so the arc's geometry matches the bars and stays put across ticks.
 // `idx` is either a strip's numeric channel index (per-strip callers, historical)
 // or a stable string uid (the EQ pane's 'pane-a'/'pane-b' slots, #668) — either
 // way it only ever interpolates into the `live${idx}` SVG uid string, so widening
 // this from `number` to `number | string` is a pure signature change.
-export function veqArcSVG(curve: SpectrumCurve, centroid: number | undefined, idx: number | string, wantPaths?: boolean): string | SpectrumCurvePaths {
-  return spectrumCurveSVG(curve, centroid, null, { uid: `live${idx}`, vbH: VEQ_VB_H, yMin: DB_MIN, yMax: DB_MAX, wantPaths });
+// `targetDb` is optional and defaults to none (Session's docked pane never
+// passes it — #1497 gives an overlay only to Analyze's room arc).
+export function veqArcSVG(curve: SpectrumCurve, centroid: number | undefined, idx: number | string, wantPaths?: boolean, targetDb?: number[] | null): string | SpectrumCurvePaths {
+  return spectrumCurveSVG(curve, centroid, targetDb ?? null, { uid: `live${idx}`, vbH: VEQ_VB_H, yMin: DB_MIN, yMax: DB_MAX, wantPaths });
 }
 
 /* ── Live EQ pane (#668) ──
@@ -425,10 +442,10 @@ function eqPaneSectionParts(section: EqPaneSection): EqPaneSectionParts {
 // Only the arc SVG is regenerated per call: its uid ('pane-a'/'pane-b') has
 // to differ between the two slots so their element ids don't collide, even
 // when both slots show the same channel.
-function eqPaneSectionHTML(section: EqPaneSection, headerHTML: string, uid: string, parts: EqPaneSectionParts): string {
+function eqPaneSectionHTML(section: EqPaneSection, headerHTML: string, uid: string, parts: EqPaneSectionParts, targetDb: number[] | null = null): string {
   return `<div class="eq-pane-header">${headerHTML}</div>
     <div class="veq">
-      <div class="veq-chart">${veqArcSVG(parts.curve, section.ch.centroid, uid)}</div>
+      <div class="veq-chart">${veqArcSVG(parts.curve, section.ch.centroid, uid, false, targetDb)}</div>
       <div class="veq-bars" style="${VEQ_INSET}">${parts.bars}</div>
       ${veqDbScaleHTML()}
     </div>
@@ -464,10 +481,16 @@ export function eqPaneHTML(view: EqPaneView): string {
 // is shared by export, not by copy. A uid distinct from the docked pane's
 // 'pane-a'/'pane-b' keeps SVG element ids from colliding, since both the
 // Session pane and this island can be mounted (if not both visible) at once.
-export function eqPaneRoomSectionHTML(override: EqPaneRoomOverride): string {
+// This is also the one live arc that carries an ideal-curve overlay (#1497):
+// `profile` is derived into a targetDb via liveTargetDb, using the section's
+// resolved curve so the overlay is correctly withheld when the channel is
+// still on the 7-band fallback. Session's docked pane (eqPaneHTML below)
+// deliberately omits `profile` and stays overlay-free.
+export function eqPaneRoomSectionHTML(override: EqPaneRoomOverride, profile?: IdealProfileLike | null): string {
   const section: EqPaneSection = { idx: EQ_PANE_ROOM_OVERRIDE_IDX, label: override.label, ch: override.ch };
   const header = `Room — ${escapeHtml(override.label)}`;
-  return eqPaneSectionHTML(section, header, 'analyze-room', eqPaneSectionParts(section));
+  const parts = eqPaneSectionParts(section);
+  return eqPaneSectionHTML(section, header, 'analyze-room', parts, liveTargetDb(parts.curve, profile));
 }
 
 // Cheap identity string the runtime diffs to decide "rebuild the pane's DOM
