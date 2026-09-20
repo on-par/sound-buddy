@@ -37,6 +37,7 @@ export interface UpdateSettingsPatch {
   crashReportingEnabled?: boolean;
   liveAdjustmentsEnabled?: boolean;
   advancedFeaturesEnabled?: boolean;
+  lineCheckCalibrationEnabled?: boolean;
   shareChurchName?: string;
   weeklyReminderEnabled?: boolean;
   weeklyReminderServiceDay?: number;
@@ -368,6 +369,17 @@ export interface AppSettings {
    * the full shell without mutating settings.json.
    */
   advancedFeaturesEnabled: boolean;
+  /**
+   * Dark feature flag for the line-check calibration epic (#1463, epic #1462).
+   * Default false (off). Pure persisted gate — nothing reads it yet; later
+   * slices of #1462 will use it to decide whether a channel grades against a
+   * per-strip line-check profile instead of today's baseline. Has an env layer
+   * (SOUND_BUDDY_LINE_CHECK_CALIBRATION) so development and manual QA launches
+   * can force it on without mutating settings.json, same rationale as
+   * advancedFeaturesEnabled. Its Settings control is nested under
+   * advancedFeaturesEnabled (#1419) — hidden, not removed, when Advanced is off.
+   */
+  lineCheckCalibrationEnabled: boolean;
   /**
    * Optional church name (#265) shown on the "Share Image" report-card
    * export. Default '' (blank) — an empty value means the shared image
