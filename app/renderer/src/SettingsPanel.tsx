@@ -582,11 +582,17 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
               <LiveSourceSettings />
             </SettingsGroup>
           )}
-          {booted && (
-            <SettingsGroup title="Measurement">
-              <SecondaryMeasurementPanel />
-            </SettingsGroup>
-          )}
+          <SettingsGroup title="Measurement">
+            {booted && (
+              <div
+                aria-describedby={settingsHelpNoteId('secondaryMeasurementDevice')}
+                {...helpFor('secondaryMeasurementDevice')}
+              >
+                <SecondaryMeasurementPanel />
+              </div>
+            )}
+            <SettingsNote control="secondaryMeasurementDevice" />
+          </SettingsGroup>
           {booted && (
             <SettingsGroup title="Metering">
               <CaptureCadenceControls />

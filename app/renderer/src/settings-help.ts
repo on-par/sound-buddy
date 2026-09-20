@@ -87,6 +87,11 @@ export const SETTINGS_HELP_ENTRIES: readonly SettingsHelpEntry[] = [
     text: 'Granted only when you explicitly allow it from the prompt shown the first time a live-console feature is turned on — there is no toggle here to turn it on. Revoking takes effect immediately and blocks further console reads until you grant it again.',
   },
   {
+    control: 'secondaryMeasurementDevice',
+    noteId: 'secondary-measurement-note',
+    text: 'The room mic Sound Buddy measures the house with — and the source Analyze listens to when you choose Listen live. Listen live is offered whenever Advanced features is on; that is the only setting it needs, and no Labs experiment is involved. Pick the device here first: while this is None (use board channel), Listen live sends you back to this row instead of starting.',
+  },
+  {
     control: 'splCalibration',
     noteId: 'spl-calibration-note',
     text: 'Optional. Hold a handheld SPL meter where the room is measured, read it while Sound Buddy shows its live room level, and enter the meter’s number. Sound Buddy stores the difference and shows estimated dB SPL from then on. This is an uncalibrated estimate with no A/C weighting — it drifts if you change input gain or move the microphone, so recalibrate when either changes. Reset returns the readout to relative dBFS.',

@@ -346,6 +346,13 @@ describe('Audio pane composition (#727)', () => {
     expect(html).not.toContain('secondary-measurement-toggle');
   });
 
+  it('wires the room-mic row to its Listen live help note (#1482)', () => {
+    const html = renderMarkup(true);
+    expect(html).toContain('aria-describedby="secondary-measurement-note"');
+    expect(html).toContain('id="secondary-measurement-note"');
+    expect(html).toContain('id="secondary-measurement-block"');
+  });
+
   it('renders none of the moved controls when not booted', () => {
     const html = renderMarkup(false);
     expect(html).not.toContain('id="rig-select"');
