@@ -16,6 +16,11 @@
 
   var GENERIC_ID = 'generic';
   var MAX_PROFILE_ID_LEN = 64;
+  // The #ideal-profile-select custom-curve value prefix (ideal-profiles.ts's
+  // CUSTOM_PREFIX) — a line-check capture (lc-02, #1465) rides the override map
+  // as one of these ids so effectiveProfileId/recordOverride resolve a
+  // captured profile with no branching beyond isKnownProfileId.
+  var CUSTOM_PREFIX = 'custom:';
 
   // Array order IS the label-match precedence: kick before bass so "Bass
   // Drum" matches kick; bass before the guitars so "Bass Gtr" matches bass;
@@ -54,12 +59,21 @@
     return GENERIC_ID;
   }
 
-  /** True iff some PROFILES entry has this exact id. */
+  /** True iff `id` is a non-empty "custom:"-prefixed id — a captured or
+   *  user-authored ideal curve riding the override map (lc-02, #1465). */
+  function isCapturedProfileId(id) {
+    return typeof id === 'string' && id.indexOf(CUSTOM_PREFIX) === 0 && id.length > CUSTOM_PREFIX.length;
+  }
+
+  /** True iff some PROFILES entry has this exact id, or `id` is a captured
+   *  profile reference (isCapturedProfileId) — the one predicate both
+   *  effectiveProfileId and recordOverride gate on, so a captured profile
+   *  resolves through the override map exactly like a built-in choice. */
   function isKnownProfileId(id) {
     for (var i = 0; i < PROFILES.length; i++) {
       if (PROFILES[i].id === id) return true;
     }
-    return false;
+    return isCapturedProfileId(id);
   }
 
   /** The matching PROFILES entry, or the generic entry for unknown/empty ids. */
