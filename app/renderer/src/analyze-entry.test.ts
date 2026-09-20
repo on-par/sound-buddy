@@ -23,15 +23,15 @@ describe('shouldOfferListenLive', () => {
     expect(shouldOfferListenLive(null)).toBe(false);
   });
 
-  it('is false when lineCheckCalibrationEnabled is off, even in Advanced mode', () => {
-    expect(shouldOfferListenLive(settings({ advancedFeaturesEnabled: true, lineCheckCalibrationEnabled: false }))).toBe(false);
+  it('is true in Advanced mode even when lineCheckCalibrationEnabled is off', () => {
+    expect(shouldOfferListenLive(settings({ advancedFeaturesEnabled: true, lineCheckCalibrationEnabled: false }))).toBe(true);
   });
 
   it('is false in Simple mode even when lineCheckCalibrationEnabled is (improbably) on', () => {
     expect(shouldOfferListenLive(settings({ advancedFeaturesEnabled: false, lineCheckCalibrationEnabled: true }))).toBe(false);
   });
 
-  it('is true only when both Advanced features and the flag are on', () => {
+  it('is true when both Advanced features and the flag are on', () => {
     expect(shouldOfferListenLive(settings({ advancedFeaturesEnabled: true, lineCheckCalibrationEnabled: true }))).toBe(true);
   });
 });
