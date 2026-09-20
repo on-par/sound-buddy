@@ -956,9 +956,29 @@ import {
   bandMeterHTML as bandMeterWithTarget,
   bandBreakdownHTML as bandBreakdownWithBaseline,
   buildScoreRows as buildScoreRowsWithBaseline,
+  profileBaselineCurve,
   type GradeBaseline,
 } from './report-card';
 import { PROFILES, GRID_FREQS as GRID48, getProfile } from '@sound-buddy/audio-engine/dist/profiles/index.js';
+
+describe('profileBaselineCurve', () => {
+  it('is null for an absent/null profile or one with no dbOffsets', () => {
+    expect(profileBaselineCurve(undefined)).toBeNull();
+    expect(profileBaselineCurve(null)).toBeNull();
+    expect(profileBaselineCurve({ id: 'x', label: 'X', freqs: [], dbOffsets: [] })).toBeNull();
+  });
+
+  it('reads a profile\'s own freqs when they match dbOffsets\' length', () => {
+    const worship = getProfile('worship-service')!;
+    expect(profileBaselineCurve(worship)).toEqual({ freqs: worship.freqs, dbOffsets: worship.dbOffsets });
+  });
+
+  it('falls back to the 48-point engine grid for a freqs-less 48-point shape, and rejects any other length', () => {
+    const worship = getProfile('worship-service')!;
+    expect(profileBaselineCurve({ label: 'Slim', dbOffsets: worship.dbOffsets })).toEqual({ freqs: GRID48, dbOffsets: worship.dbOffsets });
+    expect(profileBaselineCurve({ label: 'Short', dbOffsets: [1, 2, 3] })).toBeNull();
+  });
+});
 
 describe('gradeBaselineFor', () => {
   it('is null without a context or without a profile (flat reference)', () => {

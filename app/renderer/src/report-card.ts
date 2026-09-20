@@ -113,14 +113,24 @@ export interface GradeContext {
   symptomThresholdOffsetDb?: number;
 }
 
-/** A context's profile on an explicit grid, or null when it has none / is unusable. */
-function profileCurve(ctx: GradeContext | null | undefined): { freqs: number[]; dbOffsets: number[] } | null {
-  const profile = ctx?.idealProfile;
+/** A profile on an explicit grid, or null when it's absent / unusable (no
+ *  dbOffsets, or a freqs/dbOffsets length mismatch that isn't a bare 48-point
+ *  GRID_FREQS curve). Exported so callers that hold a profile without a full
+ *  GradeContext (e.g. line-check-baseline.ts, validating a captured profile
+ *  before it enters grading) can reuse the exact same usability check. */
+export function profileBaselineCurve(
+  profile: GradeContext['idealProfile'] | null | undefined
+): { freqs: number[]; dbOffsets: number[] } | null {
   if (!profile || !Array.isArray(profile.dbOffsets) || profile.dbOffsets.length === 0) return null;
   const freqs = Array.isArray(profile.freqs) && profile.freqs.length === profile.dbOffsets.length
     ? profile.freqs
     : profile.dbOffsets.length === GRID_FREQS.length ? GRID_FREQS : null;
   return freqs ? { freqs, dbOffsets: profile.dbOffsets } : null;
+}
+
+/** A context's profile on an explicit grid, or null when it has none / is unusable. */
+function profileCurve(ctx: GradeContext | null | undefined): { freqs: number[]; dbOffsets: number[] } | null {
+  return profileBaselineCurve(ctx?.idealProfile);
 }
 
 /** The baseline for a context, or null when there is no profile (flat reference). */
