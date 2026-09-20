@@ -122,11 +122,23 @@ describe('isKnownProfileId', () => {
     expect(isKnownProfileId('')).toBe(false);
     expect(isKnownProfileId('flute')).toBe(false);
   });
+
+  it('is true for a "custom:"-prefixed captured-profile id (lc-02, #1465)', () => {
+    expect(isKnownProfileId('custom:lc-scarlett-0-abcd1234')).toBe(true);
+  });
+
+  it('is false for a bare "custom:" prefix with no id after it', () => {
+    expect(isKnownProfileId('custom:')).toBe(false);
+  });
 });
 
 describe('effectiveProfileId', () => {
   it('override wins over label inference (acceptance scenario 2)', () => {
     expect(effectiveProfileId({ '0': 'vocal' }, '0', 'Bass')).toBe('vocal');
+  });
+
+  it('a captured "custom:"-prefixed override resolves through the same lookup as a built-in choice (lc-02, #1465)', () => {
+    expect(effectiveProfileId({ '0': 'custom:lc-scarlett-0-abcd1234' }, '0', 'Bass')).toBe('custom:lc-scarlett-0-abcd1234');
   });
 
   it('an unknown override id falls back to inference', () => {
@@ -175,5 +187,16 @@ describe('recordOverride', () => {
   it('a very long garbage id is still just an unknown id: deleted, not stored', () => {
     const long = 'x'.repeat(200);
     expect(recordOverride({}, 'Scarlett', '0', long)).toEqual({});
+  });
+
+  it('a captured "custom:"-prefixed id is stored rather than deleted (lc-02, #1465)', () => {
+    const next = recordOverride({}, 'Scarlett', '0', 'custom:lc-scarlett-0-abcd1234');
+    expect(next).toEqual({ Scarlett: { '0': 'custom:lc-scarlett-0-abcd1234' } });
+  });
+
+  it('re-recording a captured id for the same token overwrites rather than duplicating it (AC3)', () => {
+    const all = { Scarlett: { '0': 'custom:lc-scarlett-0-abcd1234' } };
+    const next = recordOverride(all, 'Scarlett', '0', 'custom:lc-scarlett-0-ffff9999');
+    expect(next).toEqual({ Scarlett: { '0': 'custom:lc-scarlett-0-ffff9999' } });
   });
 });
