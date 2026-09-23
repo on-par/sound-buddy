@@ -32,7 +32,10 @@ if (skipped.length > 0) {
 // the gate stays where it is.
 export default defineConfig({
   test: {
-    projects: ['packages/*', ...optional],
+    // 'scripts' (#1503) has no package.json and isn't a coverage.include
+    // target below — it's added here purely so scripts/factory/*.test.mjs
+    // actually run under `npm test`; see scripts/vitest.config.mts.
+    projects: ['packages/*', 'scripts', ...optional],
     // Exclude Playwright e2e specs — they're driven by `npm run test:e2e`, not vitest.
     // Without this, vitest in projects mode picks up app/tests/e2e/*.spec.ts and crashes
     // on Playwright's test.describe(), preventing the coverage report from being written.
