@@ -51,4 +51,28 @@ blocklist would give, in exchange for never auto-merging a dependency bump unrev
    surfaces instead of rotting silently. Alerting is keyed on
    `number:headSha` so a new push re-arms it instead of permanently
    silencing that PR after one alert, and the key set is pruned to PRs that
-   are still open.
+   are still open (see `.factory/state/merge-aisle-alerts.json`). The alert
+   itself is posted as a `gh pr comment` — it lands in the GitHub
+   notifications Patrick already watches, no new webhook or secret needed.
+
+## Running it
+
+```bash
+node scripts/factory/run-merge-aisle.mjs --dry-run   # print actions, change nothing
+node scripts/factory/run-merge-aisle.mjs              # merge / label / alert for real
+npm run factory:merge-aisle -- --dry-run              # same, via the npm script
+```
+
+Requires `gh` on `PATH` and authenticated against `on-par/sound-buddy`.
+
+## What is still manual
+
+- **Installing the LaunchAgent** that runs `run-merge-aisle.mjs` on a timer —
+  Patrick, ~5 minutes, by hand on the machine that runs the factory
+  supervisor (see `scripts/run-issues.sh` for the existing supervisor this
+  slots alongside). Not scriptable from a PR: a LaunchAgent plist has to be
+  copied into `~/Library/LaunchAgents` and loaded with `launchctl load` on
+  the actual machine, and confirming it survives a reboot can only be done
+  by rebooting that machine. Does not block this PR — the script runs
+  correctly by hand (`node scripts/factory/run-merge-aisle.mjs`) with or
+  without the LaunchAgent; the LaunchAgent only automates the timer.
