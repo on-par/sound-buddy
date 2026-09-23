@@ -1,6 +1,7 @@
 # Factory merge aisle
 
-Runbook for the risk-tiered auto-merge and idle-green-PR alert described in issue #1503.
+Runbook for the risk-tiered auto-merge and idle-green-PR alert described in issue #1503 and
+[ADR-0144](../../docs/adr/0144-the-merge-aisle-classifies-every-changed-path-deny-by-default-and-alerts-on-idle-green-tier-independently.md).
 This is where the mechanism is documented per CLAUDE.md's `docs/README.md` restriction
 (ADRs / security analyses / design reference only) — everything about the merge-aisle
 scripts belongs here instead.
