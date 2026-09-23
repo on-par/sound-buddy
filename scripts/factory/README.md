@@ -30,3 +30,25 @@ are checked first, so a PR that mixes a low-risk path with a high-risk one is al
 A dependabot PR (or this PR, which edits `package.json`) always classifies `dependencies` →
 `high` and waits for a human. That's deliberate: the throughput win here is smaller than a
 blocklist would give, in exchange for never auto-merging a dependency bump unreviewed.
+
+## Merge decision
+
+`decideMergeAisleActions()` (`merge-aisle.mjs`) is a pure reducer. For every open PR:
+
+1. `greenSinceMs()` checks the five required checks from
+   `.github/rulesets/main.json` — `ci`, `e2e`, `site`, `worker`, `secrets` —
+   and returns when the PR *became* green (the latest `completedAt` among
+   them), or `null` if it isn't green yet. Not green → `skip`, no alert.
+2. Green + tier `low` + not a draft + GitHub reports it mergeable → `merge`
+   (this repo's `allow_auto_merge` is `false`, so `gh pr merge --auto` can't
+   be armed; the sweeper merges directly, through the same required checks a
+   human click would go through).
+3. Green + tier `high` and not already labeled → `label` with
+   `risk:high-manual-merge`, so it's visible as needing a human click.
+4. Green and idle ≥ the alert threshold (default 20 minutes) and not already
+   alerted for this exact `${number}:${headSha}` → `alert`. This fires
+   **tier-independently**: a low-risk PR whose merge keeps failing still
+   surfaces instead of rotting silently. Alerting is keyed on
+   `number:headSha` so a new push re-arms it instead of permanently
+   silencing that PR after one alert, and the key set is pruned to PRs that
+   are still open.
