@@ -19,6 +19,7 @@ import { useStoreShallow } from './stores/useStoreShallow';
 import { useAnalysisStore } from './stores/analysisStore';
 import { useAnalyzeEntryStore } from './stores/analyzeEntryStore';
 import { analyzeResultsView, type AnalyzeResultsGradingApi } from './analyze-results';
+import { analyzeModeOf } from './analyze-entry';
 import {
   gradeRingHTML,
   recTypePillClass,
@@ -73,7 +74,7 @@ export default function AnalyzeResultsPanel(): JSX.Element {
   }, [lastSavedSummaryFile]);
   /* c8 ignore stop */
 
-  const view = analyzeResultsView(currentAnalysis, liveSource, historySummary, listening, getGrading());
+  const view = analyzeResultsView(currentAnalysis, liveSource, historySummary, analyzeModeOf(listening), getGrading());
 
   if (view.kind === 'history') {
     return <HistoryCard summary={view.summary} />;
