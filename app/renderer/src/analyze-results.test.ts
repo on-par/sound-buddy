@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { analyzeResultsView, type AnalyzeResultsGradingApi } from './analyze-results';
 import type { ReportCardSource, RecordingType } from './report-card';
 import type { AnalysisPayload } from '@sound-buddy/shared';
+import type { AnalysisSummary } from '../../electron/ipc/api';
 
 const ANALYSIS = {
   filePath: '/tmp/service.wav',
@@ -40,6 +41,11 @@ function makeLiveSource(filename: string): ReportCardSource {
 
 const REC_TYPE: RecordingType = { type: 'full-mix', label: 'Full mix', note: 'Detected from spectral balance', tone: 'info' };
 
+const HISTORY_SUMMARY: AnalysisSummary = {
+  date: '2026-08-01T12:00:00Z', sourceFilename: 'sunday.wav', gradeLetter: 'A', score: 95,
+  recordingType: 'Full Mix', topFixes: ['Cut 250 Hz'],
+};
+
 function fakeGrading(overrides: Partial<AnalyzeResultsGradingApi> = {}): AnalyzeResultsGradingApi {
   return {
     computeGrade: vi.fn(() => 'B'),
@@ -53,18 +59,18 @@ function fakeGrading(overrides: Partial<AnalyzeResultsGradingApi> = {}): Analyze
 
 describe('analyzeResultsView (#1487)', () => {
   it('is empty/idle with no analysis and not listening', () => {
-    const view = analyzeResultsView(null, null, false, fakeGrading());
+    const view = analyzeResultsView(null, null, null, false, fakeGrading());
     expect(view).toEqual({ kind: 'empty', state: 'idle' });
   });
 
   it('is empty/listening with no analysis while listening', () => {
-    const view = analyzeResultsView(null, null, true, fakeGrading());
+    const view = analyzeResultsView(null, null, null, true, fakeGrading());
     expect(view).toEqual({ kind: 'empty', state: 'listening' });
   });
 
   it('never touches the grading API in the empty branch', () => {
     const grading = fakeGrading();
-    analyzeResultsView(null, null, false, grading);
+    analyzeResultsView(null, null, null, false, grading);
     expect(grading.computeGrade).not.toHaveBeenCalled();
   });
 
@@ -72,7 +78,7 @@ describe('analyzeResultsView (#1487)', () => {
     const grading = fakeGrading();
     const live = makeLiveSource('live.wav');
 
-    const view = analyzeResultsView(ANALYSIS, live, true, grading);
+    const view = analyzeResultsView(ANALYSIS, live, null, true, grading);
 
     expect(view.kind).toBe('result');
     if (view.kind !== 'result') throw new Error('unreachable');
@@ -91,10 +97,55 @@ describe('analyzeResultsView (#1487)', () => {
     const grading = fakeGrading();
     const live = makeLiveSource('live.wav');
 
-    const view = analyzeResultsView(null, live, true, grading);
+    const view = analyzeResultsView(null, live, null, true, grading);
 
     expect(view.kind).toBe('result');
     if (view.kind !== 'result') throw new Error('unreachable');
     expect(view.source.filename).toBe('live.wav');
+  });
+
+  it('renders a history kind when only a stored summary is present (#1521)', () => {
+    const grading = fakeGrading();
+
+    const view = analyzeResultsView(null, null, HISTORY_SUMMARY, false, grading);
+
+    expect(view).toEqual({ kind: 'history', summary: HISTORY_SUMMARY });
+  });
+
+  it('never touches the grading API in the history branch (#1521)', () => {
+    const grading = fakeGrading();
+
+    analyzeResultsView(null, null, HISTORY_SUMMARY, false, grading);
+
+    expect(grading.computeGrade).not.toHaveBeenCalled();
+    expect(grading.computeScore).not.toHaveBeenCalled();
+    expect(grading.analyzeRecordingType).not.toHaveBeenCalled();
+    expect(grading.computeRecommendations).not.toHaveBeenCalled();
+    expect(grading.getGradingProfile).not.toHaveBeenCalled();
+  });
+
+  it('currentAnalysis wins over historySummary (#1521)', () => {
+    const grading = fakeGrading();
+
+    const view = analyzeResultsView(ANALYSIS, null, HISTORY_SUMMARY, false, grading);
+
+    expect(view.kind).toBe('result');
+  });
+
+  it('liveSource wins over historySummary (#1521)', () => {
+    const grading = fakeGrading();
+    const live = makeLiveSource('live.wav');
+
+    const view = analyzeResultsView(null, live, HISTORY_SUMMARY, false, grading);
+
+    expect(view.kind).toBe('result');
+  });
+
+  it('listening with a historySummary is still history, not empty (#1521)', () => {
+    const grading = fakeGrading();
+
+    const view = analyzeResultsView(null, null, HISTORY_SUMMARY, true, grading);
+
+    expect(view).toEqual({ kind: 'history', summary: HISTORY_SUMMARY });
   });
 });

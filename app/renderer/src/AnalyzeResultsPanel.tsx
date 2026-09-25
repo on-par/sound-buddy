@@ -27,15 +27,31 @@ import {
   commitReportCardNote,
   MAX_NOTE_LENGTH,
 } from './report-card';
+import { historySummaryCardBody } from './HistorySummaryCard';
+import type { AnalysisSummary } from '../../electron/ipc/api';
 
 function getGrading(): AnalyzeResultsGradingApi {
   return (window as unknown as { grading: AnalyzeResultsGradingApi }).grading;
 }
 
+// Read-only render of a stored History summary (#1521) — no note input
+// (nothing new to save) and no re-grading. Shares its meta/score/note/
+// recommendations markup with ReportCardIsland's HistoryCard via
+// historySummaryCardBody: the letter/score are frozen at analysis time, not
+// recomputed.
+function HistoryCard({ summary }: { summary: AnalysisSummary }): JSX.Element {
+  return (
+    <div className="analyze-results-rail" id="arc-content">
+      {historySummaryCardBody(summary, 'arc')}
+    </div>
+  );
+}
+
 export default function AnalyzeResultsPanel(): JSX.Element {
-  const { currentAnalysis, liveSource, lastSavedSummaryFile } = useStoreShallow(useAnalysisStore, (s) => ({
+  const { currentAnalysis, liveSource, historySummary, lastSavedSummaryFile } = useStoreShallow(useAnalysisStore, (s) => ({
     currentAnalysis: s.currentAnalysis,
     liveSource: s.liveSource,
+    historySummary: s.historySummary,
     lastSavedSummaryFile: s.lastSavedSummaryFile,
   }));
   const listening = useStoreShallow(useAnalyzeEntryStore, (s) => s.listening);
@@ -57,7 +73,11 @@ export default function AnalyzeResultsPanel(): JSX.Element {
   }, [lastSavedSummaryFile]);
   /* c8 ignore stop */
 
-  const view = analyzeResultsView(currentAnalysis, liveSource, listening, getGrading());
+  const view = analyzeResultsView(currentAnalysis, liveSource, historySummary, listening, getGrading());
+
+  if (view.kind === 'history') {
+    return <HistoryCard summary={view.summary} />;
+  }
 
   if (view.kind === 'empty') {
     return (

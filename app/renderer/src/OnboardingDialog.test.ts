@@ -20,7 +20,7 @@ const DEFAULT_STATE = {
   runButtonLabel: 'Run your first analysis',
 };
 const DEFAULT_COPY_PREFIX = 'Sound Buddy scores your mix';
-const SIMPLE_COPY = 'Drop last Sunday&#x27;s recording on the Report Card panel - or click Analyze - and Sound Buddy hands back a report card telling you what to fix.';
+const SIMPLE_COPY = 'Click Analyze and choose last Sunday&#x27;s recording - Sound Buddy hands back a grade and the fixes to make.';
 
 function settings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
@@ -63,6 +63,7 @@ describe('OnboardingDialog', () => {
 
     expect(html).toContain(SIMPLE_COPY);
     expect(html).not.toContain(DEFAULT_COPY_PREFIX);
+    expect(html).not.toContain('Report Card');
     expect(html).toContain('id="onboarding-skip"');
     expect(html).toContain('id="onboarding-run"');
   });

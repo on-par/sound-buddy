@@ -20,7 +20,7 @@ const DEFAULT_COPY = 'Sound Buddy scores your mix and hands back a clear report 
   + 'grade, level and dynamics readouts, and the EQ moves that matter. No setup, no settings, and no '
   + 'audio gear required to get started. Run your first analysis on a sample recording and see your '
   + 'report card in seconds.';
-const SIMPLE_COPY = "Drop last Sunday's recording on the Report Card panel - or click Analyze - and Sound Buddy hands back a report card telling you what to fix.";
+const SIMPLE_COPY = "Click Analyze and choose last Sunday's recording - Sound Buddy hands back a grade and the fixes to make.";
 
 export default function OnboardingDialog(): JSX.Element {
   const { dialogOpen, phase, copyOverride, runButtonLabel } = useStoreShallow(useOnboardingStore, (s) => ({

@@ -10,7 +10,7 @@
 
 import { create } from 'zustand';
 import { getSoundBuddy } from '../useElectron';
-import { switchMode } from '../mode-switch';
+import { showAnalyzeStage } from '../mode-switch';
 import { useAnalysisStore } from './analysisStore';
 import type { SoundBuddyApi } from '../../../electron/ipc/api';
 
@@ -62,11 +62,11 @@ export function createOnboardingStore(getApi: () => OnboardingApi) {
       try { demo = await getApi().getDemoAudio(); } catch { demo = null; }
 
       // No bundled demo (e.g. asset missing) — never dead-end: retire
-      // onboarding and hand the user the normal file picker on the Report
-      // Card tab instead.
+      // onboarding and hand the user the normal file picker on the Analyze
+      // stage instead (#1521).
       if (!demo) {
         get().close();
-        switchMode('reportcard');
+        showAnalyzeStage();
         try {
           const fp = await getApi().openFileDialog();
           if (fp) {
@@ -77,10 +77,10 @@ export function createOnboardingStore(getApi: () => OnboardingApi) {
         return;
       }
 
-      // Route through the Report Card tab so the shared analysis pipeline +
+      // Land on the Analyze stage (#1521) so the shared analysis pipeline +
       // spectrum render fire exactly as a normal run; the overlay's progress
       // state is the indicator meanwhile.
-      switchMode('reportcard');
+      showAnalyzeStage();
       useAnalysisStore.getState().selectFile(demo);
       await useAnalysisStore.getState().startAnalysis(demo);
 

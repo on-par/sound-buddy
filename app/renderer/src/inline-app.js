@@ -196,7 +196,7 @@ window.seekPlayback = (t) => transport.seek(t);
 // renders the tabs and dispatches every click through mode-switch.ts's
 // resolveModeSwitch/switchMode, which liveCaptureStore.appMode drives
 // (TD-001 slice 6e, #703). window.modeSwitch bridges applySpectrumForMode/
-// applySingleColumnSync/openReportCard for the remaining call sites below
+// applySingleColumnSync/showAnalyzeStage for the remaining call sites below
 // that aren't inside switchMode() itself.
 
 /* ══ File mode ══
@@ -342,8 +342,9 @@ sb.onAnalysisResult((data) => {
 });
 
 sb.onMenuOpenFile((fp) => {
-  // #1508: no peer-tab click — the Report Card tab goes away in #1507.
-  window.modeSwitch.openReportCard();
+  // #1521: lands on the Analyze stage directly — File > Open no longer
+  // routes through the flag-gated Report Card workspace at all.
+  window.modeSwitch.showAnalyzeStage();
   loadFile(fp);
   runFileAnalysis(fp);
 });

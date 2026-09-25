@@ -30,12 +30,11 @@ import { extractSpectrum } from './stores/spectrumStore';
 import { hasUsableLiveBands } from './ideal-profiles';
 import { switchMode } from './mode-switch';
 import ReportCard, { type GradeResult } from './ReportCard';
+import { historySummaryCardBody } from './HistorySummaryCard';
 import SceneChanges from './SceneChanges';
 import { topSceneChanges } from '../../electron/scene-diff-format';
 import {
   iconSvg,
-  gradeRingHTML,
-  recListHTML,
   buildMetricRows,
   buildScoreRows,
   reportCardSourceFromAnalysis,
@@ -58,6 +57,7 @@ import {
   type ScoreRow,
 } from './report-card';
 import type { SpectrumCurve } from './spectrum-display';
+import type { AnalysisSummary } from '../../electron/ipc/api';
 
 interface GradingApi extends GradingPillApi, BandDiffApi {
   computeGrade(src: ReportCardSource): string;
@@ -102,54 +102,14 @@ function getFindSpectralPeaks(): unknown {
   return (window as unknown as { audioEngineSpectral: { findSpectralPeaks: unknown } }).audioEngineSpectral
     .findSpectralPeaks;
 }
-interface HistorySummary {
-  sourceFilename: string;
-  date: string;
-  gradeLetter: string;
-  score: number;
-  recordingType: string;
-  topFixes: string[];
-  /** Optional one-line handoff note for the next volunteer (#267). */
-  note?: string;
-  /** Label of the grading-strictness profile active when this grade was produced (#266). Older persisted records predate this field. */
-  gradingProfileLabel?: string;
-}
-
 // Renders a stored summary-only record (#147) — no metrics/bands/spectrum/
-// frames, since that raw data was never persisted. The grade/score are read
-// straight from the record: they were frozen at analysis time. Verbatim port
-// of renderReportCardFromHistory (inline-app.js:2788–2831), minus the toolbar
-// + upgrade-momentum side effects (chrome sync, still inline).
-function HistoryCard({ summary, delta }: { summary: HistorySummary; delta?: ReportDeltaView | null }) {
+// frames, since that raw data was never persisted. Shares its meta/score/
+// note/recommendations markup with AnalyzeResultsPanel's Analyze-rail
+// HistoryCard via historySummaryCardBody (#1521).
+function HistoryCard({ summary, delta }: { summary: AnalysisSummary; delta?: ReportDeltaView | null }) {
   return (
     <div id="rc-content">
-      <div className="rc-header">
-        <h1>Sound Buddy Report Card</h1>
-        <div className="rc-meta">
-          <span id="rc-filename">{summary.sourceFilename}</span>
-          <span>·</span>
-          <span id="rc-date">{new Date(summary.date).toLocaleString()}</span>
-        </div>
-      </div>
-      <div className="rc-score">
-        <div id="rc-ring" dangerouslySetInnerHTML={{ __html: gradeRingHTML(summary.gradeLetter, summary.score) }} />
-        <div id="rc-rec-type" className="rc-rectype pill">{summary.recordingType}</div>
-        {summary.gradingProfileLabel && (
-          <div className="rc-rectype pill" id="rc-grading-profile">{summary.gradingProfileLabel}</div>
-        )}
-        {delta && (
-          <div id="rc-delta" className={`rc-delta ${delta.direction}`}>{delta.text}</div>
-        )}
-      </div>
-      {summary.note && <p className="rc-note-text" id="rc-note-text">{summary.note}</p>}
-      <div className="rc-section">
-        <h2>Recommendations</h2>
-        <div
-          className="rc-recs"
-          id="rc-recommendations"
-          dangerouslySetInnerHTML={{ __html: recListHTML(summary.topFixes || [], true) }}
-        />
-      </div>
+      {historySummaryCardBody(summary, 'rc', { delta, title: 'Sound Buddy Report Card' })}
     </div>
   );
 }
@@ -422,7 +382,7 @@ export default function ReportCardIsland() {
   const delta = currentAnalysis && grade
     ? reportDeltaView({ score: grade.score, gradeLetter: grade.letter }, prev)
     : isHistoryCard && historySummary
-      ? reportDeltaView(historySummary as HistorySummary, prev)
+      ? reportDeltaView(historySummary, prev)
       : null;
 
   // Seeds the inline phase-doubling/feedback-ringout dialogs, replacing
@@ -463,7 +423,7 @@ export default function ReportCardIsland() {
     <>
       <EmptyState visible={showEmpty} selectedFilePath={selectedFilePath} status={status} />
       {isHistoryCard && historySummary ? (
-        <HistoryCard summary={historySummary as HistorySummary} delta={delta} />
+        <HistoryCard summary={historySummary} delta={delta} />
       ) : source && grade ? (
         <ReportCard
           analysis={source}

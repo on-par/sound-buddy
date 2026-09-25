@@ -5,6 +5,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createOnboardingStore, useOnboardingStore } from './onboardingStore';
 import { useAnalysisStore } from './analysisStore';
 import { useLiveCaptureStore } from './liveCaptureStore';
+import { useAnalyzeEntryStore } from './analyzeEntryStore';
 import { useSettingsStore } from './settingsStore';
 import { createMockSoundBuddy } from '../mock-sound-buddy';
 import { ALL_FEATURE_FLAGS_OFF, resolveFeatureFlags } from '../../../electron/feature-flags';
@@ -53,8 +54,8 @@ beforeEach(() => {
     onboardingState: { shouldShowOnboarding, markOnboardingSeen },
     singleColumnState: { isSingleColumn: () => false },
   };
-  // #1520: the onboarding demo run switches to the (flagged) Report Card
-  // workspace, so default every flag on here.
+  // #1521: the onboarding demo run lands on the Analyze stage regardless of
+  // feature flags; default every flag on here to prove that in this suite.
   useSettingsStore.setState({ featureFlags: ALL_FEATURE_FLAGS_ON });
 });
 
@@ -65,7 +66,8 @@ afterEach(() => {
   useAnalysisStore.setState({
     currentAnalysis: null, selectedFilePath: null, status: 'idle', historySummary: null,
   });
-  useLiveCaptureStore.setState({ appMode: 'reportcard' });
+  useLiveCaptureStore.setState({ appMode: 'recent' });
+  useAnalyzeEntryStore.setState({ analyzeStage: false, listening: false });
   useSettingsStore.setState({ featureFlags: ALL_FEATURE_FLAGS_OFF });
 });
 
@@ -137,7 +139,7 @@ describe('createOnboardingStore', () => {
       expect(useAnalysisStore.getState().currentAnalysis).toEqual({ sox: {}, spectrum: {} });
       expect(store.getState().dialogOpen).toBe(false);
       expect(markOnboardingSeen).toHaveBeenCalled();
-      expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');
+      expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
     });
 
     it('no-demo fallback: closes, switches tabs, and analyzes a user-picked file', async () => {
@@ -151,6 +153,7 @@ describe('createOnboardingStore', () => {
 
       expect(store.getState().dialogOpen).toBe(false);
       expect(markOnboardingSeen).toHaveBeenCalled();
+      expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
       await vi.waitFor(() => expect(useAnalysisStore.getState().selectedFilePath).toBe('/picked/file.wav'));
     });
 

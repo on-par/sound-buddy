@@ -11,6 +11,7 @@ import { ElectronContext } from './useElectron';
 import { createMockSoundBuddy } from './mock-sound-buddy';
 import type { ReportCardSource, RecordingType } from './report-card';
 import type { AnalysisPayload } from '@sound-buddy/shared';
+import type { AnalysisSummary } from '../../electron/ipc/api';
 
 const ANALYSIS = {
   filePath: '/tmp/service.wav',
@@ -46,6 +47,11 @@ function makeLiveSource(filename: string): ReportCardSource {
 
 const REC_TYPE: RecordingType = { type: 'full-mix', label: 'Full mix', note: 'Detected from spectral balance', tone: 'info' };
 
+const HISTORY_SUMMARY: AnalysisSummary = {
+  date: '2026-08-01T12:00:00Z', sourceFilename: 'worship.wav', gradeLetter: 'A', score: 96,
+  recordingType: 'Full Mix', topFixes: ['Cut 250 Hz', '<b>x</b>'], note: 'Great mix this week', gradingProfileLabel: 'Casual / volunteer',
+};
+
 beforeEach(() => {
   (globalThis as { window?: unknown }).window = {
     grading: {
@@ -60,7 +66,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
-  useAnalysisStore.setState({ currentAnalysis: null, liveSource: null, lastSavedSummaryFile: null });
+  useAnalysisStore.setState({ currentAnalysis: null, liveSource: null, historySummary: null, lastSavedSummaryFile: null });
   useAnalyzeEntryStore.setState({ listening: false, analyzeStage: false });
 });
 
@@ -131,5 +137,44 @@ describe('AnalyzeResultsPanel (#1487)', () => {
     const html = renderMarkup();
 
     expect(html).not.toMatch(/id="arc-note-input"[^>]*disabled/);
+  });
+
+  describe('history kind (#1521)', () => {
+    it('renders a read-only card from a stored History summary', () => {
+      useAnalysisStore.setState({ historySummary: HISTORY_SUMMARY });
+
+      const html = renderMarkup();
+
+      expect(html).toContain('id="arc-content"');
+      expect(html).toContain('worship.wav');
+      expect(html).toContain('id="arc-ring"');
+      expect(html).toContain('>A<');
+      expect(html).toContain('Cut 250 Hz');
+      expect(html).toContain('&lt;b&gt;');
+      expect(html).toContain('Great mix this week');
+      expect(html).toContain('id="arc-grading-profile"');
+      expect(html).toContain('Casual / volunteer');
+      expect(html).not.toContain('id="arc-note-input"');
+    });
+
+    it('omits arc-note-text and arc-grading-profile when unset', () => {
+      useAnalysisStore.setState({
+        historySummary: { ...HISTORY_SUMMARY, note: undefined, gradingProfileLabel: undefined },
+      });
+
+      const html = renderMarkup();
+
+      expect(html).not.toContain('id="arc-note-text"');
+      expect(html).not.toContain('id="arc-grading-profile"');
+    });
+
+    it('currentAnalysis wins over a stored History summary', () => {
+      useAnalysisStore.setState({ currentAnalysis: ANALYSIS, historySummary: HISTORY_SUMMARY });
+
+      const html = renderMarkup();
+
+      expect(html).not.toContain('worship.wav');
+      expect(html).toContain('id="arc-note-input"');
+    });
   });
 });

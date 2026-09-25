@@ -63,10 +63,13 @@ test('a first-run user reaches a report card from the packaged .app via the onbo
 
     // First packaged run pays numba JIT cost; onboarding.spec.ts uses 20s
     // against dev, so bump to 60s here.
-    await expect(win.locator('#reportcard-view')).toHaveClass(/active/, { timeout: 60_000 });
-    await expect(win.locator('#rc-content')).toBeVisible();
-    // Proves it graded the bundled demo.wav, not a fallback.
-    await expect(win.locator('#rc-filename')).toHaveText('demo.wav');
+    // #1521: lands on the Analyze stage, not the flag-gated Report Card
+    // workspace. The 'result' kind renders no filename, so proof that it
+    // graded the bundled demo.wav (not a fallback) comes from the
+    // 'analyze-file ok' log line below instead.
+    await expect(win.locator('#arc-content')).toBeVisible({ timeout: 60_000 });
+    await expect(win.locator('#arc-ring')).toBeVisible();
+    await expect(win.locator('#reportcard-view')).not.toHaveClass(/active/);
 
     await expect(dialog).toBeHidden();
 

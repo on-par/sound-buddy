@@ -7,6 +7,7 @@ import { renderToString } from 'react-dom/server';
 import RecentServicesPanel, { RecentServicesList, loadHistoryEntry, exportTrendPdf } from './RecentServicesPanel';
 import { useAnalysisStore } from './stores/analysisStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useAnalyzeEntryStore } from './stores/analyzeEntryStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { spectrumTransport } from './spectrum-transport';
 import { createMockSoundBuddy } from './mock-sound-buddy';
@@ -79,8 +80,8 @@ beforeEach(() => {
     singleColumnState: { isSingleColumn: () => false },
     print: printSpy,
   };
-  // #1520: this file's loadHistoryEntry tests switch to the (flagged)
-  // Report Card workspace, so default every flag on here.
+  // #1521: loadHistoryEntry lands on the Analyze stage regardless of feature
+  // flags; default every flag on here to prove that in the same suite.
   useSettingsStore.setState({ featureFlags: ALL_FEATURE_FLAGS_ON });
 });
 
@@ -88,7 +89,8 @@ afterEach(() => {
   delete (globalThis as { document?: unknown }).document;
   delete (globalThis as { window?: unknown }).window;
   vi.restoreAllMocks();
-  useLiveCaptureStore.setState({ appMode: 'reportcard', isCapturing: false });
+  useLiveCaptureStore.setState({ appMode: 'recent', isCapturing: false });
+  useAnalyzeEntryStore.setState({ analyzeStage: false, listening: false });
   useSettingsStore.setState({ featureFlags: ALL_FEATURE_FLAGS_OFF });
   useAnalysisStore.setState({
     currentAnalysis: null, liveSource: null, historySummary: null, prevSummary: null, status: 'idle',
@@ -217,8 +219,16 @@ describe('loadHistoryEntry', () => {
     expect(elements['rc-offer'].style.display).toBe('');
   });
 
-  it('switches to the report card tab', () => {
+  it('lands on the Analyze stage (#1521)', () => {
     loadHistoryEntry(SUMMARY_A, null);
-    expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');
+    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+    expect(useAnalyzeEntryStore.getState().analyzeStage).toBe(true);
+  });
+
+  it('lands on the Analyze stage regardless of feature flags or Advanced mode (#1521)', () => {
+    useSettingsStore.setState({ featureFlags: ALL_FEATURE_FLAGS_OFF });
+    loadHistoryEntry(SUMMARY_A, null);
+    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+    expect(useAnalyzeEntryStore.getState().analyzeStage).toBe(true);
   });
 });
