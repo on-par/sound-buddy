@@ -207,4 +207,68 @@ describe('createAnalyzeEntryStore (#1468)', () => {
     expect(store.getState().listening).toBe(false);
     expect(stopSecondaryMeasurement).toHaveBeenCalledTimes(1);
   });
+
+  describe('analyzeStage (#1487)', () => {
+    it('starts with the stage closed', () => {
+      const { deps } = createFakeDeps();
+      const store = createAnalyzeEntryStore(deps);
+
+      expect(store.getState().analyzeStage).toBe(false);
+    });
+
+    it('enterAnalyze() opens the stage on the listen-live fork', async () => {
+      const { deps } = createFakeDeps({ getSecondaryDeviceName: () => 'MOTU M2' });
+      const store = createAnalyzeEntryStore(deps);
+
+      await store.getState().enterAnalyze();
+
+      expect(store.getState().analyzeStage).toBe(true);
+    });
+
+    it('enterAnalyze() opens the stage on the no-device dialog fork', async () => {
+      const { deps } = createFakeDeps({ getSecondaryDeviceName: () => '' });
+      const store = createAnalyzeEntryStore(deps);
+
+      await store.getState().enterAnalyze();
+
+      expect(store.getState().analyzeStage).toBe(true);
+    });
+
+    it('enterAnalyze() while already listening still ensures the stage is open', async () => {
+      const { deps } = createFakeDeps({ getSecondaryDeviceName: () => 'MOTU M2' });
+      const store = createAnalyzeEntryStore(deps);
+      await store.getState().enterAnalyze();
+      store.setState({ analyzeStage: false }); // simulate a tab-switch teardown mid-listen
+
+      await store.getState().enterAnalyze();
+
+      expect(store.getState().analyzeStage).toBe(true);
+    });
+
+    it('exitAnalyze() closes the stage without touching an in-progress listen', async () => {
+      const { deps, stopSecondaryMeasurement } = createFakeDeps({ getSecondaryDeviceName: () => 'MOTU M2' });
+      const store = createAnalyzeEntryStore(deps);
+      await store.getState().enterAnalyze();
+      expect(store.getState().listening).toBe(true);
+
+      store.getState().exitAnalyze();
+
+      expect(store.getState().analyzeStage).toBe(false);
+      expect(store.getState().listening).toBe(true);
+      expect(stopSecondaryMeasurement).not.toHaveBeenCalled();
+    });
+
+    it('exitAnalyze() closes the stage after a file-derived analysis (listening already stopped)', async () => {
+      const { deps } = createFakeDeps({ getSecondaryDeviceName: () => 'MOTU M2' });
+      const store = createAnalyzeEntryStore(deps);
+      await store.getState().enterAnalyze();
+      await store.getState().chooseFile();
+      expect(store.getState().listening).toBe(false);
+      expect(store.getState().analyzeStage).toBe(true);
+
+      store.getState().exitAnalyze();
+
+      expect(store.getState().analyzeStage).toBe(false);
+    });
+  });
 });

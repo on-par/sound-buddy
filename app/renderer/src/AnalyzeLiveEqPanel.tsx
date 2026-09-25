@@ -29,9 +29,13 @@ import { roomPaneOverride } from './measurement-device-state';
 import { eqPaneRoomSectionHTML } from './live-capture-panel';
 import { spectrumLegendHTML } from './spectrum-display';
 import { analyzeLiveEqView } from './analyze-live-eq';
+import AnalyzeResultsPanel from './AnalyzeResultsPanel';
 
 export default function AnalyzeLiveEqPanel(): JSX.Element | null {
-  const listening = useStoreShallow(useAnalyzeEntryStore, (s) => s.listening);
+  const { listening, analyzeStage } = useStoreShallow(useAnalyzeEntryStore, (s) => ({
+    listening: s.listening,
+    analyzeStage: s.analyzeStage,
+  }));
   const s = useStoreShallow(useLiveCaptureStore, (st) => ({
     appMode: st.appMode,
     secondaryMeasurement: st.secondaryMeasurement,
@@ -51,7 +55,7 @@ export default function AnalyzeLiveEqPanel(): JSX.Element | null {
     useLiveCaptureStore.getState().lastMeasurementChannels,
     s.secondaryMeasurement.deviceName,
   );
-  const view = analyzeLiveEqView({ listening, appMode: s.appMode, secondary: s.secondaryMeasurement, override });
+  const view = analyzeLiveEqView({ listening, analyzeStage, appMode: s.appMode, secondary: s.secondaryMeasurement, override });
 
   /* c8 ignore start -- document.body class toggle, no jsdom in this harness
      (renderToString doesn't run effects) — exercised by an e2e spec driving
@@ -65,44 +69,56 @@ export default function AnalyzeLiveEqPanel(): JSX.Element | null {
   if (view.kind === 'hidden') return null;
 
   return (
-    <div className="analyze-live-eq" aria-label="Room-mic EQ">
-      {view.kind === 'room'
-        ? <>
-          <div
-            className="eq-pane-section eq-pane-primary"
-            dangerouslySetInnerHTML={{ __html: eqPaneRoomSectionHTML(view.override, profile.idealProfile) }}
-          />
-          {/* Names the overlay ("Target · <label>") beneath the room arc so
-              "Measured" vs "Target" is readable without hovering. cmp is null
-              — a rolling live window has no whole-file match score. */}
-          {profile.idealProfile && (
-            <div dangerouslySetInnerHTML={{ __html: spectrumLegendHTML(profile.idealProfile, null, profile.isAutoProfile) }} />
+    // #1487: the Analyze stage is two columns — the room EQ (unchanged) plus
+    // the results rail folding in the grade/pills/note/recommendations once a
+    // result exists. AnalyzeResultsPanel is a plain nested leaf, not a second
+    // portal — ReportCard.tsx nests inside ReportCardIsland.tsx the same way.
+    <div className="analyze-stage">
+      <div className="analyze-live-eq" aria-label="Room-mic EQ">
+        {view.kind === 'room'
+          ? <>
+            <div
+              className="eq-pane-section eq-pane-primary"
+              dangerouslySetInnerHTML={{ __html: eqPaneRoomSectionHTML(view.override, profile.idealProfile) }}
+            />
+            {/* Names the overlay ("Target · <label>") beneath the room arc so
+                "Measured" vs "Target" is readable without hovering. cmp is null
+                — a rolling live window has no whole-file match score. */}
+            {profile.idealProfile && (
+              <div dangerouslySetInnerHTML={{ __html: spectrumLegendHTML(profile.idealProfile, null, profile.isAutoProfile) }} />
+            )}
+          </>
+          : <div className="eq-pane-section eq-pane-primary eq-pane-empty">
+            <div className="eq-pane-header">Room</div>
+            <div className="eq-pane-empty-hint">{view.text}</div>
+          </div>}
+        <div className="analyze-live-eq-actions">
+          {/* #1487: listening is what Stop listening tears down — once the
+              stage stays open via analyzeStage alone (listening already
+              stopped), a Stop button would have nothing left to stop. */}
+          {listening && (
+            <button
+              type="button"
+              id="analyze-live-eq-stop"
+              className="btn btn-secondary sm"
+              /* c8 ignore next -- click dispatch, no jsdom */
+              onClick={() => { void useAnalyzeEntryStore.getState().stopListening(); }}
+            >
+              Stop listening
+            </button>
           )}
-        </>
-        : <div className="eq-pane-section eq-pane-primary eq-pane-empty">
-          <div className="eq-pane-header">Room</div>
-          <div className="eq-pane-empty-hint">{view.text}</div>
-        </div>}
-      <div className="analyze-live-eq-actions">
-        <button
-          type="button"
-          id="analyze-live-eq-stop"
-          className="btn btn-secondary sm"
-          /* c8 ignore next -- click dispatch, no jsdom */
-          onClick={() => { void useAnalyzeEntryStore.getState().stopListening(); }}
-        >
-          Stop listening
-        </button>
-        <button
-          type="button"
-          id="analyze-live-eq-choose-file"
-          className="btn btn-secondary sm"
-          /* c8 ignore next -- click dispatch, no jsdom */
-          onClick={() => { void useAnalyzeEntryStore.getState().chooseFile(); }}
-        >
-          Load file…
-        </button>
+          <button
+            type="button"
+            id="analyze-live-eq-choose-file"
+            className="btn btn-secondary sm"
+            /* c8 ignore next -- click dispatch, no jsdom */
+            onClick={() => { void useAnalyzeEntryStore.getState().chooseFile(); }}
+          >
+            Load file…
+          </button>
+        </div>
       </div>
+      <AnalyzeResultsPanel />
     </div>
   );
 }

@@ -38,12 +38,21 @@ export interface AnalyzeEntryState {
   // capture. Set only by listenLive()'s startListening branch, cleared only
   // by stopListening(); AnalyzeLiveEqPanel.tsx gates its entire view on it.
   listening: boolean;
+  // #1487: broader than `listening` — "the Analyze stage is open," true from
+  // the moment enterAnalyze() runs (whichever fork it takes) until
+  // exitAnalyze() (called by mode-switch.ts's switchMode() on every tab
+  // change) clears it. Stays true across a listen -> stopListening ->
+  // chooseFile() handoff, so a file-derived result still renders in Analyze
+  // chrome instead of vanishing the instant the room mic stops. `listening`
+  // itself keeps its narrower meaning — this field never substitutes for it.
+  analyzeStage: boolean;
   open(): void;
   close(): void;
   chooseFile(): Promise<void>;
   listenLive(): Promise<void>;
   stopListening(): Promise<void>;
   enterAnalyze(): Promise<void>;
+  exitAnalyze(): void;
 }
 
 export function createAnalyzeEntryStore(
@@ -52,6 +61,7 @@ export function createAnalyzeEntryStore(
   return create<AnalyzeEntryState>()((set, get) => ({
     dialogOpen: false,
     listening: false,
+    analyzeStage: false,
 
     open() {
       set({ dialogOpen: true });
@@ -78,12 +88,22 @@ export function createAnalyzeEntryStore(
     // Analyze tab (it never becomes the "active" workspace mode, so nothing
     // marks it as already selected) must not restart an in-progress capture.
     async enterAnalyze() {
+      set({ analyzeStage: true });
       if (get().listening) return;
       if (resolveAnalyzeEntry(deps.getSecondaryDeviceName()) === 'openDialog') {
         set({ dialogOpen: true });
         return;
       }
       await get().listenLive();
+    },
+
+    // #1487: the mode-switch teardown hook — switchMode() calls this on every
+    // tab change so the Analyze results rail/live-EQ island don't linger once
+    // the user has navigated elsewhere. Deliberately never touches `listening`
+    // — a still-running room-mic listen survives a tab switch exactly as it
+    // does today (see analyzeStage's doc comment above).
+    exitAnalyze() {
+      set({ analyzeStage: false });
     },
 
     async listenLive() {

@@ -824,6 +824,13 @@
     body.analyze-listening #source-panel { display:none !important; }
     body.analyze-listening #reportcard-view { display:none !important; }
     body.analyze-listening #spectrum-panel { display:flex !important; }
+    /* #1487: the Analyze stage folds a second column onto the freed #1496
+       layout — .analyze-stage lays the room EQ (flex:1, unchanged) and the
+       results rail (fixed width) out side by side. #1496's "fold, never
+       shrink" rule is untouched for #source-panel/#reportcard-view; ADR-0143
+       reserved exactly this split-view case for a follow-up issue with an ADR
+       update — ADR-0145 is that update. */
+    .analyze-stage { display:flex; flex-direction:row; gap:16px; flex:1; min-height:0; }
     .analyze-live-eq { display:flex; flex-direction:column; gap:14px; flex:1; min-height:0; }
     /* #1496: the EQ card fills the freed stage. .spectrum-chart's inset-card
        chrome, so the live view reads like the analysis curve it replaces.
@@ -836,6 +843,12 @@
     .analyze-live-eq .eq-pane-empty { align-items:center; justify-content:center; }
     .analyze-live-eq-actions { display:flex; gap:8px; align-self:flex-start; flex-shrink:0; }
     .analyze-live-eq .spectrum-legend { margin-top:8px; flex-shrink:0; }
+    /* #1487: the results rail — grade ring/pill/handoff-note/recommendations
+       folded into Analyze chrome. Fixed width (not flex:1) so the room EQ
+       stays the dominant column exactly as #1496 intends; overflow:auto so a
+       long recommendations list scrolls its own column instead of growing
+       the stage past the viewport. */
+    .analyze-results-rail { width:320px; flex-shrink:0; display:flex; flex-direction:column; gap:14px; overflow:auto; }
     .spectrum-empty { flex:1; min-height:360px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; color:var(--text-muted); text-align:center; }
     .spectrum-empty p { font:var(--fw-regular) var(--fs-body)/1 var(--font-sans); margin:0; }
     .spectrum-empty .spin { width:34px; height:34px; border-radius:50%; border:3px solid var(--surface-raised); border-top-color:var(--gold-500); animation:sbspin 0.8s linear infinite; }

@@ -115,6 +115,19 @@ test.describe('Analyze tab entry point (#1485), Advanced features on', () => {
     await expect(window.locator('#rc-filename')).toHaveText('silence.wav');
     expect(await openFileDialogCallCount(electronApp)).toBe(1);
     await expect(window.locator('#analyze-live-eq-stop')).toBeHidden();
+
+    // #1487: the grade/pills/recommendations fold directly into Analyze
+    // chrome — the file-derived result must still be visible here, without
+    // switching to the separate Report Card tab (which stays folded away).
+    await expect(window.locator('body')).toHaveClass(/analyze-listening/);
+    await expect(window.locator('#reportcard-view')).toBeHidden();
+    await expect(window.locator('.analyze-results-rail')).toBeVisible();
+    await expect(window.locator('#arc-ring')).toBeVisible();
+    await expect(window.locator('#arc-rec-type')).toBeVisible();
+
+    // Switching to another workspace tab closes the Analyze stage.
+    await window.locator('.mode-tab[data-mode="console"]').click();
+    await expect(window.locator('body')).not.toHaveClass(/analyze-listening/);
   });
 });
 

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import AnalyzeLiveEqPanel from './AnalyzeLiveEqPanel';
@@ -10,6 +10,8 @@ import { useAnalyzeEntryStore } from './stores/analyzeEntryStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { ANALYZER_GRID_FREQS, type ChannelWindowData } from './live-capture-panel';
 import type { IdealProfileLike } from './spectrum-display';
+import { ElectronContext } from './useElectron';
+import { createMockSoundBuddy } from './mock-sound-buddy';
 
 const ROOM_CH: ChannelWindowData = {
   index: 0, name: 'Room', rms: -30, peak: -12, clipping: false, centroid: 1000, rolloff: 0,
@@ -25,11 +27,24 @@ const PROFILE_B: IdealProfileLike = {
 };
 
 function renderMarkup(): string {
-  return renderToString(createElement(AnalyzeLiveEqPanel));
+  const mock = createMockSoundBuddy();
+  return renderToString(
+    createElement(ElectronContext.Provider, { value: mock.api }, createElement(AnalyzeLiveEqPanel))
+  );
 }
 
+// AnalyzeResultsPanel (#1487) reads window.grading the same way
+// ReportCardIsland does — a classic boot script, not an ES import (see its
+// own file header). Never exercises the 'result' branch in this file (no
+// test here sets currentAnalysis/liveSource), so an empty stub is enough to
+// let the unconditional analyzeResultsView() call resolve without throwing.
+beforeEach(() => {
+  (globalThis as { window?: unknown }).window = { grading: {} };
+});
+
 afterEach(() => {
-  useAnalyzeEntryStore.setState({ listening: false });
+  delete (globalThis as { window?: unknown }).window;
+  useAnalyzeEntryStore.setState({ listening: false, analyzeStage: false });
   useLiveCaptureStore.setState({
     appMode: 'reportcard',
     secondaryMeasurement: { status: 'off', deviceName: '' },
@@ -203,6 +218,63 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
       expect(html).not.toContain('sb-target-line');
       expect(html).toContain('spectrum-legend');
       expect(html).toContain('Flat / neutral');
+    });
+  });
+
+  // #1487: the Analyze stage folds in a results rail beside the room EQ.
+  describe('the Analyze results rail (#1487)', () => {
+    it('renders the results rail alongside the room EQ while listening', () => {
+      useAnalyzeEntryStore.setState({ listening: true });
+      useLiveCaptureStore.setState({
+        appMode: 'reportcard',
+        secondaryMeasurement: { status: 'active', deviceName: 'MacBook Pro Microphone' },
+        lastMeasurementChannels: [ROOM_CH],
+      });
+
+      const html = renderMarkup();
+
+      expect(html).toContain('analyze-results-rail');
+      expect(html).toContain('id="arc-empty"');
+    });
+
+    it('keeps the stage (and the rail) open once listening stops but the Analyze stage is still open', () => {
+      useAnalyzeEntryStore.setState({ listening: false, analyzeStage: true });
+      useLiveCaptureStore.setState({
+        appMode: 'reportcard',
+        secondaryMeasurement: { status: 'off', deviceName: '' },
+        lastMeasurementChannels: null,
+      });
+
+      const html = renderMarkup();
+
+      expect(html).not.toBe('');
+      expect(html).toContain('Not listening');
+      expect(html).toContain('analyze-results-rail');
+    });
+
+    it('drops the Stop listening control once listening has stopped, keeping Load file', () => {
+      useAnalyzeEntryStore.setState({ listening: false, analyzeStage: true });
+      useLiveCaptureStore.setState({
+        appMode: 'reportcard',
+        secondaryMeasurement: { status: 'off', deviceName: '' },
+        lastMeasurementChannels: null,
+      });
+
+      const html = renderMarkup();
+
+      expect(html).not.toContain('id="analyze-live-eq-stop"');
+      expect(html).toContain('id="analyze-live-eq-choose-file"');
+    });
+
+    it('never duplicates a ReportCardIsland rc-* id — every rail id is arc-*', () => {
+      useAnalyzeEntryStore.setState({ listening: false, analyzeStage: true });
+      useLiveCaptureStore.setState({
+        appMode: 'reportcard',
+        secondaryMeasurement: { status: 'off', deviceName: '' },
+        lastMeasurementChannels: null,
+      });
+
+      expect(renderMarkup()).not.toContain('id="rc-');
     });
   });
 });

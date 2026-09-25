@@ -16,6 +16,7 @@ import { useRigStore } from './stores/rigStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useAnalysisStore } from './stores/analysisStore';
+import { useAnalyzeEntryStore } from './stores/analyzeEntryStore';
 import { spectrumTransport } from './spectrum-transport';
 import { createMockSoundBuddy } from './mock-sound-buddy';
 import { ALL_TAB_MODES } from './simple-mode';
@@ -92,6 +93,7 @@ afterEach(() => {
   useRigStore.setState({ activeRigId: null });
   useSettingsStore.setState({ settings: null, settingsError: null });
   useAnalysisStore.setState({ currentAnalysis: null });
+  useAnalyzeEntryStore.setState({ analyzeStage: false });
 });
 
 function settings(overrides: Partial<AppSettings> = {}): AppSettings {
@@ -434,6 +436,26 @@ describe('switchMode', () => {
     switchMode('live', { boot: true });
     expect(useLiveCaptureStore.getState().appMode).toBe('live');
     expect(bodyClassList.contains('live-active')).toBe(true);
+  });
+
+  // #1487: clicking any workspace tab is always a navigation away from
+  // Analyze (the Analyze tab itself never reaches switchMode — see
+  // resolveModeSwitch's 'analyzeEntry' branch), so every switch closes the
+  // Analyze results stage.
+  it('clears the Analyze stage flag on every switch', () => {
+    useAnalyzeEntryStore.setState({ analyzeStage: true });
+
+    switchMode('recent');
+
+    expect(useAnalyzeEntryStore.getState().analyzeStage).toBe(false);
+  });
+
+  it('clears the Analyze stage flag even on a boot switch', () => {
+    useAnalyzeEntryStore.setState({ analyzeStage: true });
+
+    switchMode('reportcard', { boot: true });
+
+    expect(useAnalyzeEntryStore.getState().analyzeStage).toBe(false);
   });
 });
 
