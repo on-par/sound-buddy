@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "evt-0001",
+  "ruleType": "band-deviation",
+  "severity": "suggestion",
+  "band": "lowMid",
+  "message": "Low-mid is 4.5 dB over the target. Try a gentle cut around 250-500 Hz.",
+  "data": { "band": "Low-mid", "deviationDb": 4.5, "range": "250-500 Hz" },
+  "source": "phone-mic-estimate",
+  "sessionTime": 12.5
+}
