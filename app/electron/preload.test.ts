@@ -56,6 +56,7 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
     channel: 'grant-console-network-consent',
     args: [],
   },
+  { method: 'getFeatureFlags', channel: 'get-feature-flags', args: [] },
   { method: 'getStorageUsage', channel: 'get-storage-usage', args: [] },
   { method: 'getLicense', channel: 'get-license', args: [] },
   { method: 'activateLicense', channel: 'activate-license', args: ['SB-TEST-KEY'] },

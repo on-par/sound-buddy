@@ -56,6 +56,10 @@ export function createBridge(ipc: IpcRendererLike) {
     // the update-settings patch path, which is permanently revoke-only.
     grantConsoleNetworkConsent: () => ipc.invoke('grant-console-network-consent'),
 
+    // #1520 — env-only (SOUND_BUDDY_FEATURES) non-hedgehog workspace gate,
+    // never persisted. See electron/feature-flags.ts.
+    getFeatureFlags: () => ipc.invoke('get-feature-flags'),
+
     // Storage location + disk usage (#91). Informational only — Sound Buddy caps
     // nothing; this reports where recordings live and how much disk they use.
     getStorageUsage: () => ipc.invoke('get-storage-usage'),

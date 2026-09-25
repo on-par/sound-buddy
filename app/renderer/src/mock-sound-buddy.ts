@@ -17,6 +17,7 @@ import type {
   AnalysisPayloadDto,
   ConsoleLiveStateEvent,
 } from '../../electron/ipc/api';
+import { ALL_FEATURE_FLAGS_OFF } from '../../electron/feature-flags';
 
 export interface RecordedCall {
   method: keyof SoundBuddyApi;
@@ -163,6 +164,7 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     toFileUrl: invoke('toFileUrl', ''),
     updateSettings: invoke('updateSettings', DEFAULT_APP_SETTINGS),
     grantConsoleNetworkConsent: invoke('grantConsoleNetworkConsent', DEFAULT_APP_SETTINGS),
+    getFeatureFlags: invoke('getFeatureFlags', ALL_FEATURE_FLAGS_OFF),
     getStorageUsage: invoke('getStorageUsage', DEFAULT_STORAGE_USAGE),
     getLicense: invoke('getLicense', DEFAULT_LICENSE_STATE),
     activateLicense: invoke('activateLicense', DEFAULT_LICENSE_STATE),
