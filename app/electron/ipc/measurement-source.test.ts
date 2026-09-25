@@ -3,6 +3,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventEmitter } from 'events';
+import { measurementChannelToken } from './measurement-source';
 
 // registerMeasurementSourceHandlers wires every channel into this map so a test
 // can invoke a single handler directly without a live ipcMain (same pattern as
@@ -108,6 +109,28 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe('measurementChannelToken (#1524)', () => {
+  it('falls back to \'0\' when omitted', () => {
+    expect(measurementChannelToken(undefined)).toBe('0');
+  });
+
+  it('stringifies a valid non-negative integer', () => {
+    expect(measurementChannelToken(3)).toBe('3');
+  });
+
+  it('falls back to \'0\' for a negative number', () => {
+    expect(measurementChannelToken(-1)).toBe('0');
+  });
+
+  it('falls back to \'0\' for a non-integer', () => {
+    expect(measurementChannelToken(1.5)).toBe('0');
+  });
+
+  it('falls back to \'0\' for NaN', () => {
+    expect(measurementChannelToken(NaN)).toBe('0');
+  });
+});
+
 describe('start-measurement handler', () => {
   it('blocks when not entitled, without spawning', async () => {
     isEntitledMock.mockReturnValue(false);
@@ -149,6 +172,32 @@ describe('start-measurement handler', () => {
     expect(spawnMock).toHaveBeenCalledWith(
       'python3',
       ['/fake/stream.py', '2', '5', '0', '--interval', '0.5'],
+      expect.anything(),
+    );
+  });
+
+  it('spawns with the requested channel token in place of 0 (#1524)', async () => {
+    spawnMock.mockReturnValueOnce(fakeProc());
+    const sender = fakeSender();
+
+    await startMeasurement({ device: '2', windowSecs: 5, channel: 3 }, sender);
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      'python3',
+      ['/fake/stream.py', '2', '5', '3'],
+      expect.anything(),
+    );
+  });
+
+  it('spawns with channel token 0 when channel is omitted (regression guard, #1524)', async () => {
+    spawnMock.mockReturnValueOnce(fakeProc());
+    const sender = fakeSender();
+
+    await startMeasurement({ device: '2', windowSecs: 5 }, sender);
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      'python3',
+      ['/fake/stream.py', '2', '5', '0'],
       expect.anything(),
     );
   });

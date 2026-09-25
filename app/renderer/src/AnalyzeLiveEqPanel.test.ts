@@ -44,12 +44,13 @@ beforeEach(() => {
 
 afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
-  useAnalyzeEntryStore.setState({ listening: false, analyzeStage: false });
+  useAnalyzeEntryStore.setState({ listening: false, analyzeStage: false, listenChannel: 0 });
   useLiveCaptureStore.setState({
     appMode: 'reportcard',
     secondaryMeasurement: { status: 'off', deviceName: '' },
     secondaryWindows: [],
     lastMeasurementChannels: null,
+    devices: [],
   });
   useSpectrumStore.setState({ idealProfile: null, isAutoProfile: false });
 });
@@ -295,6 +296,20 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
       expect(html).not.toContain('id="analyze-file-dropzone"');
     });
 
+    it('while listening with 1 input, no channel picker is rendered', () => {
+      useAnalyzeEntryStore.setState({ listening: true, analyzeStage: true, listenChannel: 0 });
+      useLiveCaptureStore.setState({
+        appMode: 'reportcard',
+        secondaryMeasurement: { status: 'active', deviceName: 'MacBook Pro Microphone' },
+        lastMeasurementChannels: [ROOM_CH],
+        devices: [{ index: 0, name: 'MacBook Pro Microphone', channels: 1, default_sr: 48000 }],
+      });
+
+      const html = renderMarkup();
+
+      expect(html).not.toContain('id="analyze-listen-channel"');
+    });
+
     it('with the stage open and not listening, the File toggle is pressed and the dropzone is present', () => {
       useAnalyzeEntryStore.setState({ listening: false, analyzeStage: true });
       useLiveCaptureStore.setState({
@@ -310,6 +325,70 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
       expect(html).toContain('id="analyze-file-dropzone"');
       expect(html).toContain('Drop audio file here');
       expect(html).not.toContain('Not listening');
+    });
+  });
+
+  // #1524: the single-select channel picker on the Analyze live-EQ island.
+  describe('channel picker (#1524)', () => {
+    const EIGHT_CH_DEVICE = { index: 0, name: 'Scarlett 18i20', channels: 8, default_sr: 48000 };
+
+    it('while listening with a multi-input device, renders a single <select> with one option per channel, no multiple', () => {
+      useAnalyzeEntryStore.setState({ listening: true, analyzeStage: true, listenChannel: 0 });
+      useLiveCaptureStore.setState({
+        appMode: 'reportcard',
+        secondaryMeasurement: { status: 'active', deviceName: 'Scarlett 18i20' },
+        lastMeasurementChannels: [ROOM_CH],
+        devices: [EIGHT_CH_DEVICE],
+      });
+
+      const html = renderMarkup();
+
+      expect(html).toContain('id="analyze-listen-channel"');
+      const selectMatch = html.match(/<select id="analyze-listen-channel"[^>]*>[\s\S]*?<\/select>/);
+      expect(selectMatch).not.toBeNull();
+      const selectMarkup = selectMatch![0];
+      expect(selectMarkup).not.toContain('multiple');
+      expect((selectMarkup.match(/<option/g) ?? []).length).toBe(8);
+      expect(selectMarkup).toContain('>Ch 1<');
+      expect(selectMarkup).toContain('>Ch 8<');
+    });
+
+    it('device with 1 channel: no picker even while listening', () => {
+      useAnalyzeEntryStore.setState({ listening: true, analyzeStage: true, listenChannel: 0 });
+      useLiveCaptureStore.setState({
+        appMode: 'reportcard',
+        secondaryMeasurement: { status: 'active', deviceName: 'MacBook Pro Microphone' },
+        lastMeasurementChannels: [ROOM_CH],
+        devices: [{ index: 0, name: 'MacBook Pro Microphone', channels: 1, default_sr: 48000 }],
+      });
+
+      expect(renderMarkup()).not.toContain('id="analyze-listen-channel"');
+    });
+
+    it('not listening (file mode): no picker even with a multi-input device', () => {
+      useAnalyzeEntryStore.setState({ listening: false, analyzeStage: true, listenChannel: 0 });
+      useLiveCaptureStore.setState({
+        appMode: 'reportcard',
+        secondaryMeasurement: { status: 'off', deviceName: 'Scarlett 18i20' },
+        lastMeasurementChannels: null,
+        devices: [EIGHT_CH_DEVICE],
+      });
+
+      expect(renderMarkup()).not.toContain('id="analyze-listen-channel"');
+    });
+
+    it('marks the option matching listenChannel as selected', () => {
+      useAnalyzeEntryStore.setState({ listening: true, analyzeStage: true, listenChannel: 2 });
+      useLiveCaptureStore.setState({
+        appMode: 'reportcard',
+        secondaryMeasurement: { status: 'active', deviceName: 'Scarlett 18i20' },
+        lastMeasurementChannels: [ROOM_CH],
+        devices: [EIGHT_CH_DEVICE],
+      });
+
+      const html = renderMarkup();
+
+      expect(html).toMatch(/<option value="2"[^>]*selected[^>]*>Ch 3</);
     });
   });
 });

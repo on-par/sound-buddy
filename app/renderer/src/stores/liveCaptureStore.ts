@@ -1040,6 +1040,7 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
         device,
         windowSecs: opts.windowSecs,
         intervalSecs: opts.intervalSecs,
+        ...(opts.channel !== undefined ? { channel: opts.channel } : {}),
       })) as { success: boolean; micAccess?: string; error?: string };
       set((state) => ({ secondaryMeasurement: applyStartResult(state.secondaryMeasurement, result) }));
     },

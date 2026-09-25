@@ -12,6 +12,7 @@ function createFakeDeps(overrides: Partial<AnalyzeEntryDeps> = {}) {
   const stopSecondaryMeasurement = vi.fn(async () => {});
   const openSettingsAudio = vi.fn();
   const analyzeFilePath = vi.fn(async () => {});
+  const getSecondaryInputCount = vi.fn(() => 1);
   const deps: AnalyzeEntryDeps = {
     chooseAndAnalyzeFile,
     getSecondaryDeviceName,
@@ -20,11 +21,13 @@ function createFakeDeps(overrides: Partial<AnalyzeEntryDeps> = {}) {
     stopSecondaryMeasurement,
     openSettingsAudio,
     analyzeFilePath,
+    getSecondaryInputCount,
     ...overrides,
   };
   return {
     deps, chooseAndAnalyzeFile, getSecondaryDeviceName, getCadence,
     startSecondaryMeasurement, stopSecondaryMeasurement, openSettingsAudio, analyzeFilePath,
+    getSecondaryInputCount,
   };
 }
 
@@ -109,7 +112,7 @@ describe('createAnalyzeEntryStore (#1468)', () => {
 
       expect(store.getState().dialogOpen).toBe(false);
       expect(store.getState().listening).toBe(true);
-      expect(startSecondaryMeasurement).toHaveBeenCalledWith({ windowSecs: 5, intervalSecs: 0.2 });
+      expect(startSecondaryMeasurement).toHaveBeenCalledWith({ windowSecs: 5, intervalSecs: 0.2, channel: 0 });
       expect(chooseAndAnalyzeFile).not.toHaveBeenCalled();
     });
 
@@ -155,7 +158,7 @@ describe('createAnalyzeEntryStore (#1468)', () => {
     await store.getState().listenLive();
 
     expect(store.getState().dialogOpen).toBe(false);
-    expect(startSecondaryMeasurement).toHaveBeenCalledWith({ windowSecs: 5, intervalSecs: 0.2 });
+    expect(startSecondaryMeasurement).toHaveBeenCalledWith({ windowSecs: 5, intervalSecs: 0.2, channel: 0 });
     expect(openSettingsAudio).not.toHaveBeenCalled();
   });
 
@@ -208,6 +211,127 @@ describe('createAnalyzeEntryStore (#1468)', () => {
 
     expect(store.getState().listening).toBe(false);
     expect(stopSecondaryMeasurement).toHaveBeenCalledTimes(1);
+  });
+
+  describe('listenChannel / selectListenChannel (#1524)', () => {
+    it('starts with listenChannel 0', () => {
+      const { deps } = createFakeDeps();
+      const store = createAnalyzeEntryStore(deps);
+
+      expect(store.getState().listenChannel).toBe(0);
+    });
+
+    it('while listening, selectListenChannel(3) stops then restarts with the new channel, in order', async () => {
+      const { deps, stopSecondaryMeasurement, startSecondaryMeasurement } = createFakeDeps({
+        getSecondaryDeviceName: () => 'MOTU M2',
+        getSecondaryInputCount: () => 8,
+      });
+      const store = createAnalyzeEntryStore(deps);
+      await store.getState().listenLive();
+      startSecondaryMeasurement.mockClear();
+
+      await store.getState().selectListenChannel(3);
+
+      expect(store.getState().listenChannel).toBe(3);
+      expect(store.getState().listening).toBe(true);
+      expect(stopSecondaryMeasurement).toHaveBeenCalledTimes(1);
+      expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
+      expect(startSecondaryMeasurement).toHaveBeenCalledWith({ windowSecs: 3, intervalSecs: 0.1, channel: 3 });
+      const stopOrder = stopSecondaryMeasurement.mock.invocationCallOrder[0];
+      const startOrder = startSecondaryMeasurement.mock.invocationCallOrder[0];
+      expect(stopOrder).toBeLessThan(startOrder);
+    });
+
+    it('switching N -> M always stops before the next start, and the last start carries M (AC2)', async () => {
+      const { deps, stopSecondaryMeasurement, startSecondaryMeasurement } = createFakeDeps({
+        getSecondaryDeviceName: () => 'MOTU M2',
+        getSecondaryInputCount: () => 8,
+      });
+      const store = createAnalyzeEntryStore(deps);
+      await store.getState().listenLive();
+      startSecondaryMeasurement.mockClear();
+      stopSecondaryMeasurement.mockClear();
+
+      await store.getState().selectListenChannel(2);
+      await store.getState().selectListenChannel(5);
+
+      expect(stopSecondaryMeasurement).toHaveBeenCalledTimes(2);
+      expect(startSecondaryMeasurement).toHaveBeenCalledTimes(2);
+      expect(startSecondaryMeasurement).toHaveBeenLastCalledWith({ windowSecs: 3, intervalSecs: 0.1, channel: 5 });
+      expect(store.getState().listenChannel).toBe(5);
+    });
+
+    it('selecting the same channel is a no-op (no stop, no start)', async () => {
+      const { deps, stopSecondaryMeasurement, startSecondaryMeasurement } = createFakeDeps({
+        getSecondaryDeviceName: () => 'MOTU M2',
+        getSecondaryInputCount: () => 8,
+      });
+      const store = createAnalyzeEntryStore(deps);
+      await store.getState().listenLive();
+      startSecondaryMeasurement.mockClear();
+      stopSecondaryMeasurement.mockClear();
+
+      await store.getState().selectListenChannel(0);
+
+      expect(stopSecondaryMeasurement).not.toHaveBeenCalled();
+      expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+      expect(store.getState().listenChannel).toBe(0);
+    });
+
+    it('while not listening, only records listenChannel — starts and stops nothing', async () => {
+      const { deps, stopSecondaryMeasurement, startSecondaryMeasurement } = createFakeDeps();
+      const store = createAnalyzeEntryStore(deps);
+
+      await store.getState().selectListenChannel(4);
+
+      expect(store.getState().listenChannel).toBe(4);
+      expect(stopSecondaryMeasurement).not.toHaveBeenCalled();
+      expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+    });
+
+    it('a subsequent listenLive() starts on the channel recorded while not listening', async () => {
+      const { deps, startSecondaryMeasurement } = createFakeDeps({
+        getSecondaryDeviceName: () => 'MOTU M2',
+        getSecondaryInputCount: () => 8,
+      });
+      const store = createAnalyzeEntryStore(deps);
+      await store.getState().selectListenChannel(4);
+
+      await store.getState().listenLive();
+
+      expect(startSecondaryMeasurement).toHaveBeenCalledWith({ windowSecs: 3, intervalSecs: 0.1, channel: 4 });
+    });
+
+    it.each([-1, 1.5, NaN])('ignores an invalid channel (%s)', async (invalid) => {
+      const { deps, stopSecondaryMeasurement, startSecondaryMeasurement } = createFakeDeps({
+        getSecondaryDeviceName: () => 'MOTU M2',
+        getSecondaryInputCount: () => 8,
+      });
+      const store = createAnalyzeEntryStore(deps);
+      await store.getState().listenLive();
+      startSecondaryMeasurement.mockClear();
+      stopSecondaryMeasurement.mockClear();
+
+      await store.getState().selectListenChannel(invalid);
+
+      expect(store.getState().listenChannel).toBe(0);
+      expect(stopSecondaryMeasurement).not.toHaveBeenCalled();
+      expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+    });
+
+    it('listenLive clamps a stale listenChannel to inputCount - 1', async () => {
+      const { deps, startSecondaryMeasurement } = createFakeDeps({
+        getSecondaryDeviceName: () => 'MOTU M2',
+        getSecondaryInputCount: () => 2,
+      });
+      const store = createAnalyzeEntryStore(deps);
+      store.setState({ listenChannel: 5 });
+
+      await store.getState().listenLive();
+
+      expect(store.getState().listenChannel).toBe(1);
+      expect(startSecondaryMeasurement).toHaveBeenCalledWith({ windowSecs: 3, intervalSecs: 0.1, channel: 1 });
+    });
   });
 
   describe('analyzeStage (#1487)', () => {

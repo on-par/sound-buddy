@@ -27,6 +27,36 @@ async function stubMeasurementIpc(electronApp: ElectronApplication): Promise<voi
   });
 }
 
+// #1524: records every start-measurement payload and every stop-measurement
+// call into a globalThis array so a test can assert the stop-before-start
+// restart order when switching channels.
+type MeasurementCallLog = ({ kind: 'start'; channel?: number } | { kind: 'stop' })[];
+
+async function stubMeasurementIpcWithLog(electronApp: ElectronApplication): Promise<void> {
+  await electronApp.evaluate(({ ipcMain }) => {
+    (globalThis as unknown as { __measurementCalls: MeasurementCallLog }).__measurementCalls = [];
+    ipcMain.removeHandler('start-measurement');
+    ipcMain.handle('start-measurement', (_event, opts: { channel?: number }) => {
+      (globalThis as unknown as { __measurementCalls: MeasurementCallLog }).__measurementCalls.push({
+        kind: 'start',
+        channel: opts?.channel,
+      });
+      return { success: true, micAccess: 'granted' };
+    });
+    ipcMain.removeHandler('stop-measurement');
+    ipcMain.handle('stop-measurement', () => {
+      (globalThis as unknown as { __measurementCalls: MeasurementCallLog }).__measurementCalls.push({ kind: 'stop' });
+      return { success: true };
+    });
+  });
+}
+
+async function measurementCalls(electronApp: ElectronApplication): Promise<MeasurementCallLog> {
+  return electronApp.evaluate(
+    () => (globalThis as unknown as { __measurementCalls?: MeasurementCallLog }).__measurementCalls ?? [],
+  );
+}
+
 // Tracks open-file-dialog invocations so a test can assert the native picker
 // was (or was not) reached, without racing a real dialog.showOpenDialog call.
 async function stubOpenFileDialogTracked(electronApp: ElectronApplication, result: string | null): Promise<void> {
@@ -184,6 +214,39 @@ test.describe('Analyze tab entry point (#1485), Advanced features on', () => {
     await expect(window.locator('#analyze-live-eq-stop')).toBeHidden();
     await expect(window.locator('#arc-ring')).toBeVisible();
     expect(await window.locator('#arc-ring').innerText()).toBe(fileGrade);
+  });
+
+  // AC (#1524): the single-select channel picker. list-devices (stubbed by
+  // launchApp) always reports "Fake 8ch Interface" (8 channels), so choosing
+  // it as the room-mic device is enough to make the picker appear.
+  test('AC (#1524): channel picker lets a Pro user switch which input Analyze listens to', async () => {
+    await stubMeasurementIpcWithLog(electronApp);
+
+    await window.locator('#settings-btn').click();
+    await window.locator('#settings-tab-btn-audio').click();
+    await window.locator('#secondary-measurement-device').selectOption('0');
+    await window.locator('#settings-dialog-done').click();
+    await expect(window.locator('#settings-dialog')).toBeHidden();
+
+    await window.locator('#nav-analyze').click();
+    await expect(window.locator('#analyze-live-eq-stop')).toBeVisible();
+
+    const picker = window.locator('#analyze-listen-channel');
+    await expect(picker).toBeVisible();
+    await expect(picker.locator('option')).toHaveCount(8);
+    expect(await picker.getAttribute('multiple')).toBeNull();
+
+    await picker.selectOption('2');
+    await expect(async () => {
+      const calls = await measurementCalls(electronApp);
+      expect(calls.slice(-2)).toEqual([{ kind: 'stop' }, { kind: 'start', channel: 2 }]);
+    }).toPass();
+
+    await picker.selectOption('5');
+    await expect(async () => {
+      const calls = await measurementCalls(electronApp);
+      expect(calls.slice(-2)).toEqual([{ kind: 'stop' }, { kind: 'start', channel: 5 }]);
+    }).toPass();
   });
 });
 

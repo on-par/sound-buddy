@@ -837,6 +837,9 @@
     .analyze-live-eq .analyze-mode-toggle { display:inline-flex; align-self:flex-start; flex-shrink:0; border:1px solid var(--border-default); border-radius:var(--radius-md); overflow:hidden; }
     .analyze-live-eq .analyze-mode-toggle button { border:none; border-radius:0; }
     .analyze-live-eq .analyze-mode-toggle button.active { background:var(--surface-raised); color:var(--gold-text); }
+    /* #1524: the single-select channel picker, shown only while listening on
+       a multi-input room-mic device. */
+    .analyze-live-eq .analyze-listen-channel { display:flex; align-items:center; gap:8px; flex-shrink:0; font-size:13px; color:var(--text-secondary); }
     /* #1496: the EQ card fills the freed stage. .spectrum-chart's inset-card
        chrome, so the live view reads like the analysis curve it replaces.
        The arc keeps width:100%/height:auto — veqArcSVG's 900x280 viewBox uses
