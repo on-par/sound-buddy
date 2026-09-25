@@ -27,6 +27,7 @@ import {
   commitReportCardNote,
   MAX_NOTE_LENGTH,
 } from './report-card';
+import { historySummaryCardBody } from './HistorySummaryCard';
 import type { AnalysisSummary } from '../../electron/ipc/api';
 
 function getGrading(): AnalyzeResultsGradingApi {
@@ -34,32 +35,14 @@ function getGrading(): AnalyzeResultsGradingApi {
 }
 
 // Read-only render of a stored History summary (#1521) — no note input
-// (nothing new to save) and no re-grading, matching ReportCardIsland's
-// HistoryCard: the letter/score are frozen at analysis time, not recomputed.
+// (nothing new to save) and no re-grading. Shares its meta/score/note/
+// recommendations markup with ReportCardIsland's HistoryCard via
+// historySummaryCardBody: the letter/score are frozen at analysis time, not
+// recomputed.
 function HistoryCard({ summary }: { summary: AnalysisSummary }): JSX.Element {
   return (
     <div className="analyze-results-rail" id="arc-content">
-      <div className="rc-meta">
-        <span id="arc-filename">{summary.sourceFilename}</span>
-        <span>·</span>
-        <span id="arc-date">{new Date(summary.date).toLocaleString()}</span>
-      </div>
-      <div className="rc-score">
-        <div id="arc-ring" dangerouslySetInnerHTML={{ __html: gradeRingHTML(summary.gradeLetter, summary.score) }} />
-        <div id="arc-rec-type" className="rc-rectype pill">{summary.recordingType}</div>
-        {summary.gradingProfileLabel && (
-          <div className="rc-rectype pill" id="arc-grading-profile">{summary.gradingProfileLabel}</div>
-        )}
-      </div>
-      {summary.note && <p className="rc-note-text" id="arc-note-text">{summary.note}</p>}
-      <div className="rc-section" id="arc-recommendations-section">
-        <h2>Recommendations</h2>
-        <div
-          className="rc-recs"
-          id="arc-recommendations"
-          dangerouslySetInnerHTML={{ __html: recListHTML(summary.topFixes || [], true) }}
-        />
-      </div>
+      {historySummaryCardBody(summary, 'arc')}
     </div>
   );
 }
