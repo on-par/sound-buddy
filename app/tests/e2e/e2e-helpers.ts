@@ -198,7 +198,15 @@ export async function loadAndAnalyze(window: Page, fp: string) {
 // the production mode-switch entry (window.modeSwitch.openReportCard, the
 // same resolve -> switch a tab click runs), never the peer
 // .mode-tab[data-mode="reportcard"] button, which #1507 removed.
+//
+// #1520: openReportCard flows through switchMode's feature-flag gate, which
+// reads settingsStore.featureFlags — all-off until loadSettings's
+// getFeatureFlags() round trip resolves. Awaiting window.rendererHydration
+// first (the same signal restoreBootMode awaits) avoids a race where a spec
+// calls this before boot hydration settles and gets redirected to Analyze
+// even though SOUND_BUDDY_FEATURES=all is set.
 export async function gotoReportCard(page: Page): Promise<void> {
+  await page.evaluate(() => (window as unknown as { rendererHydration: Promise<unknown> }).rendererHydration);
   await page.evaluate(() => {
     (window as unknown as { modeSwitch: { openReportCard(): void } }).modeSwitch.openReportCard();
   });
@@ -313,7 +321,10 @@ export async function launchApp(
   seedProLicense(userDataDir);
   const electronApp = await launchElectron({
     args: [path.join(__dirname, '..', '..', 'dist', 'electron', 'main.js'), `--user-data-dir=${userDataDir}`],
-    env: { ...process.env, ...LICENSE_ENV, SOUND_BUDDY_ADVANCED_FEATURES: '1', ...extraEnv },
+    // #1520: the non-hedgehog workspace gate — most e2e specs expect the full
+    // shell, so default every flag on here; a spec can still override via
+    // extraEnv (spread last).
+    env: { ...process.env, ...LICENSE_ENV, SOUND_BUDDY_ADVANCED_FEATURES: '1', SOUND_BUDDY_FEATURES: 'all', ...extraEnv },
   });
   const window = await electronApp.firstWindow();
   await window.waitForLoadState('domcontentloaded');

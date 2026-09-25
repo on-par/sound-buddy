@@ -21,6 +21,9 @@ export const LICENSE_ENV = {
   SOUND_BUDDY_LICENSE_PUBKEY: publicKey.export({ type: 'spki', format: 'der' }).toString('base64'),
   SOUND_BUDDY_DISABLE_ONBOARDING: '1',
   SOUND_BUDDY_ADVANCED_FEATURES: '1',
+  // #1520: the non-hedgehog workspace gate — these specs expect the full
+  // shell (Directory/Session/Console/Build Guide/Ring Out/Report Card).
+  SOUND_BUDDY_FEATURES: 'all',
 };
 
 /**

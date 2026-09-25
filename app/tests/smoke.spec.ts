@@ -20,7 +20,9 @@ test('smoke: exercise all flows and collect errors', async () => {
     args: [path.join(__dirname, '..', 'dist', 'electron', 'main.js')],
     // Suppress the first-run onboarding overlay (#69) so its scrim doesn't
     // intercept the tab/analyze clicks this smoke run makes on a fresh profile.
-    env: { ...process.env, SB_LOG_FILE: LOG_FILE, SOUND_BUDDY_DISABLE_ONBOARDING: '1' },
+    // #1520: this run clicks Directory/Session and Report Card directly, so
+    // every non-hedgehog workspace flag needs to be on.
+    env: { ...process.env, SB_LOG_FILE: LOG_FILE, SOUND_BUDDY_DISABLE_ONBOARDING: '1', SOUND_BUDDY_FEATURES: 'all' },
   });
 
   // Main-process stdout/stderr
