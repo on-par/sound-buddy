@@ -20,6 +20,7 @@ import { captureOptsFromCadence, type StartCaptureOpts } from '../measurement-de
 import { chooseAndAnalyzeFile } from '../report-card-chrome';
 import { useLiveCaptureStore } from './liveCaptureStore';
 import { useSettingsStore } from './settingsStore';
+import { useAnalysisStore } from './analysisStore';
 
 export interface AnalyzeEntryDeps {
   chooseAndAnalyzeFile(): Promise<void>;
@@ -28,6 +29,10 @@ export interface AnalyzeEntryDeps {
   startSecondaryMeasurement(opts: StartCaptureOpts): Promise<void>;
   stopSecondaryMeasurement(): Promise<void>;
   openSettingsAudio(): void;
+  // #1522: analyzes an already-resolved disk path (a File-drop path, never a
+  // native-dialog result) — the single production wiring is
+  // analysisStore.selectFile(fp) followed by startAnalysis(fp).
+  analyzeFilePath(filePath: string): Promise<void>;
 }
 
 export interface AnalyzeEntryState {
@@ -59,6 +64,14 @@ export interface AnalyzeEntryState {
   // never auto-starts a room-mic listen or pops the entry dialog.
   // enterAnalyze() stays the Analyze tab click's own action.
   showStage(): void;
+  // #1522: the File toggle's action — stops an active listen (same teardown
+  // rule as chooseFile()) but never opens the native picker. Analyze's
+  // File mode is otherwise "load a file however you like" (drop or the
+  // existing Load file… button).
+  switchToFile(): Promise<void>;
+  // #1522: the dropzone's onDrop action — tears down an active listen, then
+  // analyzes an already-resolved disk path (from droppedAudioPath).
+  analyzeDroppedFile(filePath: string): Promise<void>;
 }
 
 export function createAnalyzeEntryStore(
@@ -132,6 +145,23 @@ export function createAnalyzeEntryStore(
       set({ listening: false });
       await deps.stopSecondaryMeasurement();
     },
+
+    // #1522: mirrors chooseFile()'s teardown-before-action rule, but never
+    // calls chooseAndAnalyzeFile — the File toggle only switches mode; the
+    // dropzone or the existing Load file… button does the actual loading.
+    async switchToFile() {
+      set({ dialogOpen: false });
+      if (get().listening) await get().stopListening();
+    },
+
+    // #1522: the dropzone's onDrop action — same stop-before-load ordering
+    // as chooseFile(), but for an already-resolved disk path instead of a
+    // native-dialog result.
+    async analyzeDroppedFile(filePath) {
+      set({ dialogOpen: false, analyzeStage: true });
+      if (get().listening) await get().stopListening();
+      await deps.analyzeFilePath(filePath);
+    },
   }));
 }
 
@@ -145,4 +175,8 @@ export const useAnalyzeEntryStore = createAnalyzeEntryStore({
   startSecondaryMeasurement: (opts) => useLiveCaptureStore.getState().startSecondaryMeasurement(opts),
   stopSecondaryMeasurement: () => useLiveCaptureStore.getState().stopSecondaryMeasurement(),
   openSettingsAudio: () => useSettingsStore.getState().openDialog('audio'),
+  analyzeFilePath: async (fp) => {
+    useAnalysisStore.getState().selectFile(fp);
+    await useAnalysisStore.getState().startAnalysis(fp);
+  },
 });

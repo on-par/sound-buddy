@@ -11,6 +11,7 @@ function createFakeDeps(overrides: Partial<AnalyzeEntryDeps> = {}) {
   const startSecondaryMeasurement = vi.fn(async () => {});
   const stopSecondaryMeasurement = vi.fn(async () => {});
   const openSettingsAudio = vi.fn();
+  const analyzeFilePath = vi.fn(async () => {});
   const deps: AnalyzeEntryDeps = {
     chooseAndAnalyzeFile,
     getSecondaryDeviceName,
@@ -18,11 +19,12 @@ function createFakeDeps(overrides: Partial<AnalyzeEntryDeps> = {}) {
     startSecondaryMeasurement,
     stopSecondaryMeasurement,
     openSettingsAudio,
+    analyzeFilePath,
     ...overrides,
   };
   return {
     deps, chooseAndAnalyzeFile, getSecondaryDeviceName, getCadence,
-    startSecondaryMeasurement, stopSecondaryMeasurement, openSettingsAudio,
+    startSecondaryMeasurement, stopSecondaryMeasurement, openSettingsAudio, analyzeFilePath,
   };
 }
 
@@ -295,6 +297,84 @@ describe('createAnalyzeEntryStore (#1468)', () => {
       store.getState().showStage();
 
       expect(store.getState().analyzeStage).toBe(true);
+    });
+  });
+
+  describe('switchToFile() (#1522)', () => {
+    it('while listening: stops the measurement and sets listening false, calling neither file action', async () => {
+      const { deps, stopSecondaryMeasurement, chooseAndAnalyzeFile, analyzeFilePath } = createFakeDeps({
+        getSecondaryDeviceName: () => 'MOTU M2',
+      });
+      const store = createAnalyzeEntryStore(deps);
+      await store.getState().listenLive();
+      expect(store.getState().listening).toBe(true);
+
+      await store.getState().switchToFile();
+
+      expect(store.getState().listening).toBe(false);
+      expect(stopSecondaryMeasurement).toHaveBeenCalledTimes(1);
+      expect(chooseAndAnalyzeFile).not.toHaveBeenCalled();
+      expect(analyzeFilePath).not.toHaveBeenCalled();
+    });
+
+    it('while not listening: is a no-op for stopSecondaryMeasurement', async () => {
+      const { deps, stopSecondaryMeasurement } = createFakeDeps();
+      const store = createAnalyzeEntryStore(deps);
+
+      await store.getState().switchToFile();
+
+      expect(stopSecondaryMeasurement).not.toHaveBeenCalled();
+    });
+
+    it('closes the dialog', async () => {
+      const { deps } = createFakeDeps();
+      const store = createAnalyzeEntryStore(deps);
+      store.getState().open();
+
+      await store.getState().switchToFile();
+
+      expect(store.getState().dialogOpen).toBe(false);
+    });
+  });
+
+  describe('analyzeDroppedFile() (#1522)', () => {
+    it('while listening: stops the measurement before analyzing the dropped path, in order', async () => {
+      const { deps, stopSecondaryMeasurement, analyzeFilePath } = createFakeDeps({
+        getSecondaryDeviceName: () => 'MOTU M2',
+      });
+      const store = createAnalyzeEntryStore(deps);
+      await store.getState().listenLive();
+      expect(store.getState().listening).toBe(true);
+
+      await store.getState().analyzeDroppedFile('/x.wav');
+
+      expect(store.getState().listening).toBe(false);
+      expect(stopSecondaryMeasurement).toHaveBeenCalledTimes(1);
+      expect(analyzeFilePath).toHaveBeenCalledWith('/x.wav');
+      const stopOrder = stopSecondaryMeasurement.mock.invocationCallOrder[0];
+      const analyzeOrder = analyzeFilePath.mock.invocationCallOrder[0];
+      expect(stopOrder).toBeLessThan(analyzeOrder);
+    });
+
+    it('while idle: calls only analyzeFilePath and opens the stage', async () => {
+      const { deps, stopSecondaryMeasurement, analyzeFilePath } = createFakeDeps();
+      const store = createAnalyzeEntryStore(deps);
+
+      await store.getState().analyzeDroppedFile('/x.wav');
+
+      expect(stopSecondaryMeasurement).not.toHaveBeenCalled();
+      expect(analyzeFilePath).toHaveBeenCalledWith('/x.wav');
+      expect(store.getState().analyzeStage).toBe(true);
+    });
+
+    it('closes the dialog', async () => {
+      const { deps } = createFakeDeps();
+      const store = createAnalyzeEntryStore(deps);
+      store.getState().open();
+
+      await store.getState().analyzeDroppedFile('/x.wav');
+
+      expect(store.getState().dialogOpen).toBe(false);
     });
   });
 });

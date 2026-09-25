@@ -257,6 +257,7 @@ describe('ModeTabs Listen live wiring (#1485)', () => {
       startSecondaryMeasurement,
       stopSecondaryMeasurement: vi.fn(async () => {}),
       openSettingsAudio,
+      analyzeFilePath: vi.fn(async () => {}),
     };
     const store = createAnalyzeEntryStore(deps);
     await store.getState().enterAnalyze();
