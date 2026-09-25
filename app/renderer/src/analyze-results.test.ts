@@ -58,27 +58,27 @@ function fakeGrading(overrides: Partial<AnalyzeResultsGradingApi> = {}): Analyze
 }
 
 describe('analyzeResultsView (#1487)', () => {
-  it('is empty/idle with no analysis and not listening', () => {
-    const view = analyzeResultsView(null, null, null, false, fakeGrading());
+  it('is empty/idle with no analysis in File mode', () => {
+    const view = analyzeResultsView(null, null, null, 'file', fakeGrading());
     expect(view).toEqual({ kind: 'empty', state: 'idle' });
   });
 
-  it('is empty/listening with no analysis while listening', () => {
-    const view = analyzeResultsView(null, null, null, true, fakeGrading());
+  it('is empty/listening with no analysis in Live mode', () => {
+    const view = analyzeResultsView(null, null, null, 'live', fakeGrading());
     expect(view).toEqual({ kind: 'empty', state: 'listening' });
   });
 
   it('never touches the grading API in the empty branch', () => {
     const grading = fakeGrading();
-    analyzeResultsView(null, null, null, false, grading);
+    analyzeResultsView(null, null, null, 'file', grading);
     expect(grading.computeGrade).not.toHaveBeenCalled();
   });
 
-  it('folds a file analysis into grade/pill/recommendations, currentAnalysis winning over liveSource', () => {
+  it('folds a file analysis into grade/pill/recommendations in File mode, currentAnalysis winning over liveSource', () => {
     const grading = fakeGrading();
     const live = makeLiveSource('live.wav');
 
-    const view = analyzeResultsView(ANALYSIS, live, null, true, grading);
+    const view = analyzeResultsView(ANALYSIS, live, null, 'file', grading);
 
     expect(view.kind).toBe('result');
     if (view.kind !== 'result') throw new Error('unreachable');
@@ -93,21 +93,52 @@ describe('analyzeResultsView (#1487)', () => {
     expect(grading.computeGrade).toHaveBeenCalledWith(view.source);
   });
 
-  it('falls back to the live source when there is no file analysis', () => {
+  it('falls back to the live source in File mode when there is no file analysis', () => {
     const grading = fakeGrading();
     const live = makeLiveSource('live.wav');
 
-    const view = analyzeResultsView(null, live, null, true, grading);
+    const view = analyzeResultsView(null, live, null, 'file', grading);
 
     expect(view.kind).toBe('result');
     if (view.kind !== 'result') throw new Error('unreachable');
     expect(view.source.filename).toBe('live.wav');
   });
 
-  it('renders a history kind when only a stored summary is present (#1521)', () => {
+  // #1522 AC1/AC3: Live mode reads liveSource only — a prior file grade must
+  // never leak into the rail once the room mic is listening, and toggling
+  // back to File must show the file grade again (asserted in the store/panel
+  // tests, since this pure fold never mutates either input).
+  it('Live mode reads only liveSource, even with a currentAnalysis present (#1522)', () => {
+    const grading = fakeGrading();
+    const live = makeLiveSource('live.wav');
+
+    const view = analyzeResultsView(ANALYSIS, live, null, 'live', grading);
+
+    expect(view.kind).toBe('result');
+    if (view.kind !== 'result') throw new Error('unreachable');
+    expect(view.source.filename).toBe('live.wav');
+  });
+
+  it('Live mode with a currentAnalysis but no liveSource is empty/listening, never the file grade (#1522)', () => {
     const grading = fakeGrading();
 
-    const view = analyzeResultsView(null, null, HISTORY_SUMMARY, false, grading);
+    const view = analyzeResultsView(ANALYSIS, null, null, 'live', grading);
+
+    expect(view).toEqual({ kind: 'empty', state: 'listening' });
+  });
+
+  it('Live mode with only a historySummary is empty/listening, never the history card (#1522)', () => {
+    const grading = fakeGrading();
+
+    const view = analyzeResultsView(null, null, HISTORY_SUMMARY, 'live', grading);
+
+    expect(view).toEqual({ kind: 'empty', state: 'listening' });
+  });
+
+  it('renders a history kind when only a stored summary is present in File mode (#1521)', () => {
+    const grading = fakeGrading();
+
+    const view = analyzeResultsView(null, null, HISTORY_SUMMARY, 'file', grading);
 
     expect(view).toEqual({ kind: 'history', summary: HISTORY_SUMMARY });
   });
@@ -115,7 +146,7 @@ describe('analyzeResultsView (#1487)', () => {
   it('never touches the grading API in the history branch (#1521)', () => {
     const grading = fakeGrading();
 
-    analyzeResultsView(null, null, HISTORY_SUMMARY, false, grading);
+    analyzeResultsView(null, null, HISTORY_SUMMARY, 'file', grading);
 
     expect(grading.computeGrade).not.toHaveBeenCalled();
     expect(grading.computeScore).not.toHaveBeenCalled();
@@ -124,28 +155,20 @@ describe('analyzeResultsView (#1487)', () => {
     expect(grading.getGradingProfile).not.toHaveBeenCalled();
   });
 
-  it('currentAnalysis wins over historySummary (#1521)', () => {
+  it('currentAnalysis wins over historySummary in File mode (#1521)', () => {
     const grading = fakeGrading();
 
-    const view = analyzeResultsView(ANALYSIS, null, HISTORY_SUMMARY, false, grading);
+    const view = analyzeResultsView(ANALYSIS, null, HISTORY_SUMMARY, 'file', grading);
 
     expect(view.kind).toBe('result');
   });
 
-  it('liveSource wins over historySummary (#1521)', () => {
+  it('liveSource wins over historySummary in File mode (#1521)', () => {
     const grading = fakeGrading();
     const live = makeLiveSource('live.wav');
 
-    const view = analyzeResultsView(null, live, HISTORY_SUMMARY, false, grading);
+    const view = analyzeResultsView(null, live, HISTORY_SUMMARY, 'file', grading);
 
     expect(view.kind).toBe('result');
-  });
-
-  it('listening with a historySummary is still history, not empty (#1521)', () => {
-    const grading = fakeGrading();
-
-    const view = analyzeResultsView(null, null, HISTORY_SUMMARY, true, grading);
-
-    expect(view).toEqual({ kind: 'history', summary: HISTORY_SUMMARY });
   });
 });

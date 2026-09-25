@@ -129,6 +129,62 @@ test.describe('Analyze tab entry point (#1485), Advanced features on', () => {
     await window.locator('.mode-tab[data-mode="console"]').click();
     await expect(window.locator('body')).not.toHaveClass(/analyze-listening/);
   });
+
+  // AC (#1522): Live ↔ File toggle keeps each mode's result — same result
+  // shape, no cross-corruption. Live and File are equal-footing modes of one
+  // Analyze tab; toggling between them must never clear or overwrite the
+  // other mode's result (the bug this issue fixes: a file grade used to
+  // permanently shadow a later live listen).
+  //
+  // Steps 5/6 of the spec plan (emitting a `measurement-event` window so the
+  // rail shows a live-derived grade) are intentionally not driven here — the
+  // window shape (LiveEvent ticks feeding secondaryWindows/
+  // lastMeasurementChannels via liveCaptureStore.bindMeasurementEvents) isn't
+  // exercised by any existing e2e spec, and hand-rolling it risks a flaky,
+  // hard-to-maintain fixture. AC1 (Live mode reads liveSource only, even with
+  // a file analysis present) is already covered directly and thoroughly by
+  // analyze-results.test.ts and AnalyzeResultsPanel.test.ts. This e2e instead
+  // covers the toggle's own behavior end to end: the File toggle never opens
+  // the native picker, the dropzone renders and can trigger a real analysis,
+  // switching to Live shows the listening empty state (never the file
+  // grade), and switching back to File recovers the exact same file grade.
+  test('AC (#1522): Live/File toggle switches mode without opening the file dialog, and File keeps its grade after a Live round trip', async () => {
+    await window.locator('#settings-btn').click();
+    await window.locator('#settings-tab-btn-audio').click();
+    await window.locator('#secondary-measurement-device').selectOption('0');
+    await window.locator('#settings-dialog-done').click();
+    await expect(window.locator('#settings-dialog')).toBeHidden();
+
+    await window.locator('#nav-analyze').click();
+    await expect(window.locator('#analyze-live-eq-stop')).toBeVisible();
+
+    const fixturePath = path.join(__dirname, '..', 'fixtures', 'silence.wav');
+    await stubOpenFileDialogTracked(electronApp, fixturePath);
+
+    await window.locator('#analyze-mode-file').click();
+    await expect(window.locator('#analyze-mode-file')).toHaveAttribute('aria-pressed', 'true');
+    await expect(window.locator('#analyze-file-dropzone')).toBeVisible();
+    expect(await openFileDialogCallCount(electronApp)).toBe(0);
+
+    await window.locator('#analyze-file-dropzone').click();
+    await expect(window.locator('#arc-ring')).toBeVisible();
+    await expect(window.locator('#arc-rec-type')).toBeVisible();
+    expect(await openFileDialogCallCount(electronApp)).toBe(1);
+    const fileGrade = await window.locator('#arc-ring').innerText();
+
+    await window.locator('#analyze-mode-live').click();
+    await expect(window.locator('#analyze-mode-live')).toHaveAttribute('aria-pressed', 'true');
+    await expect(window.locator('#analyze-live-eq-stop')).toBeVisible();
+    await expect(window.locator('#arc-empty')).toBeVisible();
+    await expect(window.locator('#arc-empty')).toContainText('Listening');
+    await expect(window.locator('#arc-ring')).toBeHidden();
+
+    await window.locator('#analyze-mode-file').click();
+    await expect(window.locator('#analyze-mode-file')).toHaveAttribute('aria-pressed', 'true');
+    await expect(window.locator('#analyze-live-eq-stop')).toBeHidden();
+    await expect(window.locator('#arc-ring')).toBeVisible();
+    expect(await window.locator('#arc-ring').innerText()).toBe(fileGrade);
+  });
 });
 
 test.describe('Analyze tab entry point (#1485), Advanced features off (Simple mode)', () => {

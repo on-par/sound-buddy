@@ -68,18 +68,19 @@ describe('analyzeLiveEqView (#1469, lc-06)', () => {
     }
   });
 
-  // #1487: the stage stays open (analyzeStage) after a listen stops — e.g. the
-  // user picked "Load file…" — so the island keeps rendering (an idle notice,
-  // never the last-seen room curve) instead of the whole stage vanishing.
-  describe('analyzeStage (#1487)', () => {
-    it('stays visible with an idle notice once listening has stopped but the stage is still open', () => {
+  // #1487/#1522: the stage stays open (analyzeStage) after a listen stops —
+  // e.g. the user picked "Load file…" or clicked the File toggle — so the
+  // island keeps rendering (the File-mode dropzone, never the last-seen room
+  // curve) instead of the whole stage vanishing.
+  describe('analyzeStage (#1487, #1522)', () => {
+    it('renders the file kind once listening has stopped but the stage is still open (#1522)', () => {
       const view = analyzeLiveEqView({ listening: false, analyzeStage: true, appMode: 'reportcard', secondary: secondary('off'), override: null });
-      expect(view).toEqual({ kind: 'notice', text: expect.stringContaining('Not listening') });
+      expect(view).toEqual({ kind: 'file' });
     });
 
     it('never reaches room from analyzeStage alone — room still requires listening', () => {
       const view = analyzeLiveEqView({ listening: false, analyzeStage: true, appMode: 'reportcard', secondary: secondary('active'), override: OVERRIDE });
-      expect(view.kind).toBe('notice');
+      expect(view.kind).toBe('file');
     });
 
     it('is hidden once both listening and the stage have closed', () => {

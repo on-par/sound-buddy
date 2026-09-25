@@ -116,6 +116,29 @@ describe('AnalyzeResultsPanel (#1487)', () => {
     expect(html).toContain('id="arc-content"');
   });
 
+  // #1522 AC1/AC3: Live mode must read the live source only, even once a file
+  // has already been graded — before this, getReportCardSource's
+  // currentAnalysis-first priority made a live listen show the stale file
+  // grade forever.
+  it('while listening, renders the live-derived grade even when a file analysis also exists (#1522)', () => {
+    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, liveSource: makeLiveSource('live.wav') });
+    useAnalyzeEntryStore.setState({ listening: true });
+    (globalThis as { window?: unknown }).window = {
+      grading: {
+        computeGrade: (src: ReportCardSource) => (src.filename === 'live.wav' ? 'A' : 'B'),
+        computeScore: () => 82,
+        analyzeRecordingType: () => REC_TYPE,
+        computeRecommendations: () => ['Tighten the low mid'],
+        getGradingProfile: () => ({ label: 'Casual' }),
+      },
+    };
+
+    const html = renderMarkup();
+
+    expect(html).toContain('id="arc-content"');
+    expect(html).toMatch(/id="arc-ring"[\s\S]*>A</);
+  });
+
   it('never renders an rc-* id — only arc-* ids, so ReportCardIsland never gets a duplicate DOM id', () => {
     useAnalysisStore.setState({ currentAnalysis: ANALYSIS });
 

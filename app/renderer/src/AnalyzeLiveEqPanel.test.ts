@@ -248,7 +248,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
       const html = renderMarkup();
 
       expect(html).not.toBe('');
-      expect(html).toContain('Not listening');
+      expect(html).toContain('id="analyze-file-dropzone"');
       expect(html).toContain('analyze-results-rail');
     });
 
@@ -275,6 +275,41 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
       });
 
       expect(renderMarkup()).not.toContain('id="rc-');
+    });
+  });
+
+  // #1522: the Live/File segmented toggle and the File-mode dropzone.
+  describe('Live/File mode toggle and dropzone (#1522)', () => {
+    it('while listening, the Live toggle is pressed and the dropzone is absent', () => {
+      useAnalyzeEntryStore.setState({ listening: true, analyzeStage: true });
+      useLiveCaptureStore.setState({
+        appMode: 'reportcard',
+        secondaryMeasurement: { status: 'active', deviceName: 'MacBook Pro Microphone' },
+        lastMeasurementChannels: [ROOM_CH],
+      });
+
+      const html = renderMarkup();
+
+      expect(html).toMatch(/id="analyze-mode-live"[^>]*aria-pressed="true"/);
+      expect(html).toMatch(/id="analyze-mode-file"[^>]*aria-pressed="false"/);
+      expect(html).not.toContain('id="analyze-file-dropzone"');
+    });
+
+    it('with the stage open and not listening, the File toggle is pressed and the dropzone is present', () => {
+      useAnalyzeEntryStore.setState({ listening: false, analyzeStage: true });
+      useLiveCaptureStore.setState({
+        appMode: 'reportcard',
+        secondaryMeasurement: { status: 'off', deviceName: '' },
+        lastMeasurementChannels: null,
+      });
+
+      const html = renderMarkup();
+
+      expect(html).toMatch(/id="analyze-mode-file"[^>]*aria-pressed="true"/);
+      expect(html).toMatch(/id="analyze-mode-live"[^>]*aria-pressed="false"/);
+      expect(html).toContain('id="analyze-file-dropzone"');
+      expect(html).toContain('Drop audio file here');
+      expect(html).not.toContain('Not listening');
     });
   });
 });

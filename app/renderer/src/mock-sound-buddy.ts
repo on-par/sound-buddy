@@ -211,6 +211,10 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     listOutputDevices: invoke('listOutputDevices', undefined),
     openFileDialog: invoke('openFileDialog', null),
     openDirDialog: invoke('openDirDialog', null),
+    getPathForFile: (file: File) => {
+      record('getPathForFile', [file]);
+      return '';
+    },
     startLive: invoke('startLive', undefined),
     stopLive: invoke('stopLive', { success: true, sessionDir: null }),
     startMeasurement: invoke('startMeasurement', { success: true }),

@@ -20,7 +20,8 @@
 // something else causes this component to re-render, without itself forcing
 // a re-render at meter rate.
 
-import { useEffect, type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
+import { useElectron } from './useElectron';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useAnalyzeEntryStore } from './stores/analyzeEntryStore';
@@ -29,9 +30,13 @@ import { roomPaneOverride } from './measurement-device-state';
 import { eqPaneRoomSectionHTML } from './live-capture-panel';
 import { spectrumLegendHTML } from './spectrum-display';
 import { analyzeLiveEqView } from './analyze-live-eq';
+import { analyzeModeOf, droppedAudioPath } from './analyze-entry';
+import { iconSvg } from './report-card';
 import AnalyzeResultsPanel from './AnalyzeResultsPanel';
 
 export default function AnalyzeLiveEqPanel(): JSX.Element | null {
+  const sb = useElectron();
+  const [dragOver, setDragOver] = useState(false);
   const { listening, analyzeStage } = useStoreShallow(useAnalyzeEntryStore, (s) => ({
     listening: s.listening,
     analyzeStage: s.analyzeStage,
@@ -68,6 +73,8 @@ export default function AnalyzeLiveEqPanel(): JSX.Element | null {
 
   if (view.kind === 'hidden') return null;
 
+  const mode = analyzeModeOf(listening);
+
   return (
     // #1487: the Analyze stage is two columns — the room EQ (unchanged) plus
     // the results rail folding in the grade/pills/note/recommendations once a
@@ -75,6 +82,34 @@ export default function AnalyzeLiveEqPanel(): JSX.Element | null {
     // portal — ReportCard.tsx nests inside ReportCardIsland.tsx the same way.
     <div className="analyze-stage">
       <div className="analyze-live-eq" aria-label="Room-mic EQ">
+        {/* #1522: Live and File are equal-footing modes of one Analyze tab.
+            The Live button only starts a listen when not already listening —
+            listenLive() itself routes to Settings > Audio when no device is
+            configured. The File button never opens the native picker; it
+            only switches mode, matching the dropzone/Load-file… buttons
+            below. */}
+        <div className="analyze-mode-toggle" role="group" aria-label="Analyze mode">
+          <button
+            type="button"
+            id="analyze-mode-live"
+            className={`btn btn-secondary sm${mode === 'live' ? ' active' : ''}`}
+            aria-pressed={mode === 'live'}
+            /* c8 ignore next -- click dispatch, no jsdom */
+            onClick={() => { if (!listening) void useAnalyzeEntryStore.getState().listenLive(); }}
+          >
+            Live
+          </button>
+          <button
+            type="button"
+            id="analyze-mode-file"
+            className={`btn btn-secondary sm${mode === 'file' ? ' active' : ''}`}
+            aria-pressed={mode === 'file'}
+            /* c8 ignore next -- click dispatch, no jsdom */
+            onClick={() => { void useAnalyzeEntryStore.getState().switchToFile(); }}
+          >
+            File
+          </button>
+        </div>
         {view.kind === 'room'
           ? <>
             <div
@@ -88,6 +123,32 @@ export default function AnalyzeLiveEqPanel(): JSX.Element | null {
               <div dangerouslySetInnerHTML={{ __html: spectrumLegendHTML(profile.idealProfile, null, profile.isAutoProfile) }} />
             )}
           </>
+          : view.kind === 'file'
+          ? <div className="eq-pane-section eq-pane-primary">
+            <div
+              className={`dropzone${dragOver ? ' dragover' : ''}`}
+              id="analyze-file-dropzone"
+              /* c8 ignore start -- click/drag dispatch, no jsdom. The real
+                 logic is in droppedAudioPath and analyzeDroppedFile, both
+                 unit-tested. */
+              onClick={() => { void useAnalyzeEntryStore.getState().chooseFile(); }}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                const fp = droppedAudioPath(e.dataTransfer?.files, sb.getPathForFile);
+                if (fp) void useAnalyzeEntryStore.getState().analyzeDroppedFile(fp);
+              }}
+              /* c8 ignore stop */
+            >
+              <div className="dz-icon" dangerouslySetInnerHTML={{ __html: iconSvg('file-audio', 16) }} />
+              <div className="dz-body">
+                <span className="dz-title">Drop audio file here</span>
+                <span className="dz-hint">or click to browse</span>
+              </div>
+            </div>
+          </div>
           : <div className="eq-pane-section eq-pane-primary eq-pane-empty">
             <div className="eq-pane-header">Room</div>
             <div className="eq-pane-empty-hint">{view.text}</div>

@@ -10,6 +10,7 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('electron', () => ({
   contextBridge: { exposeInMainWorld: vi.fn() },
   ipcRenderer: { invoke: vi.fn(), on: vi.fn(), removeAllListeners: vi.fn() },
+  webUtils: { getPathForFile: vi.fn(() => '') },
 }));
 
 import { createBridge, type IpcRendererLike } from './preload';
@@ -24,6 +25,7 @@ import type {
   SetPlaybackRoutesOpts,
   FeedbackSubmission,
   DiffScenesOpts,
+  FilePathResolver,
 } from './ipc/api';
 
 function mockIpc(): IpcRendererLike & {
@@ -184,10 +186,18 @@ const LISTENERS: BridgeKey[] = [
   'removeAllListeners',
 ];
 
+// #1522: synchronous methods backed by the injected FilePathResolver rather
+// than ipc.invoke or ipc.on — also excluded from the completeness guard.
+const SYNC_METHODS: BridgeKey[] = ['getPathForFile'];
+
+function fakeFileUtils(): FilePathResolver & { getPathForFile: ReturnType<typeof vi.fn> } {
+  return { getPathForFile: vi.fn(() => '/tmp/dropped.wav') };
+}
+
 describe('createBridge — invoke-backed methods', () => {
   it.each(INVOKE_TABLE)('$method forwards to ipc.invoke($channel, ...args)', ({ method, channel, args }) => {
     const ipc = mockIpc();
-    const bridge = createBridge(ipc);
+    const bridge = createBridge(ipc, fakeFileUtils());
     (bridge[method] as (...a: unknown[]) => unknown)(...args);
 
     expect(ipc.invoke).toHaveBeenCalledTimes(1);
@@ -196,7 +206,7 @@ describe('createBridge — invoke-backed methods', () => {
 
   it('forwards object arguments by reference, unmodified', () => {
     const ipc = mockIpc();
-    const bridge = createBridge(ipc);
+    const bridge = createBridge(ipc, fakeFileUtils());
     const patch = { storageDir: '/tmp/rec' } satisfies UpdateSettingsPatch;
 
     bridge.updateSettings(patch);
@@ -204,13 +214,35 @@ describe('createBridge — invoke-backed methods', () => {
     expect(ipc.invoke.mock.calls[0][1]).toBe(patch);
   });
 
-  it('is exhaustive: every non-listener bridge key has a table row', () => {
-    const bridge = createBridge(mockIpc());
+  it('is exhaustive: every non-listener, non-sync bridge key has a table row', () => {
+    const bridge = createBridge(mockIpc(), fakeFileUtils());
     const nonListenerKeys = Object.keys(bridge).filter(
-      (k) => !LISTENERS.includes(k as BridgeKey)
+      (k) => !LISTENERS.includes(k as BridgeKey) && !SYNC_METHODS.includes(k as BridgeKey)
     );
 
     expect(new Set(INVOKE_TABLE.map((r) => r.method))).toEqual(new Set(nonListenerKeys));
+  });
+});
+
+describe('createBridge — getPathForFile (#1522)', () => {
+  it('forwards the File to the injected resolver and returns its result', () => {
+    const fileUtils = fakeFileUtils();
+    const bridge = createBridge(mockIpc(), fileUtils);
+    const file = new File([], 'a.wav');
+
+    const result = bridge.getPathForFile(file);
+
+    expect(fileUtils.getPathForFile).toHaveBeenCalledWith(file);
+    expect(result).toBe('/tmp/dropped.wav');
+  });
+
+  it('does not touch ipc.invoke', () => {
+    const ipc = mockIpc();
+    const bridge = createBridge(ipc, fakeFileUtils());
+
+    bridge.getPathForFile(new File([], 'a.wav'));
+
+    expect(ipc.invoke).not.toHaveBeenCalled();
   });
 });
 
@@ -256,7 +288,7 @@ describe('createBridge — event listeners', () => {
     '$method registers ipc.on($channel, ...) and forwards the payload',
     ({ method, channel, payload, expectsPayload }) => {
       const ipc = mockIpc();
-      const bridge = createBridge(ipc);
+      const bridge = createBridge(ipc, fakeFileUtils());
       const cb = vi.fn();
 
       (bridge[method] as (cb: (...a: unknown[]) => void) => void)(cb);
@@ -277,7 +309,7 @@ describe('createBridge — event listeners', () => {
 
   it('removeAllListeners forwards the channel to ipc.removeAllListeners', () => {
     const ipc = mockIpc();
-    const bridge = createBridge(ipc);
+    const bridge = createBridge(ipc, fakeFileUtils());
 
     bridge.removeAllListeners('live-event');
 
@@ -288,7 +320,7 @@ describe('createBridge — event listeners', () => {
 
 describe('createBridge — no key material', () => {
   it('exposes no key-material getters on the bridge surface', () => {
-    const bridge = createBridge(mockIpc());
+    const bridge = createBridge(mockIpc(), fakeFileUtils());
 
     expect(Object.keys(bridge).filter((k) => /key/i.test(k))).toEqual([]);
     expect(bridge).not.toHaveProperty('getApiKey');
