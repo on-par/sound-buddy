@@ -17,7 +17,7 @@ Sound Buddy is a Mac (Electron) desktop app for church audio engineers. It analy
 
 **Key design decisions:**
 - The AI narrative is **user-supplied** — either local Ollama or the user's own API key via `pi`. The app never proxies AI requests and eats zero inference cost.
-- Audio analysis runs **fully local** — no audio data leaves the user's machine.
+- Pro/desktop audio analysis runs **fully local** — no audio data leaves the user's machine. The Free web tier (browser, `site/` + `worker/`) may upload audio for server-side analysis. See `.factory/constitution.md` Paid-product safety.
 - The app is **self-contained** — `app/build/afterPack.js` bundles sox, ffmpeg, and a relocatable Python runtime into the `.app`.
 
 ## Development
