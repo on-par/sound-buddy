@@ -16,8 +16,9 @@
 // the Analyze stage stays open after a file-derived result replaces a
 // stopped listen, so AnalyzeResultsPanel keeps rendering instead of the
 // whole stage vanishing. `analyzeStage` can never reach the 'room' branch on
-// its own (that still requires `listening`), so an idle notice is what a
-// stage-only visit gets.
+// its own (that still requires `listening`), so File mode is what a
+// stage-only visit gets (#1522 — a File-mode dropzone, replacing the old
+// idle notice).
 
 import { secondaryStatusHTML, type SecondaryMeasurementState } from './measurement-device-state';
 import type { EqPaneRoomOverride } from './live-capture-panel';
@@ -33,16 +34,15 @@ export interface AnalyzeLiveEqInput {
 export type AnalyzeLiveEqView =
   | { kind: 'hidden' }
   | { kind: 'notice'; text: string }
-  | { kind: 'room'; override: EqPaneRoomOverride };
-
-const IDLE_STAGE_NOTICE = 'Not listening — choose Listen live to see the room EQ, or load a file to grade it.';
+  | { kind: 'room'; override: EqPaneRoomOverride }
+  | { kind: 'file' };
 
 // Analyze's live-listening EQ never appears while the Session (live)
 // workspace is active — LiveEqPane's docked pane owns that screen (AC2) —
 // so this island and the docked pane are never both visible at once.
 export function analyzeLiveEqView(input: AnalyzeLiveEqInput): AnalyzeLiveEqView {
   if (input.appMode === 'live' || (!input.listening && !input.analyzeStage)) return { kind: 'hidden' };
-  if (!input.listening) return { kind: 'notice', text: IDLE_STAGE_NOTICE };
+  if (!input.listening) return { kind: 'file' };
   if (input.secondary.status === 'active' && input.override) {
     return { kind: 'room', override: input.override };
   }

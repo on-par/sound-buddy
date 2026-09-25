@@ -832,6 +832,11 @@
        update — ADR-0145 is that update. */
     .analyze-stage { display:flex; flex-direction:row; gap:16px; flex:1; min-height:0; }
     .analyze-live-eq { display:flex; flex-direction:column; gap:14px; flex:1; min-height:0; }
+    /* #1522: the Live/File segmented toggle — an inline-flex pair of pill
+       buttons sharing .mode-tab.active's gold-on-raised active treatment. */
+    .analyze-live-eq .analyze-mode-toggle { display:inline-flex; align-self:flex-start; flex-shrink:0; border:1px solid var(--border-default); border-radius:var(--radius-md); overflow:hidden; }
+    .analyze-live-eq .analyze-mode-toggle button { border:none; border-radius:0; }
+    .analyze-live-eq .analyze-mode-toggle button.active { background:var(--surface-raised); color:var(--gold-text); }
     /* #1496: the EQ card fills the freed stage. .spectrum-chart's inset-card
        chrome, so the live view reads like the analysis curve it replaces.
        The arc keeps width:100%/height:auto — veqArcSVG's 900x280 viewBox uses
