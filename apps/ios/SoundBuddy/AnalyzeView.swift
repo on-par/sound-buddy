@@ -47,14 +47,28 @@ struct AnalyzeView: View {
         #endif
     }
 
+    /// Brand first: the Mac icon's mark and "Sound Buddy", with the Analyze
+    /// section label and listening status beneath.
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
+        HStack(alignment: .center, spacing: Layout.brandSpacing) {
+            Image("BrandMark")
+                .resizable()
+                .frame(width: Layout.brandMarkSize, height: Layout.brandMarkSize)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: Layout.headerSpacing) {
-                Text("Analyze")
-                    .font(.largeTitle.weight(.bold))
-                ListeningIndicator(state: model.state)
+                Text("Sound Buddy")
+                    .font(.title2.weight(.bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(Layout.titleMinScale)
+                    .accessibilityAddTraits(.isHeader)
+                HStack(spacing: Layout.indicatorSpacing) {
+                    Text("Analyze")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Palette.accent)
+                    ListeningIndicator(state: model.state)
+                }
             }
-            Spacer()
+            Spacer(minLength: 0)
             Label(AnalyzeModel.honestyCue, systemImage: "iphone.gen3")
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, Layout.badgePaddingH)
@@ -66,7 +80,7 @@ struct AnalyzeView: View {
     }
 }
 
-/// Small status line under the title — the only listening chrome.
+/// Small status line beside the Analyze label — the only listening chrome.
 private struct ListeningIndicator: View {
     let state: AnalyzeModel.State
 
@@ -205,7 +219,12 @@ private struct StatusMessageView: View {
 private enum Layout {
     static let screenPadding: CGFloat = 20
     static let sectionSpacing: CGFloat = 20
-    static let headerSpacing: CGFloat = 4
+    static let headerSpacing: CGFloat = 2
+    static let brandSpacing: CGFloat = 10
+    /// Matches BRAND_MARK_POINTS in scripts/make_ios_icons.py.
+    static let brandMarkSize: CGFloat = 36
+    /// Lets "Sound Buddy" shrink rather than wrap beside the badge on narrow phones.
+    static let titleMinScale: CGFloat = 0.8
     static let cardSpacing: CGFloat = 10
     static let cardPadding: CGFloat = 14
     static let cornerRadius: CGFloat = 12
