@@ -29,11 +29,24 @@ const measurementSlot = createPythonStreamSlot({
   readNdjsonLines: (source, onLine) => loadEngineUtils().readNdjsonLines(source, onLine),
 });
 
-// The measurement source is always the device's first input, captured as one
-// mono strip — it's a metering source only (a single room mic), never a
+// The measurement source captures the selected input as one mono strip
+// (#1524) — it's a metering source only (a single room mic), never a
 // multitrack rig, so it needs exactly one channel token and never a stereo
-// pair or an arm list.
-const MEASUREMENT_CHANNEL_TOKEN = '0';
+// pair or an arm list. Default input when none is selected (byte-identical
+// to the pre-#1524 hardcoded behavior).
+const DEFAULT_MEASUREMENT_CHANNEL = 0;
+
+/**
+ * Turns a renderer-supplied 0-based channel index into the single stream.py
+ * channel token. Anything that isn't a non-negative integer (omitted, NaN,
+ * negative, fractional) falls back to DEFAULT_MEASUREMENT_CHANNEL rather than
+ * spawning stream.py with a bad argument (#1524).
+ */
+export function measurementChannelToken(channel: number | undefined): string {
+  return Number.isInteger(channel) && (channel as number) >= 0
+    ? String(channel)
+    : String(DEFAULT_MEASUREMENT_CHANNEL);
+}
 
 export function registerMeasurementSourceHandlers(): void {
   // start-measurement — spawn the measurement-only stream.py monitor. Gated by
@@ -62,16 +75,17 @@ export function registerMeasurementSourceHandlers(): void {
       };
     }
 
+    const channelToken = measurementChannelToken(opts.channel);
     const args = loadEngineParsers().buildStreamArgs({
       device: opts.device,
       windowSecs: opts.windowSecs,
-      channels: [MEASUREMENT_CHANNEL_TOKEN],
+      channels: [channelToken],
       intervalSecs: opts.intervalSecs,
     });
     // Log the interval we actually pass; when omitted, stream.py applies its own
     // default, so say "default" rather than duplicating that value here.
     const intervalLabel = opts.intervalSecs && opts.intervalSecs > 0 ? `${opts.intervalSecs}s` : 'default';
-    log(`start-measurement: spawned stream.py (device="${opts.device}" window=${opts.windowSecs}s interval=${intervalLabel})`);
+    log(`start-measurement: spawned stream.py (device="${opts.device}" window=${opts.windowSecs}s interval=${intervalLabel} ch=${channelToken})`);
 
     const wc = event.sender;
     measurementSlot.start({

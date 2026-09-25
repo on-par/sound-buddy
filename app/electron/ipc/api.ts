@@ -148,6 +148,9 @@ export interface StartMeasurementOpts {
   windowSecs: number;
   // Meter cadence in seconds (default 0.1 in stream.py), mirrors StartLiveOpts.
   intervalSecs?: number;
+  // 0-based input index on `device` to meter (#1524). Omitted means 0 — the
+  // Settings-started room mic never sends this, keeping it on channel 0.
+  channel?: number;
 }
 
 export interface StartPlaybackOpts {
