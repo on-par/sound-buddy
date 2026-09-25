@@ -11,6 +11,7 @@ import { GUARANTEE_BADGE, REFUND_PATH } from '../lib/guarantee';
 import { FOUNDING_CAP, foundingCheckoutUrl, foundingUrgency, isCheckoutLive } from '../lib/founding-urgency';
 import { FAQ_ENTRIES } from '../lib/faq';
 import { resolveSiteMode } from '../lib/site-mode';
+import { FREE_MONTHLY_UPLOADS, FREE_TIER_FEATURES, PRO_TIER_FEATURES } from '../lib/packaging-copy';
 
 const DOWNLOAD_URL = '/download';
 const REPO_URL = 'https://github.com/on-par/sound-buddy';
@@ -56,7 +57,7 @@ const proofCards: ProofCard[] = [
   {
     kind: 'preview',
     title: 'Browser Lite analysis',
-    body: 'The same grading engine, running locally in a browser tab — a fast read on a stream feed or stereo file before you open the app.',
+    body: `The same report card in a browser tab — sign in with your email, upload a recording, get a grade. Free includes ${FREE_MONTHLY_UPLOADS} uploads a month.`,
   },
   {
     kind: 'image',
@@ -69,7 +70,7 @@ const proofCards: ProofCard[] = [
 
 const steps: { n: string; title: string; body: string; link?: { href: string; label: string } }[] = [
   { n: '1', title: 'Bring in last Sunday', body: 'Use the stream recording you already have, a USB export from the console, or a quick laptop capture.', link: { href: '/record-your-service', label: 'How to record your service →' } },
-  { n: '2', title: 'See what actually happened', body: 'Sound Buddy grades loudness, dynamics, spectral balance, and speech vs. music — fully on your Mac, instead of leaving you with "felt muddy."' },
+  { n: '2', title: 'See what actually happened', body: 'Sound Buddy grades loudness, dynamics, spectral balance, and speech vs. music, instead of leaving you with "felt muddy."' },
   { n: '3', title: 'Rehearse the fix', body: 'Turn the report card into practical next moves, then use virtual soundcheck to replay the room as separate tracks before next Sunday.' },
 ];
 
@@ -93,7 +94,7 @@ const tiers = [
     cta: 'Start your 14-day Pro trial',
     ctaHref: DOWNLOAD_URL,
     ctaVariant: 'primary',
-    features: ['Record up to 32 channels', 'Per-strip stems + session manifest', 'AI analyst on your local Ollama', 'Channel groups, rigs & profiles', 'Priority email support'],
+    features: [...PRO_TIER_FEATURES],
   },
   {
     name: 'Pro Annual',
@@ -109,11 +110,11 @@ const tiers = [
     name: 'Free',
     price: '$0',
     cadence: 'forever',
-    blurb: 'For the volunteer running Sunday once a week.',
-    cta: 'Start free — grade your mix',
-    ctaHref: DOWNLOAD_URL,
+    blurb: 'For the volunteer who wants a quick grade — in the browser, no install.',
+    cta: 'Start free in your browser',
+    ctaHref: BROWSER_URL,
     ctaVariant: 'ghost',
-    features: ['Record up to 8 channels', 'Full report card + letter grade', 'Spectral & dynamics analysis', 'Virtual soundcheck playback'],
+    features: [...FREE_TIER_FEATURES],
   },
 ];
 ---
@@ -151,16 +152,17 @@ const tiers = [
         <h1>Get a clear answer from last Sunday's mix.</h1>
         <p class="hero-lede">
           Stop guessing what went wrong. Sound Buddy grades the recording you already have and
-          names exactly what to fix before next Sunday — fully on your own machine.
+          names exactly what to fix before next Sunday. Start free in your browser, or go live at
+          the desk with Pro on your Mac.
         </p>
         <div class="hero-cta">
           <a class="btn btn-primary btn-lg" href={DOWNLOAD_URL} rel="noopener">Grade last Sunday's mix</a>
           <a class="btn btn-ghost btn-lg" href={BROWSER_URL}>Try Browser Lite free</a>
         </div>
         <div class="hero-chips">
-          <span class="hero-chip">Local-first</span>
-          <span class="hero-chip">No cloud uploads</span>
-          <span class="hero-chip">No account required</span>
+          <span class="hero-chip">Free: {FREE_MONTHLY_UPLOADS} uploads a month</span>
+          <span class="hero-chip">Pro: live on your Mac</span>
+          <span class="hero-chip">EQ curves + channel select</span>
         </div>
         <p class="hero-fine mono">{REQUIREMENT_LINE}</p>
       </div>
@@ -199,8 +201,8 @@ const tiers = [
       <div class="trust-item">
         <span class="trust-icon" aria-hidden="true">🔒</span>
         <div>
-          <strong>No cloud. No accounts. No cross-site tracking.</strong>
-          <p>Analysis runs on-device. Your recordings stay on your Mac, full stop.</p>
+          <strong>Free in the browser. Pro live on your Mac.</strong>
+          <p>Free: sign in with your email and upload {FREE_MONTHLY_UPLOADS} recordings a month. Pro: live listening, EQ curves, and channel select at the desk.</p>
         </div>
       </div>
       <div class="trust-item">
@@ -311,8 +313,8 @@ const tiers = [
           <span class="eyebrow">Browser</span>
           <h3>Fast answer</h3>
           <ul class="rc-bullets wa-list">
-            <li>Local-only stereo quick-grade, no install and no cloud step</li>
-            <li>Live input mode for a stream feed or matrix send</li>
+            <li>Free account — sign in with your email</li>
+            <li>{FREE_MONTHLY_UPLOADS} uploads a month, report card + letter grade</li>
             <li>Copy notes straight into a team debrief</li>
           </ul>
           <a class="btn btn-primary" href={BROWSER_URL}>Open Browser Lite</a>
@@ -322,9 +324,9 @@ const tiers = [
           <span class="eyebrow">Desktop</span>
           <h3>Deep rehearsal workflow</h3>
           <ul class="rc-bullets wa-list">
+            <li>Pro on your Mac: live listening right at the desk</li>
+            <li>Customizable EQ curves and channel select</li>
             <li>Record 8 to 32 channels straight from your interface</li>
-            <li>Full report card, history, channel groups, and saved rigs</li>
-            <li>Virtual soundcheck — replay the room, week after week</li>
           </ul>
           <a class="btn btn-ghost" href={DOWNLOAD_URL} rel="noopener">Get the Mac app</a>
           <p class="req-fine mono">{REQUIREMENT_LINE}</p>
@@ -338,7 +340,7 @@ const tiers = [
     <div class="container">
       <span class="eyebrow">Pricing</span>
       <h2 class="h2">Founding Lifetime — pay $199 once, own Pro forever.</h2>
-      <p class="lede">First {FOUNDING_CAP} churches only. Prefer to pay as you go? $9/mo or $79/yr below — 14-day Pro trial on first launch, no card, no account.</p>
+      <p class="lede">First {FOUNDING_CAP} churches only. Prefer to pay as you go? $9/mo or $79/yr below — 14-day Pro trial on first launch, no card. Or start Free in your browser with {FREE_MONTHLY_UPLOADS} uploads a month.</p>
       {urgency.mode === 'countdown' && (
         <div class="founding-countdown" data-drop-deadline={dropDeadlineIso}>
           <span class="fc-pulse" aria-hidden="true"></span>
@@ -388,7 +390,7 @@ const tiers = [
       <span class="eyebrow">Questions</span>
       <h2 class="h2">The things churches ask before they install.</h2>
       <p class="lede">
-        Short answers to what actually blocks the decision — privacy, the signed
+        Short answers to what actually blocks the decision — where your audio is analyzed, the signed
         install, the AI, and what happens if it doesn't work out.
       </p>
       <div class="faq-list">
@@ -405,30 +407,6 @@ const tiers = [
           </details>
         ))}
       </div>
-    </div>
-  </section>
-
-  <!-- ── Privacy callout ────────────────────────────────────────── -->
-  <section class="section privacy">
-    <div class="container privacy-card card">
-      <span class="eyebrow">Privacy</span>
-      <h2 class="h2">Your audio never leaves your machine.</h2>
-      <p class="lede">
-        No cloud uploads. No accounts. Nothing that tracks you across the web. Sound Buddy does
-        its analysis on-device — that's the whole point. If you opt into AI, you pick the provider
-        (Ollama locally, or your own API key). Nothing is sent anywhere by default. Browser Lite is
-        local-only too — audio decoding and analysis happen in your browser tab, not on a server.
-      </p>
-      <div class="privacy-pills">
-        <span class="pill good">No cloud</span>
-        <span class="pill good">No accounts</span>
-        <span class="pill good">No cross-site tracking</span>
-        <span class="pill info">Optional local AI</span>
-      </div>
-      <p class="lede storage-line">
-        <strong>Unlimited recordings. Stored on your machine.</strong> No caps on any tier — record
-        and analyze as much as you want. It all stays on your own disk.
-      </p>
     </div>
   </section>
 
@@ -489,7 +467,7 @@ const tiers = [
 ) : (
 <Layout
   title="Sound Buddy — Coming soon. Join the waitlist."
-  description="Sound Buddy grades the recording you already have and names what to fix before next Sunday, fully on your own machine. Join the waitlist for early access."
+  description="Sound Buddy grades the recording you already have and names what to fix before next Sunday. Join the waitlist for early access."
 >
   <WaitlistHome />
 </Layout>
@@ -684,15 +662,6 @@ const tiers = [
   .faq-answer p { font: var(--fw-regular) var(--fs-body-sm)/var(--lh-relaxed) var(--font-sans); color: var(--text-secondary); }
   .faq-link { align-self: flex-start; font: var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans); color: var(--gold-text); border-bottom: 1px solid var(--border-subtle); }
 
-  /* ── Privacy ── */
-  .privacy-card { padding: 44px 40px; text-align: center; }
-  .privacy-card .eyebrow, .privacy-card .h2, .privacy-card .lede { display: block; margin-left: auto; margin-right: auto; }
-  .privacy-card .lede { text-align: center; }
-  .privacy-pills { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 24px; }
-  .pill { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: var(--radius-pill); font: var(--fw-semibold) var(--fs-label)/1 var(--font-sans); letter-spacing: var(--tracking-caps); }
-  .pill.good { background: var(--good-tint); border: 1px solid var(--good-border); color: var(--good-text); }
-  .pill.info { background: var(--info-tint); border: 1px solid var(--info-border); color: var(--info-text); }
-
   /* ── Sysreq / CTA ── */
   .sysreq-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
   .sysreq-list { list-style: none; margin-top: 22px; display: flex; flex-direction: column; gap: 12px; }
@@ -735,7 +704,6 @@ const tiers = [
     .hero-copy h1 { font-size: 40px; }
     .trust-grid { grid-template-columns: 1fr; gap: 24px; }
     .steps { grid-template-columns: 1fr; }
-    .privacy-card { padding: 28px 20px; }
     .tiers { grid-template-columns: 1fr; max-width: 460px; }
   }
   @media (max-width: 390px) {
