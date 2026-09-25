@@ -61,3 +61,12 @@ rule forecloses a future split-view Analyze layout without revisiting this ADR.
 
 - [Issue #1496 — Give the Analyze live EQ a large primary layout region](https://github.com/on-par/sound-buddy/issues/1496)
 - [ADR-0141 — Analyze's live-listening room-mic EQ is its own centre island, never a re-parented docked pane](./0141-analyzes-live-listening-room-mic-eq-is-its-own-centre-island-never-a-re-parented-docked-pane.md)
+
+## Amendment (2026-09-24, ADR-0145)
+
+#1487 is the "new issue" this ADR's Decision and Negative-consequences sections both anticipated for
+a split-view Analyze layout. ADR-0145 authorizes exactly one addition: `.analyze-stage`, a flex row
+inside the still-`#analyze-live-island`-gated stage, giving the room EQ (`.analyze-live-eq`, still
+`flex:1`, still the dominant column) a fixed-width sibling column (`.analyze-results-rail`) for the
+folded report-card results. `#source-panel`/`#reportcard-view` stay folded exactly as this ADR
+requires — the new column lives entirely inside the stage this ADR already owns, not beside it.
