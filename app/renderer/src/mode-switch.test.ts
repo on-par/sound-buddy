@@ -766,4 +766,33 @@ describe('restoreBootMode', () => {
     expect(useAnalyzeEntryStore.getState().analyzeStage).toBe(true);
     expect(bodyClassList.contains('rc-active')).toBe(false);
   });
+
+  // #1507: hydration is a real IPC round trip (settings + devices/rigs) that
+  // can outlast a user who navigates to Report Card (Recent/Build
+  // Guide/Live/onboarding) before it settles. Advanced now clamps a
+  // persisted 'reportcard' to 'analyze' same as Simple, so without the
+  // boot-mode snapshot guard this would yank that real navigation back to
+  // Analyze the moment hydration finally resolves.
+  it('does not clobber a mode the user already switched to while hydration was still pending', async () => {
+    useLiveCaptureStore.setState({ appMode: 'analyze' });
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: true, lastAppMode: 'reportcard' }) });
+    let resolveHydration!: () => void;
+    const hydration = new Promise<void>((resolve) => { resolveHydration = resolve; });
+
+    const done = restoreBootMode({
+      hydration,
+      getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+      getCurrentMode: () => useLiveCaptureStore.getState().appMode,
+      getSettings: () => useSettingsStore.getState().settings,
+    });
+
+    // The user reaches Report Card on their own (not via restoreBootMode)
+    // while hydration is still in flight.
+    switchMode('reportcard');
+    resolveHydration();
+    await done;
+
+    expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');
+    expect(bodyClassList.contains('rc-active')).toBe(true);
+  });
 });
