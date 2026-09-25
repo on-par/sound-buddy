@@ -26,7 +26,7 @@ import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useAnalyzeEntryStore } from './stores/analyzeEntryStore';
 import { useSpectrumStore } from './stores/spectrumStore';
-import { roomPaneOverride } from './measurement-device-state';
+import { roomPaneOverride, deviceInputCount } from './measurement-device-state';
 import { eqPaneRoomSectionHTML } from './live-capture-panel';
 import { spectrumLegendHTML } from './spectrum-display';
 import { analyzeLiveEqView } from './analyze-live-eq';
@@ -37,15 +37,19 @@ import AnalyzeResultsPanel from './AnalyzeResultsPanel';
 export default function AnalyzeLiveEqPanel(): JSX.Element | null {
   const sb = useElectron();
   const [dragOver, setDragOver] = useState(false);
-  const { listening, analyzeStage } = useStoreShallow(useAnalyzeEntryStore, (s) => ({
+  const { listening, analyzeStage, listenChannel } = useStoreShallow(useAnalyzeEntryStore, (s) => ({
     listening: s.listening,
     analyzeStage: s.analyzeStage,
+    listenChannel: s.listenChannel,
   }));
   const s = useStoreShallow(useLiveCaptureStore, (st) => ({
     appMode: st.appMode,
     secondaryMeasurement: st.secondaryMeasurement,
     secondaryWindows: st.secondaryWindows,
+    devices: st.devices,
   }));
+  // #1524: option count for the single-select channel picker below.
+  const inputCount = deviceInputCount(s.devices, s.secondaryMeasurement.deviceName);
   // idealProfilesStore.syncActiveProfile() already pushes the resolved
   // profile into spectrumStore on hydrate and on every select() — the same
   // seam IdealProfileSelect drives, read here to feed the room arc's overlay
@@ -110,6 +114,24 @@ export default function AnalyzeLiveEqPanel(): JSX.Element | null {
             File
           </button>
         </div>
+        {/* #1524: a Pro user with a multi-input room-mic device picks which
+            input Analyze listens to. Single-select only (no `multiple`) — see
+            the #1524 ADR for why a multichannel stream is out of scope. */}
+        {listening && inputCount > 1 && (
+          <label className="analyze-listen-channel">
+            Channel
+            <select
+              id="analyze-listen-channel"
+              value={listenChannel}
+              /* c8 ignore next -- change dispatch, no jsdom */
+              onChange={(e) => { void useAnalyzeEntryStore.getState().selectListenChannel(Number(e.target.value)); }}
+            >
+              {Array.from({ length: inputCount }, (_, i) => (
+                <option key={i} value={i}>{`Ch ${i + 1}`}</option>
+              ))}
+            </select>
+          </label>
+        )}
         {view.kind === 'room'
           ? <>
             <div

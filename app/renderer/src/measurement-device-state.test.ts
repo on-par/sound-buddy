@@ -16,6 +16,7 @@ import {
   meterIntervalLabel,
   windowSecsLabel,
   captureOptsFromCadence,
+  deviceInputCount,
   type SecondaryMeasurementState,
 } from './measurement-device-state';
 import type { LiveDevice, LiveEvent, StripConfig, ChannelWindowData } from './live-capture-panel';
@@ -306,5 +307,32 @@ describe('windowSecsLabel (#725)', () => {
 describe('captureOptsFromCadence (#725)', () => {
   it('converts the meter-interval ms to intervalSecs, passing windowSecs through', () => {
     expect(captureOptsFromCadence(5, 200)).toEqual({ windowSecs: 5, intervalSecs: 0.2 });
+  });
+
+  it('includes channel when given (#1524)', () => {
+    expect(captureOptsFromCadence(5, 200, 3)).toEqual({ windowSecs: 5, intervalSecs: 0.2, channel: 3 });
+  });
+
+  it('has no channel key when omitted (#1524)', () => {
+    const opts = captureOptsFromCadence(5, 200);
+    expect(opts).not.toHaveProperty('channel');
+  });
+});
+
+describe('deviceInputCount (#1524)', () => {
+  it('returns the matching device\'s channel count', () => {
+    expect(deviceInputCount(DEVICES, 'USB Measurement Mic')).toBe(2);
+  });
+
+  it('returns 1 for an unknown device name', () => {
+    expect(deviceInputCount(DEVICES, 'Ghost Interface')).toBe(1);
+  });
+
+  it('returns 1 for an empty device name', () => {
+    expect(deviceInputCount(DEVICES, '')).toBe(1);
+  });
+
+  it('returns 1 when the matching device reports 0 channels', () => {
+    expect(deviceInputCount([dev(0, 'Silent Device', 0)], 'Silent Device')).toBe(1);
   });
 });

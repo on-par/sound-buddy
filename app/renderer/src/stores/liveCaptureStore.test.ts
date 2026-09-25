@@ -1265,6 +1265,33 @@ describe('createLiveCaptureStore', () => {
       expect(store.getState().secondaryMeasurement.status).toBe('active');
     });
 
+    it('startSecondaryMeasurement forwards channel when given (#1524)', async () => {
+      const startMeasurement = vi.fn().mockResolvedValue({ success: true });
+      const { store } = makeStore({ startMeasurement });
+      store.setState({
+        devices: SECONDARY_DEVICES,
+        secondaryMeasurement: { status: 'off', deviceName: 'USB Measurement Mic' },
+      });
+
+      await store.getState().startSecondaryMeasurement({ windowSecs: 5, intervalSecs: 0.1, channel: 2 });
+
+      expect(startMeasurement).toHaveBeenCalledWith({ device: '2', windowSecs: 5, intervalSecs: 0.1, channel: 2 });
+    });
+
+    it('startSecondaryMeasurement omits channel from the payload when not given (#1524)', async () => {
+      const startMeasurement = vi.fn().mockResolvedValue({ success: true });
+      const { store } = makeStore({ startMeasurement });
+      store.setState({
+        devices: SECONDARY_DEVICES,
+        secondaryMeasurement: { status: 'off', deviceName: 'USB Measurement Mic' },
+      });
+
+      await store.getState().startSecondaryMeasurement({ windowSecs: 5, intervalSecs: 0.1 });
+
+      const payload = startMeasurement.mock.calls[0][0];
+      expect(payload).not.toHaveProperty('channel');
+    });
+
     it('startSecondaryMeasurement goes disconnected without an API call when the device is absent', async () => {
       const startMeasurement = vi.fn();
       const { store } = makeStore({ startMeasurement });

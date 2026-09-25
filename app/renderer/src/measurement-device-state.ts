@@ -30,6 +30,9 @@ import { escapeHtml } from './spectrum-display';
 export interface StartCaptureOpts {
   windowSecs: number;
   intervalSecs: number;
+  // 0-based input index to meter (#1524) — Analyze's single-select channel
+  // picker. Omitted means the device's first input (byte-identical default).
+  channel?: number;
 }
 
 // Defaults for the two capture-cadence sliders (#725) — match the static
@@ -52,9 +55,23 @@ export function windowSecsLabel(secs: number): string {
 
 // Numeric replacement for parseCaptureOpts (#725) — the store now holds real
 // numbers, so this just converts units (ms -> secs) instead of also parsing
-// strings with fallback defaults.
-export function captureOptsFromCadence(windowSecs: number, meterIntervalMs: number): StartCaptureOpts {
-  return { windowSecs, intervalSecs: meterIntervalMs / 1000 };
+// strings with fallback defaults. `channel` (#1524) is included only when
+// defined, so existing callers/tests that deep-equal `{ windowSecs, intervalSecs }`
+// are unchanged.
+export function captureOptsFromCadence(windowSecs: number, meterIntervalMs: number, channel?: number): StartCaptureOpts {
+  const opts: StartCaptureOpts = { windowSecs, intervalSecs: meterIntervalMs / 1000 };
+  if (channel !== undefined) opts.channel = channel;
+  return opts;
+}
+
+/**
+ * The room-mic device's input count for Analyze's channel picker (#1524):
+ * the matching device's `channels` when it's a positive integer, else 1 (the
+ * single-input fallback for an unknown device or an empty name).
+ */
+export function deviceInputCount(devices: LiveDevice[], name: string): number {
+  const dev = devices.find((d) => d.name === name);
+  return dev && dev.channels > 0 ? dev.channels : 1;
 }
 
 export type SecondaryMeasurementStatus =

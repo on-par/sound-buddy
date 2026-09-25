@@ -16,7 +16,7 @@
 import { create } from 'zustand';
 import type { StoreApi, UseBoundStore } from 'zustand';
 import { resolveAnalyzeEntry, resolveListenLiveChoice } from '../analyze-entry';
-import { captureOptsFromCadence, type StartCaptureOpts } from '../measurement-device-state';
+import { captureOptsFromCadence, deviceInputCount, type StartCaptureOpts } from '../measurement-device-state';
 import { chooseAndAnalyzeFile } from '../report-card-chrome';
 import { useLiveCaptureStore } from './liveCaptureStore';
 import { useSettingsStore } from './settingsStore';
@@ -33,6 +33,10 @@ export interface AnalyzeEntryDeps {
   // native-dialog result) — the single production wiring is
   // analysisStore.selectFile(fp) followed by startAnalysis(fp).
   analyzeFilePath(filePath: string): Promise<void>;
+  // #1524: the room-mic device's input count, for clamping listenChannel to a
+  // valid index. Production wiring reads liveCaptureStore.devices +
+  // secondaryMeasurement.deviceName through deviceInputCount().
+  getSecondaryInputCount(): number;
 }
 
 export interface AnalyzeEntryState {
@@ -51,6 +55,12 @@ export interface AnalyzeEntryState {
   // chrome instead of vanishing the instant the room mic stops. `listening`
   // itself keeps its narrower meaning — this field never substitutes for it.
   analyzeStage: boolean;
+  // #1524: Analyze's single-select listen channel — a 0-based index into the
+  // room-mic device's inputs, in-memory only (never persisted to
+  // settings.json — see the #1524 ADR). Survives stopListening() so the next
+  // listen resumes on it; only listenLive()'s clamp and selectListenChannel()
+  // ever change it.
+  listenChannel: number;
   open(): void;
   close(): void;
   chooseFile(): Promise<void>;
@@ -72,6 +82,11 @@ export interface AnalyzeEntryState {
   // #1522: the dropzone's onDrop action — tears down an active listen, then
   // analyzes an already-resolved disk path (from droppedAudioPath).
   analyzeDroppedFile(filePath: string): Promise<void>;
+  // #1524: switch (or, while not listening, merely record) the listen
+  // channel. Ignores an invalid or unchanged channel. While listening it
+  // stops the old-channel stream before starting the new one, so no old-N
+  // data (secondaryWindows/lastMeasurementChannels) survives the switch.
+  selectListenChannel(channel: number): Promise<void>;
 }
 
 export function createAnalyzeEntryStore(
@@ -81,6 +96,7 @@ export function createAnalyzeEntryStore(
     dialogOpen: false,
     listening: false,
     analyzeStage: false,
+    listenChannel: 0,
 
     open() {
       set({ dialogOpen: true });
@@ -136,14 +152,31 @@ export function createAnalyzeEntryStore(
         deps.openSettingsAudio();
         return;
       }
-      set({ listening: true });
+      // #1524: clamp a stale listenChannel (e.g. carried over from a wider
+      // device) into range for the device actually being listened to.
+      const channel = Math.max(0, Math.min(get().listenChannel, deps.getSecondaryInputCount() - 1));
+      set({ listening: true, listenChannel: channel });
       const { windowSecs, meterIntervalMs } = deps.getCadence();
-      await deps.startSecondaryMeasurement(captureOptsFromCadence(windowSecs, meterIntervalMs));
+      await deps.startSecondaryMeasurement(captureOptsFromCadence(windowSecs, meterIntervalMs, channel));
     },
 
     async stopListening() {
       set({ listening: false });
       await deps.stopSecondaryMeasurement();
+    },
+
+    // #1524: while listening, awaits stopSecondaryMeasurement() before
+    // startSecondaryMeasurement() — strictly in that order — so the old
+    // channel's stream (and secondaryWindows/lastMeasurementChannels, cleared
+    // by both store actions) never overlaps the new one. `listening` itself
+    // stays true throughout the switch.
+    async selectListenChannel(channel) {
+      if (!Number.isInteger(channel) || channel < 0 || channel === get().listenChannel) return;
+      set({ listenChannel: channel });
+      if (!get().listening) return;
+      await deps.stopSecondaryMeasurement();
+      const { windowSecs, meterIntervalMs } = deps.getCadence();
+      await deps.startSecondaryMeasurement(captureOptsFromCadence(windowSecs, meterIntervalMs, channel));
     },
 
     // #1522: mirrors chooseFile()'s teardown-before-action rule, but never
@@ -178,5 +211,9 @@ export const useAnalyzeEntryStore = createAnalyzeEntryStore({
   analyzeFilePath: async (fp) => {
     useAnalysisStore.getState().selectFile(fp);
     await useAnalysisStore.getState().startAnalysis(fp);
+  },
+  getSecondaryInputCount: () => {
+    const s = useLiveCaptureStore.getState();
+    return deviceInputCount(s.devices, s.secondaryMeasurement.deviceName);
   },
 });
