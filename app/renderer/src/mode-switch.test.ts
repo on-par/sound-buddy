@@ -24,6 +24,9 @@ import { spectrumTransport } from './spectrum-transport';
 import { createMockSoundBuddy } from './mock-sound-buddy';
 import { ALL_TAB_MODES } from './simple-mode';
 import type { AppSettings } from '../../electron/ipc/api';
+import { ALL_FEATURE_FLAGS_OFF, resolveFeatureFlags } from '../../electron/feature-flags';
+
+const ALL_FEATURE_FLAGS_ON = resolveFeatureFlags({ SOUND_BUDDY_FEATURES: 'all' });
 
 function makeClassList() {
   const classes = new Set<string>();
@@ -71,6 +74,10 @@ beforeEach(() => {
   bodyClassList = makeClassList();
   isSingleColumn = vi.fn(() => false);
   mock = createMockSoundBuddy();
+  // #1520: this file's tests exercise real workspace switches, so default to
+  // every flag on here — the dedicated 'feature-flag gate' describe block
+  // below overrides this per-test to exercise the off/on redirect itself.
+  useSettingsStore.setState({ featureFlags: ALL_FEATURE_FLAGS_ON });
 
   (globalThis as { document?: unknown }).document = {
     getElementById: (id: string) => elements[id] ?? null,
@@ -94,7 +101,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   useLiveCaptureStore.setState({ appMode: 'reportcard', isCapturing: false, liveMode: 'monitor', deviceHint: null, rigApplyNotice: null, startCapture: REAL_START_CAPTURE });
   useRigStore.setState({ activeRigId: null });
-  useSettingsStore.setState({ settings: null, settingsError: null });
+  useSettingsStore.setState({ settings: null, settingsError: null, featureFlags: ALL_FEATURE_FLAGS_OFF });
   useAnalysisStore.setState({ currentAnalysis: null });
   useAnalyzeEntryStore.setState({ analyzeStage: false });
 });
@@ -503,6 +510,43 @@ describe('switchMode', () => {
       expect(bodyClassList.contains('rc-active')).toBe(true);
     });
   });
+
+  // #1520: the non-hedgehog workspace gate — switchMode is the single
+  // chokepoint every programmatic caller and restoreBootMode's restored
+  // lastAppMode flow through.
+  describe('feature-flag gate (#1520)', () => {
+    it.each(['console', 'live', 'reportcard'] as const)(
+      '%s redirects to the Analyze stage in Advanced mode when its flag is off',
+      (mode) => {
+        useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: true }), featureFlags: ALL_FEATURE_FLAGS_OFF });
+
+        switchMode(mode);
+
+        expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+        expect(bodyClassList.contains('rc-active')).toBe(false);
+        expect(bodyClassList.contains('live-active')).toBe(false);
+      },
+    );
+
+    it('console proceeds as usual once its flag is on', () => {
+      useSettingsStore.setState({
+        settings: settings({ advancedFeaturesEnabled: true }),
+        featureFlags: resolveFeatureFlags({ SOUND_BUDDY_FEATURES: 'console' }),
+      });
+
+      switchMode('console');
+
+      expect(useLiveCaptureStore.getState().appMode).toBe('console');
+    });
+
+    it("'recent' (the History path) still works with every flag off", () => {
+      useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: true }), featureFlags: ALL_FEATURE_FLAGS_OFF });
+
+      switchMode('recent');
+
+      expect(useLiveCaptureStore.getState().appMode).toBe('recent');
+    });
+  });
 });
 
 // #1508: the one programmatic path to Report Card that does not click the
@@ -794,5 +838,24 @@ describe('restoreBootMode', () => {
 
     expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');
     expect(bodyClassList.contains('rc-active')).toBe(true);
+  });
+
+  // #1520: restoreBootMode's restore flows entirely through switchMode, so a
+  // persisted mode whose flag is off lands on Analyze exactly like a live
+  // programmatic switchMode('console') call would.
+  it('a persisted lastAppMode whose flag is off ends on analyze (#1520)', async () => {
+    useSettingsStore.setState({
+      settings: settings({ advancedFeaturesEnabled: true, lastAppMode: 'console' }),
+      featureFlags: ALL_FEATURE_FLAGS_OFF,
+    });
+
+    await restoreBootMode({
+      hydration: Promise.resolve(),
+      getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+      getCurrentMode: () => 'reportcard',
+      getSettings: () => useSettingsStore.getState().settings,
+    });
+
+    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
   });
 });

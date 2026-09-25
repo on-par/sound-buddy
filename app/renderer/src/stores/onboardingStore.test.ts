@@ -5,7 +5,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createOnboardingStore, useOnboardingStore } from './onboardingStore';
 import { useAnalysisStore } from './analysisStore';
 import { useLiveCaptureStore } from './liveCaptureStore';
+import { useSettingsStore } from './settingsStore';
 import { createMockSoundBuddy } from '../mock-sound-buddy';
+import { ALL_FEATURE_FLAGS_OFF, resolveFeatureFlags } from '../../../electron/feature-flags';
+
+const ALL_FEATURE_FLAGS_ON = resolveFeatureFlags({ SOUND_BUDDY_FEATURES: 'all' });
 
 function makeClassList() {
   const classes = new Set<string>();
@@ -49,6 +53,9 @@ beforeEach(() => {
     onboardingState: { shouldShowOnboarding, markOnboardingSeen },
     singleColumnState: { isSingleColumn: () => false },
   };
+  // #1520: the onboarding demo run switches to the (flagged) Report Card
+  // workspace, so default every flag on here.
+  useSettingsStore.setState({ featureFlags: ALL_FEATURE_FLAGS_ON });
 });
 
 afterEach(() => {
@@ -59,6 +66,7 @@ afterEach(() => {
     currentAnalysis: null, selectedFilePath: null, status: 'idle', historySummary: null,
   });
   useLiveCaptureStore.setState({ appMode: 'reportcard' });
+  useSettingsStore.setState({ featureFlags: ALL_FEATURE_FLAGS_OFF });
 });
 
 describe('createOnboardingStore', () => {

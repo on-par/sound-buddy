@@ -23,7 +23,7 @@ import { SPECTRUM_TITLE } from './spectrum-chrome';
 import { decideLiveAutoStart } from './live-auto-start';
 import { startLiveCapture, runtime } from './LiveControls';
 import { captureOptsFromCadence } from './measurement-device-state';
-import { clampBootMode, isSimpleMode } from './simple-mode';
+import { clampBootMode, isModeFlagEnabled, isSimpleMode } from './simple-mode';
 import type { AppSettings } from '../../electron/ipc/api';
 
 export type WorkspaceMode = 'dir' | 'live' | 'console' | 'recent' | 'guide' | 'ringout' | 'reportcard';
@@ -181,6 +181,18 @@ export function showAnalyzeStage(opts?: { boot?: boolean }): void {
 // skip with a false 'no-last-used-device'. restoreBootMode is what performs
 // the real (non-boot) switch/auto-start once hydration has settled.
 export function switchMode(mode: WorkspaceMode, opts?: { boot?: boolean }): void {
+  // #1520: the single chokepoint for every programmatic caller (tab clicks,
+  // RecentServicesPanel, BuildGuidePanel, LiveSessionOffers, the onboarding
+  // demo, restoreBootMode's restored lastAppMode, ...) — a flagged-off mode
+  // redirects to the Analyze stage before any workspace side effect below
+  // runs. Checked ahead of the Simple-mode reportcard redirect: it is still
+  // correct when reportCard is flagged on, and the outcome is identical when
+  // it is off.
+  if (!isModeFlagEnabled(mode, useSettingsStore.getState().featureFlags)) {
+    showAnalyzeStage(opts);
+    return;
+  }
+
   // #1510: Report Card is no longer a visible Simple-mode tab (#1512) and its
   // results now live in Analyze's results rail (#1505) — every request to
   // switch to it while in Simple mode (the hidden tab's own programmatic

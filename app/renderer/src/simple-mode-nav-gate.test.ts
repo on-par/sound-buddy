@@ -38,7 +38,13 @@ describe('Simple-mode nav invariant', () => {
       expect(modeTabsMarkup).toContain(`data-mode="${mode}"`);
     }
     expect(modeTabsMarkup).not.toContain('data-mode="reportcard"');
-    expect(modeTabsSrc).toContain('hidden={!visibleModes.includes(tab.mode)}');
+    // #1520: hidden is now visibleTabModes AND the feature-flag gate —
+    // isModeFlagEnabled is a no-op pass-through for every mode this
+    // invariant cares about (Analyze/History/Recent are never flagged), so
+    // it doesn't change what this invariant proves.
+    expect(modeTabsSrc).toContain(
+      'hidden={!visibleModes.includes(tab.mode) || !isModeFlagEnabled(tab.mode, featureFlags)}',
+    );
     expect(visibleTabModes(settings({ advancedFeaturesEnabled: false }))).toEqual(['analyze', 'history']);
   });
 
