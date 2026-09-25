@@ -6,6 +6,7 @@ import {
   resolveModeSwitch,
   isWorkspaceMode,
   switchMode,
+  openReportCard,
   showAnalyzeStage,
   applyInitialMode,
   applySpectrumForMode,
@@ -501,6 +502,45 @@ describe('switchMode', () => {
       expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');
       expect(bodyClassList.contains('rc-active')).toBe(true);
     });
+  });
+});
+
+// #1508: the one programmatic path to Report Card that does not click the
+// peer .mode-tab button (#1507 removes it from Advanced). Must match a tab
+// click's resolve -> switch sequence exactly, including its noop and
+// Simple-mode-redirect behavior.
+describe('openReportCard (#1508)', () => {
+  it('switches to Report Card from another workspace mode', () => {
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: true }) });
+    useLiveCaptureStore.setState({ appMode: 'recent' });
+    const spy = vi.spyOn(mock.api, 'recordAppEvent');
+
+    openReportCard();
+
+    expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');
+    expect(bodyClassList.contains('rc-active')).toBe(true);
+    expect(spy).toHaveBeenCalledWith('screen.reportcard');
+  });
+
+  it('is a noop when already on Report Card, same as a tab click', () => {
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: true }) });
+    useLiveCaptureStore.setState({ appMode: 'reportcard' });
+    const spy = vi.spyOn(mock.api, 'recordAppEvent');
+
+    openReportCard();
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');
+  });
+
+  it('redirects to the Analyze stage in Simple mode', () => {
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false }) });
+    useLiveCaptureStore.setState({ appMode: 'recent' });
+
+    openReportCard();
+
+    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+    expect(bodyClassList.contains('rc-active')).toBe(false);
   });
 });
 
