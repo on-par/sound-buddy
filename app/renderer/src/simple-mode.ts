@@ -2,6 +2,7 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import type { AppSettings } from '../../electron/ipc/api';
+import type { FeatureFlagId, FeatureFlags } from '../../electron/feature-flags';
 import type { ModeSwitchRequest } from './mode-switch';
 
 export const ALL_TAB_MODES: readonly ModeSwitchRequest[] = ['analyze', 'history', 'dir', 'live', 'console', 'recent', 'guide', 'ringout'];
@@ -23,4 +24,23 @@ export function visibleTabModes(settings: AppSettings | null): readonly ModeSwit
 // screen.
 export function clampBootMode(mode: string, settings: AppSettings | null): string {
   return visibleTabModes(settings).includes(mode as ModeSwitchRequest) ? mode : 'analyze';
+}
+
+// #1520: the non-hedgehog workspace gate. 'analyze', 'history' and 'recent'
+// are hedgehog/unflagged and deliberately absent from this map — in
+// particular 'recent' backs Simple-mode History (resolveModeSwitch's
+// 'history' -> 'recent' redirect above), so it must never be flagged, or the
+// hedgehog History path would break.
+const MODE_FLAGS: Readonly<Partial<Record<ModeSwitchRequest, FeatureFlagId>>> = {
+  reportcard: 'reportCard',
+  dir: 'directory',
+  live: 'session',
+  console: 'console',
+  guide: 'buildGuide',
+  ringout: 'ringOut',
+};
+
+export function isModeFlagEnabled(mode: string, flags: FeatureFlags): boolean {
+  const flag = MODE_FLAGS[mode as ModeSwitchRequest];
+  return flag === undefined || flags[flag];
 }

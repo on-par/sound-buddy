@@ -4,10 +4,11 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { createSettingsStore, useSettingsStore } from './settingsStore';
 import { createMockSoundBuddy } from '../mock-sound-buddy';
+import { ALL_FEATURE_FLAGS_OFF, resolveFeatureFlags } from '../../../electron/feature-flags';
 
 afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
-  useSettingsStore.setState({ settings: null, settingsError: null });
+  useSettingsStore.setState({ settings: null, settingsError: null, featureFlags: ALL_FEATURE_FLAGS_OFF });
 });
 
 describe('createSettingsStore', () => {
@@ -17,6 +18,7 @@ describe('createSettingsStore', () => {
 
     expect(store.getState().settings).toBeNull();
     expect(store.getState().settingsError).toBeNull();
+    expect(store.getState().featureFlags).toEqual(ALL_FEATURE_FLAGS_OFF);
   });
 
   it('loads settings', async () => {
@@ -87,6 +89,30 @@ describe('createSettingsStore', () => {
     await store.getState().loadSettings();
 
     expect(store.getState().settingsError).toBe('disk read failed');
+  });
+
+  // #1520: loadSettings pulls the resolved feature flags over IPC too.
+  it('loadSettings stores the feature flags returned by getFeatureFlags', async () => {
+    const onFlags = resolveFeatureFlags({ SOUND_BUDDY_FEATURES: 'console' });
+    const mock = createMockSoundBuddy({ getFeatureFlags: async () => onFlags });
+    const store = createSettingsStore(() => mock.api);
+
+    await store.getState().loadSettings();
+
+    expect(store.getState().featureFlags).toEqual(onFlags);
+  });
+
+  it('a rejected getFeatureFlags leaves the flags all-off without touching settingsError', async () => {
+    const mock = createMockSoundBuddy({
+      getFeatureFlags: () => Promise.reject(new Error('ipc unavailable')),
+    });
+    const store = createSettingsStore(() => mock.api);
+
+    await store.getState().loadSettings();
+
+    expect(store.getState().featureFlags).toEqual(ALL_FEATURE_FLAGS_OFF);
+    expect(store.getState().settingsError).toBeNull();
+    expect(store.getState().settings).not.toBeNull();
   });
 
   it('captures a rejected updateSettings promise and retains previous settings', async () => {

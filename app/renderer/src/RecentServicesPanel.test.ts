@@ -7,9 +7,13 @@ import { renderToString } from 'react-dom/server';
 import RecentServicesPanel, { RecentServicesList, loadHistoryEntry, exportTrendPdf } from './RecentServicesPanel';
 import { useAnalysisStore } from './stores/analysisStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useSettingsStore } from './stores/settingsStore';
 import { spectrumTransport } from './spectrum-transport';
 import { createMockSoundBuddy } from './mock-sound-buddy';
 import type { AnalysisSummary } from '../../electron/ipc/api';
+import { ALL_FEATURE_FLAGS_OFF, resolveFeatureFlags } from '../../electron/feature-flags';
+
+const ALL_FEATURE_FLAGS_ON = resolveFeatureFlags({ SOUND_BUDDY_FEATURES: 'all' });
 
 // loadHistoryEntry's clear path calls resetLapCoaching (store-owned coaching
 // state, TD-001 slice 6g #710) — the classic script it reads off window.
@@ -75,6 +79,9 @@ beforeEach(() => {
     singleColumnState: { isSingleColumn: () => false },
     print: printSpy,
   };
+  // #1520: this file's loadHistoryEntry tests switch to the (flagged)
+  // Report Card workspace, so default every flag on here.
+  useSettingsStore.setState({ featureFlags: ALL_FEATURE_FLAGS_ON });
 });
 
 afterEach(() => {
@@ -82,6 +89,7 @@ afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
   vi.restoreAllMocks();
   useLiveCaptureStore.setState({ appMode: 'reportcard', isCapturing: false });
+  useSettingsStore.setState({ featureFlags: ALL_FEATURE_FLAGS_OFF });
   useAnalysisStore.setState({
     currentAnalysis: null, liveSource: null, historySummary: null, prevSummary: null, status: 'idle',
   });

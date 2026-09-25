@@ -14,7 +14,7 @@ import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useAnalyzeEntryStore } from './stores/analyzeEntryStore';
 import { resolveModeSwitch, switchMode, type ModeSwitchRequest } from './mode-switch';
-import { visibleTabModes } from './simple-mode';
+import { isModeFlagEnabled, visibleTabModes } from './simple-mode';
 import { iconSvg } from './report-card';
 
 interface TabDef {
@@ -46,6 +46,7 @@ function tabHtml(tab: TabDef): string {
 export default function ModeTabs(): JSX.Element {
   const appMode = useStoreShallow(useLiveCaptureStore, (s) => s.appMode);
   const settings = useStoreShallow(useSettingsStore, (s) => s.settings);
+  const featureFlags = useStoreShallow(useSettingsStore, (s) => s.featureFlags);
   const visibleModes = visibleTabModes(settings);
   // Final nav consolidation quirk (#547, epic e17): History is a flag-only
   // entry that delegates to Recent's real switch but visually marks itself
@@ -82,7 +83,7 @@ export default function ModeTabs(): JSX.Element {
           className={`mode-tab${tab.mode === appMode || (tab.mode === 'history' && historyActive) ? ' active' : ''}`}
           id={tab.id}
           data-mode={tab.mode}
-          hidden={!visibleModes.includes(tab.mode)}
+          hidden={!visibleModes.includes(tab.mode) || !isModeFlagEnabled(tab.mode, featureFlags)}
           /* c8 ignore next -- click dispatch, see handleClick's ignore note above */
           onClick={() => handleClick(tab.mode)}
           dangerouslySetInnerHTML={{ __html: tabHtml(tab) }}

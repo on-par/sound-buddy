@@ -13,10 +13,13 @@ import { useSettingsStore } from './stores/settingsStore';
 import { resolveModeSwitch } from './mode-switch';
 import { createAnalyzeEntryStore, type AnalyzeEntryDeps } from './stores/analyzeEntryStore';
 import type { AppSettings } from '../../electron/ipc/api';
+import { ALL_FEATURE_FLAGS_OFF, resolveFeatureFlags } from '../../electron/feature-flags';
+
+const ALL_FEATURE_FLAGS_ON = resolveFeatureFlags({ SOUND_BUDDY_FEATURES: 'all' });
 
 afterEach(() => {
   useLiveCaptureStore.setState({ appMode: 'reportcard' });
-  useSettingsStore.setState({ settings: null, settingsError: null });
+  useSettingsStore.setState({ settings: null, settingsError: null, featureFlags: ALL_FEATURE_FLAGS_OFF });
 });
 
 function renderMarkup(): string {
@@ -81,13 +84,35 @@ describe('ModeTabs', () => {
     expect(html).not.toContain('class="mode-tab active" id="nav-history"');
   });
 
-  it('keeps every tab unhidden while settings are still loading', () => {
+  it('keeps every tab unhidden while settings are still loading, given all flags on', () => {
+    useSettingsStore.setState({ featureFlags: ALL_FEATURE_FLAGS_ON });
     const html = renderMarkup();
     expect(html).not.toContain('hidden=""');
   });
 
+  // #1520: flags default off, so a first render before getFeatureFlags
+  // resolves hides every gated tab regardless of the Simple/Advanced gate —
+  // the registry fails closed.
+  it('hides every gated tab by default while flags are still loading, even in Advanced mode', () => {
+    useSettingsStore.setState({ settings: settings() });
+    const html = renderMarkup();
+
+    for (const mode of ['dir', 'live', 'console', 'guide', 'ringout']) {
+      const marker = `data-mode="${mode}"`;
+      const start = html.indexOf(marker);
+      const end = html.indexOf('</button>', start);
+      expect(html.slice(start, end)).toContain('hidden=""');
+    }
+    for (const mode of ['analyze', 'history', 'recent']) {
+      const marker = `data-mode="${mode}"`;
+      const start = html.indexOf(marker);
+      const end = html.indexOf('</button>', start);
+      expect(html.slice(start, end)).not.toContain('hidden=""');
+    }
+  });
+
   it('marks advanced tabs hidden in Simple mode without removing them from the DOM', () => {
-    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false }) });
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false }), featureFlags: ALL_FEATURE_FLAGS_ON });
     const html = renderMarkup();
 
     for (const mode of ['dir', 'live', 'console', 'recent', 'guide', 'ringout']) {
@@ -113,7 +138,7 @@ describe('ModeTabs', () => {
   });
 
   it('renders no Report Card tab in Advanced mode', () => {
-    useSettingsStore.setState({ settings: settings() });
+    useSettingsStore.setState({ settings: settings(), featureFlags: ALL_FEATURE_FLAGS_ON });
     const html = renderMarkup();
 
     expect(html).not.toContain('data-mode="reportcard"');
@@ -127,6 +152,66 @@ describe('ModeTabs', () => {
     }
   });
 
+  // #1520: the non-hedgehog workspace gate.
+  describe('feature-flag gate (#1520)', () => {
+    it('Advanced settings + all-off flags hide Directory/Session/Console/Build Guide/Ring Out; Analyze/History/Recent stay visible', () => {
+      useSettingsStore.setState({ settings: settings(), featureFlags: ALL_FEATURE_FLAGS_OFF });
+      const html = renderMarkup();
+
+      for (const mode of ['dir', 'live', 'console', 'guide', 'ringout']) {
+        const marker = `data-mode="${mode}"`;
+        const start = html.indexOf(marker);
+        const end = html.indexOf('</button>', start);
+        expect(html.slice(start, end)).toContain('hidden=""');
+      }
+      for (const mode of ['analyze', 'history', 'recent']) {
+        const marker = `data-mode="${mode}"`;
+        const start = html.indexOf(marker);
+        const end = html.indexOf('</button>', start);
+        expect(html.slice(start, end)).not.toContain('hidden=""');
+      }
+    });
+
+    it('flipping console on un-hides only Console', () => {
+      useSettingsStore.setState({
+        settings: settings(),
+        featureFlags: resolveFeatureFlags({ SOUND_BUDDY_FEATURES: 'console' }),
+      });
+      const html = renderMarkup();
+
+      const consoleStart = html.indexOf('data-mode="console"');
+      const consoleEnd = html.indexOf('</button>', consoleStart);
+      expect(html.slice(consoleStart, consoleEnd)).not.toContain('hidden=""');
+
+      for (const mode of ['dir', 'live', 'guide', 'ringout']) {
+        const marker = `data-mode="${mode}"`;
+        const start = html.indexOf(marker);
+        const end = html.indexOf('</button>', start);
+        expect(html.slice(start, end)).toContain('hidden=""');
+      }
+    });
+
+    it('Simple settings with flags off show the same hidden set as before (only analyze and history visible)', () => {
+      useSettingsStore.setState({
+        settings: settings({ advancedFeaturesEnabled: false }),
+        featureFlags: ALL_FEATURE_FLAGS_OFF,
+      });
+      const html = renderMarkup();
+
+      for (const mode of ['dir', 'live', 'console', 'guide', 'ringout']) {
+        const marker = `data-mode="${mode}"`;
+        const start = html.indexOf(marker);
+        const end = html.indexOf('</button>', start);
+        expect(html.slice(start, end)).toContain('hidden=""');
+      }
+      for (const mode of ['analyze', 'history']) {
+        const marker = `data-mode="${mode}"`;
+        const start = html.indexOf(marker);
+        const end = html.indexOf('</button>', start);
+        expect(html.slice(start, end)).not.toContain('hidden=""');
+      }
+    });
+  });
 });
 
 describe('ModeTabs Listen live wiring (#1485)', () => {

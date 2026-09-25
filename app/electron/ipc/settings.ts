@@ -9,6 +9,7 @@ import { ipcMain, dialog, BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import { pathToFileURL } from 'url';
 import { resolveAppVersion } from '../app-version';
+import { resolveFeatureFlags } from '../feature-flags';
 import { logWarn } from '../logger';
 import { recordTelemetryEvent, clearTelemetryState } from '../telemetry';
 import { scheduleWeeklyReminder } from '../weekly-reminder';
@@ -94,6 +95,12 @@ export function registerSettingsHandlers(): void {
     }
     return result;
   });
+
+  // get-feature-flags — #1520: the non-hedgehog workspace gate
+  // (Directory/Session/Console/Build Guide/Ring Out/Report Card). Resolved
+  // fresh from process.env on every call so a launch-time
+  // SOUND_BUDDY_FEATURES override is always current; never persisted.
+  ipcMain.handle('get-feature-flags', () => resolveFeatureFlags(process.env));
 
   // grant-console-network-consent — the ONLY main-side path that writes
   // consoleNetworkConsentGranted=true (ADR-0006 / #747). The generic

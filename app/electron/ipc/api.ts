@@ -26,6 +26,8 @@
 // mirrored AnalysisPayloadDto, so audio-engine's node-only types still never
 // enter the renderer program. See the TD-011 PR for the full list.
 
+import type { FeatureFlags } from '../feature-flags';
+
 export interface UpdateSettingsPatch {
   idealProfile?: string;
   customIdealProfiles?: unknown[];
@@ -836,6 +838,9 @@ export interface SettingsApi {
   // ADR-0006 (#747): the only path that sets consoleNetworkConsentGranted=true
   // — the generic update-settings patch path is revoke-only (false).
   grantConsoleNetworkConsent(): Promise<AppSettings>;
+  // #1520: env-only (SOUND_BUDDY_FEATURES), resolved fresh in main and never
+  // persisted — the non-hedgehog workspace gate (feature-flags.ts).
+  getFeatureFlags(): Promise<FeatureFlags>;
 }
 
 export interface StorageApi {

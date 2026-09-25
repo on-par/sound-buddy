@@ -4,6 +4,7 @@
 import { create } from 'zustand';
 import { getSoundBuddy } from '../useElectron';
 import type { SettingsApi, AppSettings, UpdateSettingsPatch } from '../../../electron/ipc/api';
+import { ALL_FEATURE_FLAGS_OFF, type FeatureFlags } from '../../../electron/feature-flags';
 import type { SettingsSection } from '../SettingsPanel';
 
 export type SettingsStoreApi = SettingsApi;
@@ -11,6 +12,10 @@ export type SettingsStoreApi = SettingsApi;
 export interface SettingsState {
   settings: AppSettings | null;
   settingsError: string | null;
+  // #1520: the non-hedgehog workspace gate, resolved over IPC during boot
+  // hydration. Starts (and fails closed to) all-off — a flags failure must
+  // never block or error settings loading; see loadSettings below.
+  featureFlags: FeatureFlags;
   dialogOpen: boolean;
   // Requested landing section for the next open (#1468, lc-05) — null means
   // "no request", which SettingsPanel.tsx's initialSettingsSection narrows to
@@ -33,6 +38,7 @@ export function createSettingsStore(getApi: () => SettingsStoreApi) {
   return create<SettingsState>()((set) => ({
     settings: null,
     settingsError: null,
+    featureFlags: ALL_FEATURE_FLAGS_OFF,
     dialogOpen: false,
     dialogSection: null,
     async loadSettings() {
@@ -41,6 +47,13 @@ export function createSettingsStore(getApi: () => SettingsStoreApi) {
         set({ settings, settingsError: null });
       } catch (err) {
         set({ settingsError: err instanceof Error ? err.message : String(err) });
+      }
+      // Separate try/catch (#1520): flags fail closed to all-off, and a
+      // flags failure must never hide or block a successful settings load.
+      try {
+        set({ featureFlags: await getApi().getFeatureFlags() });
+      } catch {
+        set({ featureFlags: ALL_FEATURE_FLAGS_OFF });
       }
     },
     async updateSettings(patch) {

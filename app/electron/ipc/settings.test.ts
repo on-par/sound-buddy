@@ -200,6 +200,27 @@ describe('list-rigs / set-active-rig / onboarding-disabled', () => {
       delete process.env.SOUND_BUDDY_TEST_HOOKS;
     }
   });
+
+  // #1520: the non-hedgehog workspace gate — resolved fresh from process.env
+  // on every call, never persisted.
+  it('get-feature-flags reflects SOUND_BUDDY_FEATURES', async () => {
+    const handler = handlers.get('get-feature-flags')!;
+
+    process.env.SOUND_BUDDY_FEATURES = 'console';
+    try {
+      expect(await handler(null)).toEqual({
+        reportCard: false, directory: false, session: false,
+        console: true, buildGuide: false, ringOut: false,
+      });
+    } finally {
+      delete process.env.SOUND_BUDDY_FEATURES;
+    }
+
+    expect(await handler(null)).toEqual({
+      reportCard: false, directory: false, session: false,
+      console: false, buildGuide: false, ringOut: false,
+    });
+  });
 });
 
 describe('save-rig / delete-rig Pro gating', () => {
