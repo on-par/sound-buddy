@@ -6,8 +6,8 @@ import { FAKE_ANALYSIS } from './e2e/e2e-helpers';
 
 // First-run onboarding (#69), run for REAL against a throwaway --user-data-dir:
 // a brand-new user sees the welcome overlay, one click analyzes the bundled demo
-// recording through the normal pipeline, and the report card appears
-// automatically — no settings, no file picker. The flow shows exactly once
+// recording through the normal pipeline, and the result appears on the Analyze
+// stage automatically — no settings, no file picker. The flow shows exactly once
 // (localStorage gate), so a relaunch or an explicit skip never nags again.
 
 const MAIN = path.join(__dirname, '..', 'dist', 'electron', 'main.js');
@@ -45,9 +45,9 @@ test.describe.serial('First-run onboarding (#69)', () => {
     await app?.close();
   });
 
-  test('a brand-new user goes from welcome overlay to report card in one click', async () => {
+  test('a brand-new Simple user goes from welcome overlay to Analyze results in one click', async () => {
     fs.rmSync(USER_DATA, { recursive: true, force: true });
-    await launch();
+    await launchWithAdvancedEnvOverrideCleared();
 
     // Welcome overlay is up, "what this does", with the one-click CTA.
     const dialog = win.locator('#onboarding-dialog');
@@ -57,13 +57,16 @@ test.describe.serial('First-run onboarding (#69)', () => {
     const runBtn = win.locator('#onboarding-run');
     await expect(runBtn).toHaveText(/Run your first analysis/);
 
-    // One click → progress indicator, then the report card appears automatically.
+    // One click → progress indicator, then the result lands on the Analyze stage automatically.
     await runBtn.click();
     await expect(win.locator('#onboarding-progress')).toBeVisible();
 
-    // Report card view becomes active with real, populated content (the demo file).
-    await expect(win.locator('#reportcard-view')).toHaveClass(/active/, { timeout: 20_000 });
-    await expect(win.locator('#rc-content')).toBeVisible();
+    // Analyze stage becomes active with real, populated content (the demo file); Report Card stays inactive.
+    await expect(win.locator('body')).toHaveClass(/simple-mode/);
+    await expect(win.locator('body')).toHaveClass(/analyze-listening/, { timeout: 20_000 });
+    await expect(win.locator('#arc-content')).toBeVisible({ timeout: 20_000 });
+    await expect(win.locator('#arc-ring')).toBeVisible();
+    await expect(win.locator('#reportcard-view')).not.toHaveClass(/active/);
     await expect(win.locator('#rc-filename')).toHaveText('demo.wav');
 
     // Overlay is gone and the gate was persisted.
@@ -92,13 +95,15 @@ test.describe.serial('First-run onboarding (#69)', () => {
     expect(ls).toBe('1');
   });
 
-  test('new installs boot into Simple mode with Report Card ready', async () => {
+  test('new installs boot into Simple mode on the Analyze stage', async () => {
     fs.rmSync(USER_DATA, { recursive: true, force: true });
     await launchWithAdvancedEnvOverrideCleared();
 
     await expect(win.locator('body')).toHaveClass(/simple-mode/);
-    await expect(win.locator('#reportcard-view')).toHaveClass(/active/);
-    await expect(win.locator('#file-dropzone')).toBeVisible();
+    await expect(win.locator('body')).toHaveClass(/analyze-listening/);
+    await expect(win.locator('#reportcard-view')).not.toHaveClass(/active/);
+    await expect(win.locator('#analyze-live-island .analyze-stage')).toBeVisible();
+    await expect(win.locator('#arc-empty')).toBeVisible();
     for (const mode of SIMPLE_MODES) await expectTabHiddenAttr(mode, false);
     for (const mode of ADVANCED_MODES) await expectTabHiddenAttr(mode, true);
   });
@@ -145,12 +150,13 @@ test.describe.serial('First-run onboarding (#69)', () => {
     await expect(win.locator('body')).toHaveClass(/simple-mode/);
     await expect(win.locator('#nav-history')).toBeVisible();
     await expectTabHiddenAttr('reportcard', true);
+    await expect(win.locator('.mode-tab[data-mode="reportcard"]')).not.toBeVisible();
     await expect(win.locator('#nav-analyze')).toBeVisible();
 
     for (const mode of ADVANCED_MODES) await expectTabHiddenAttr(mode, true);
   });
 
-  test('Simple mode Analyze opens the native file choice directly', async () => {
+  test('Simple mode Analyze reaches results through the entry dialog without a Report Card tab', async () => {
     fs.rmSync(USER_DATA, { recursive: true, force: true });
     fs.mkdirSync(USER_DATA, { recursive: true });
     fs.writeFileSync(path.join(USER_DATA, 'settings.json'), JSON.stringify({ advancedFeaturesEnabled: false }, null, 2));
@@ -179,11 +185,15 @@ test.describe.serial('First-run onboarding (#69)', () => {
     await expect(win.locator('#analyze-source-picker')).toHaveCount(0);
     await win.locator('#nav-analyze').click();
 
-    await expect(win.locator('#analyze-source-picker')).toHaveCount(0);
-    await expect(win.locator('#reportcard-view')).toHaveClass(/active/);
-    await expect(win.locator('#rc-content')).toBeVisible();
+    await expect(win.locator('#analyze-entry-dialog')).toBeVisible();
+    await win.locator('#analyze-entry-choose-file').click();
+
     await expect(win.locator('#rc-filename')).toHaveText('silence.wav');
-    await expect(win.locator('.mode-tab[data-mode="reportcard"]')).toHaveClass(/active/);
-    await expect(win.locator('#nav-analyze')).not.toHaveClass(/active/);
+    await expect(win.locator('body')).toHaveClass(/analyze-listening/);
+    await expect(win.locator('#arc-content')).toBeVisible();
+    await expect(win.locator('#arc-ring')).toBeVisible();
+    await expect(win.locator('#reportcard-view')).not.toHaveClass(/active/);
+    await expectTabHiddenAttr('reportcard', true);
+    await expect(win.locator('.mode-tab[data-mode="reportcard"]')).not.toHaveClass(/active/);
   });
 });
