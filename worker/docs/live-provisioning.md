@@ -202,7 +202,9 @@ placeholder to replace — it throws when its env var is unset.
 
 - **Site build env:** `PUBLIC_FOUNDING_CHECKOUT_URL` = the Founding Payment Link
   from section 2 (+ `PUBLIC_SITE_MODE=live` is already set in CI). This kills the
-  HTTP-403 founding link live.
+  HTTP-403 founding link live. Live-mode `npm run build` fails closed (prebuild
+  `scripts/check-founding-checkout.mjs`) when `PUBLIC_FOUNDING_CHECKOUT_URL` is
+  missing, the placeholder, or not an `https://buy.stripe.com/…` link (#1528).
 - **App release build env:** `SOUND_BUDDY_CHECKOUT_MONTHLY_URL` /
   `SOUND_BUDDY_CHECKOUT_ANNUAL_URL` / `SOUND_BUDDY_CHECKOUT_FOUNDING_URL` = the
   three Payment Links from section 2. Set these as GitHub repository variables;
@@ -210,6 +212,37 @@ placeholder to replace — it throws when its env var is unset.
   to `Contents/Resources/checkout-urls.json` before signing. Installed apps read
   this file and need no shell environment. Missing, test-mode, or non-Stripe URLs
   stop packaging before a broken checkout can ship.
+
+### 8a. Founding $199 Payment Link — Patrick-only steps (#1528)
+
+1. Stripe Dashboard (Test mode first, then Live): Product "Sound Buddy Founding
+   Lifetime", one-time Price **$199.00 USD** (not recurring). Do not change the
+   price or the cap (#1518 lock).
+2. Payment Links → create a link for that Price; enable **Limit the number of
+   payments → 10** (matches `FOUNDING_CAP` in `worker/wrangler.jsonc`); collect
+   customer email (required — the worker emails the key to
+   `customer_details.email`); after-payment confirmation message pointing to the
+   license email.
+3. Copy the link URL. Paste it into: Cloudflare Workers Builds (site) variable
+   `PUBLIC_FOUNDING_CHECKOUT_URL` (with `PUBLIC_SITE_MODE=live`), and GitHub repo
+   variable `SOUND_BUDDY_CHECKOUT_FOUNDING_URL` (app release build, `release.yml`).
+4. Webhooks: confirm the endpoint `https://soundbuddy.online/api/stripe/webhook`
+   (section 3) subscribes to `checkout.session.completed` and
+   `checkout.session.async_payment_succeeded`; the signing secret is set via
+   `wrangler secret put STRIPE_WEBHOOK_SECRET`. Also confirm
+   `LICENSE_SIGNING_PRIVATE_KEY`, `RESEND_API_KEY`, `STRIPE_SECRET_KEY` are set
+   (section 6) and `FOUNDING_CAP` is `10` in `worker/wrangler.jsonc`.
+5. Test purchase with the **test** link and card 4242…: confirm the webhook
+   delivery is 200 in Stripe → Webhooks, the license email arrives from
+   `hello@soundbuddy.online`, and pasting the key into Sound Buddy → License
+   unlocks Pro (lifetime). Confirm the site's founding-remaining count moves
+   (`GET /api/stripe/founding-count`).
+6. Swap in the **live** link (repeat step 3 with the live URL) and redeploy;
+   live-mode `npm run build` refuses a missing/placeholder link
+   (`scripts/check-founding-checkout.mjs`, #1528).
+7. Remaining Patrick-only paste sites if blocked: the Cloudflare site build
+   variable, the GitHub repo variable, and the worker secrets — none are
+   committed to the repo.
 
 ## 9. Verify in test mode
 
@@ -295,6 +328,7 @@ to do it.
 - [ ] `PUBLIC_FOUNDING_CHECKOUT_URL` = live Founding link; `PUBLIC_SITE_MODE=live` (§8)
 - [ ] `SOUND_BUDDY_CHECKOUT_MONTHLY_URL` / `SOUND_BUDDY_CHECKOUT_ANNUAL_URL` / `SOUND_BUDDY_CHECKOUT_FOUNDING_URL` = live Payment Links in the app release build (§8)
 - [ ] URLs stay env-driven — no Payment-Link URLs baked into `checkout.ts` or `founding-urgency.ts` (§8)
+- [ ] Founding Payment Link created ($199, cap 10), wired, and verified end-to-end (purchase → webhook → email → app unlock) (§8a)
 - [ ] `.env.local` + `worker/.dev.vars` carry the production key + `sk_test` secrets; sandbox e2e passes (§9)
 - [ ] App purchase-path gate passes against a real test-minted key (§9)
 - [ ] Stripe account activated (business + bank) (§10)
