@@ -43,7 +43,7 @@ const DEFAULT_MEASUREMENT_CHANNEL = 0;
  * spawning stream.py with a bad argument (#1524).
  */
 export function measurementChannelToken(channel: number | undefined): string {
-  return Number.isInteger(channel) && (channel as number) >= 0
+  return typeof channel === 'number' && Number.isInteger(channel) && channel >= 0
     ? String(channel)
     : String(DEFAULT_MEASUREMENT_CHANNEL);
 }
