@@ -231,6 +231,16 @@ export function switchMode(mode: WorkspaceMode, opts?: { boot?: boolean }): void
   applySingleColumnSync();
 }
 
+// #1508: the one programmatic path to Report Card that does not click the
+// peer .mode-tab button (which #1507 removes from Advanced). Same
+// resolve -> switch sequence as a tab click, so it is a noop while already
+// on Report Card, and Simple mode still redirects to the Analyze stage
+// inside switchMode (#1510 / ADR-0146).
+export function openReportCard(): void {
+  const decision = resolveModeSwitch('reportcard', useLiveCaptureStore.getState().appMode);
+  if (decision.type === 'switch') switchMode(decision.mode);
+}
+
 // #1510: App.tsx's synchronous first-paint dispatch. liveCaptureStore's
 // initial appMode can now be 'analyze', which is not a WorkspaceMode, so the
 // old `if (isWorkspaceMode(initialMode)) switchMode(initialMode, { boot: true })`

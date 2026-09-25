@@ -1,6 +1,6 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
 import * as path from 'path';
-import { launchApp, loadAndAnalyze, FAKE_ANALYSIS, DEDUCTING_ANALYSIS } from './e2e-helpers';
+import { launchApp, loadAndAnalyze, FAKE_ANALYSIS, DEDUCTING_ANALYSIS, gotoReportCard } from './e2e-helpers';
 
 // #263: "save this mix's tone as your target" CTA — a one-click surface of the
 // existing free profileFromMeasuredCurve path (already reachable via the
@@ -23,7 +23,7 @@ test.describe('Sound Buddy E2E — report card save-target CTA', () => {
   });
 
   test('one-click saves a strong-grading mix as a custom target curve', async () => {
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await loadAndAnalyze(window, fixturePath());
     await expect(window.locator('#rc-content')).toBeVisible();
 

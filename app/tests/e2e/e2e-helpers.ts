@@ -1,3 +1,4 @@
+import { expect } from '@playwright/test';
 import type { ElectronApplication, Page, Locator } from '@playwright/test';
 import * as path from 'path';
 import { LICENSE_ENV, seedProLicense } from '../license-fixture';
@@ -191,6 +192,17 @@ export async function loadAndAnalyze(window: Page, fp: string) {
     w.loadFile(filePath);
     return w.runFileAnalysis(filePath);
   }, fp);
+}
+
+// #1508: the canonical e2e path to the Report Card workspace. Goes through
+// the production mode-switch entry (window.modeSwitch.openReportCard, the
+// same resolve -> switch a tab click runs), never the peer
+// .mode-tab[data-mode="reportcard"] button, which #1507 removes.
+export async function gotoReportCard(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    (window as unknown as { modeSwitch: { openReportCard(): void } }).modeSwitch.openReportCard();
+  });
+  await expect(page.locator('#reportcard-view')).toHaveClass(/active/);
 }
 
 // Commit a new name into a workspace track header (contenteditable .daw-track-head-name).

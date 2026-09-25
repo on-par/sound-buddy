@@ -3,6 +3,7 @@ import { launchElectron } from './launch-electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { NO_TRIAL_ENV, makeLicenseKey, seedProLicense } from './license-fixture';
+import { gotoReportCard } from './e2e/e2e-helpers';
 
 // License gating (#54), run for REAL against an isolated license.json in a
 // throwaway --user-data-dir: free tier locks (badge, tab locks, upgrade cards),
@@ -67,7 +68,7 @@ test.describe.serial('License gating (#54)', () => {
     await win.locator('#settings-dialog-done').click();
 
     // The free funnel is untouched: file input + Report Card fully work.
-    await win.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(win);
     await expect(win.locator('#reportcard-view')).toBeVisible();
   });
 
@@ -137,7 +138,7 @@ test.describe.serial('License gating (#54)', () => {
     expect(fs.existsSync(path.join(USER_DATA, 'license.json'))).toBe(false);
     await win.locator('#license-close-btn').click();
     // Free again, not locked: report card still reachable.
-    await win.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(win);
     await expect(win.locator('#reportcard-view')).toBeVisible();
   });
 

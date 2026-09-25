@@ -1,6 +1,6 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
 import * as path from 'path';
-import { launchApp, loadAndAnalyze } from './e2e-helpers';
+import { launchApp, loadAndAnalyze, gotoReportCard } from './e2e-helpers';
 
 // The 3 utility dialogs ported to React in TD-001 slice 6f (#704): feedback,
 // grade-own-guide, and phase/doubling checklist. None had e2e coverage before
@@ -24,7 +24,7 @@ const SHARED_CARD_W = 340;
 test.describe('Utility dialogs (#704)', () => {
   test.beforeAll(async () => {
     ({ electronApp, window } = await launchApp());
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await loadAndAnalyze(window, fixturePath());
     await expect(window.locator('#rc-content')).toBeVisible();
   });

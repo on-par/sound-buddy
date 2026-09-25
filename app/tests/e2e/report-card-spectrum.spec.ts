@@ -1,6 +1,6 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
 import * as path from 'path';
-import { launchApp, loadAndAnalyze } from './e2e-helpers';
+import { launchApp, loadAndAnalyze, gotoReportCard } from './e2e-helpers';
 
 // Second slice of the former e2e.spec.ts (#225): the spectrum panel rendered
 // alongside the report card, and the time-sampled heatmap scrubber. The first
@@ -25,7 +25,7 @@ test.describe('Sound Buddy E2E — report card spectrum', () => {
     // with the Report Card tab active, both the spectrum curve and the report
     // card content are visible simultaneously — no tab switch to see one or the
     // other. The Source panel folds away (body.rc-active) so both get room.
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     const fixturePath = path.join(__dirname, '..', 'fixtures', 'silence.wav');
     await loadAndAnalyze(window, fixturePath);
 
@@ -41,7 +41,7 @@ test.describe('Sound Buddy E2E — report card spectrum', () => {
   });
 
   test('spectrum panel renders analyzer-style EQ bars (#1446)', async () => {
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
 
     // Seven upright bars, one per frequency band, laid out on the same
     // log-frequency analyzer frame as live monitoring.
@@ -75,7 +75,7 @@ test.describe('Sound Buddy E2E — report card spectrum', () => {
   });
 
   test('EQ bar height reflects the measured band level', async () => {
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
 
     // FAKE_ANALYSIS.spectrum.bands: mid (-16) is the loudest of the 7; brilliance
     // (-35) is quieter but still above DIM_DB (-60), so nothing is dimmed here.
@@ -89,7 +89,7 @@ test.describe('Sound Buddy E2E — report card spectrum', () => {
   });
 
   test('time-sampled spectrogram scrubber redraws the analyzer bars', async () => {
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
 
     // Heatmap strip under the bars: one column per frame (6 in the fixture).
     await expect(window.locator('#spectrum-heatmap svg')).toBeVisible();
@@ -117,14 +117,14 @@ test.describe('Sound Buddy E2E — report card spectrum', () => {
   });
 
   test('scrubbed frame survives leaving and returning to the report card tab', async () => {
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await window.locator('#spectrum-heatmap').click({ position: { x: 20, y: 40 } });
     const scrubbed = await window.locator('#scrub-readout').textContent();
     expect(scrubbed).toContain('t =');
 
     // Round-trip through another tab and back — the selection must persist.
     await window.locator('.mode-tab[data-mode="dir"]').click();
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await expect(window.locator('#scrub-readout')).toHaveText(scrubbed!.trim());
     await expect(window.locator('#spectrum-heatmap .hm-col.sel')).toHaveCount(1);
 

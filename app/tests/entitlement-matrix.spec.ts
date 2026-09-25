@@ -3,6 +3,7 @@ import { launchElectron } from './launch-electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { MATRIX_ENV, MATRIX_FREE_ENV, seedTrial, seedSubscription, seedProLicense } from './license-fixture';
+import { gotoReportCard } from './e2e/e2e-helpers';
 
 // End-to-end entitlement matrix (#139): every license/trial state, launched
 // for REAL, asserting BOTH halves of the gate hold together — the renderer
@@ -87,7 +88,7 @@ async function assertRendererGated(): Promise<void> {
   await expect(win.locator('#daw-session-record')).toBeHidden();
 
   // The free funnel is untouched: report card stays reachable.
-  await win.locator('.mode-tab[data-mode="reportcard"]').click();
+  await gotoReportCard(win);
   await expect(win.locator('#reportcard-view')).toBeVisible();
 }
 

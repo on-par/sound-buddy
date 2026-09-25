@@ -1,6 +1,6 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
 import * as path from 'path';
-import { launchApp, loadAndAnalyze } from './e2e-helpers';
+import { launchApp, loadAndAnalyze, gotoReportCard } from './e2e-helpers';
 
 let electronApp: ElectronApplication;
 let window: Page;
@@ -16,7 +16,7 @@ test.describe('Ideal curve editor visual EQ', () => {
 
   test('edits the ideal curve by dragging nodes on the EQ surface', async () => {
     const fixture = path.join(__dirname, '..', 'fixtures', 'silence.wav');
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await loadAndAnalyze(window, fixture);
     await window.locator('#ideal-profile-select').selectOption('flat');
     await window.locator('#ideal-curve-edit-btn').click();

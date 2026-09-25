@@ -1,6 +1,6 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
 import * as path from 'path';
-import { launchApp, loadAndAnalyze } from './e2e-helpers';
+import { launchApp, loadAndAnalyze, gotoReportCard } from './e2e-helpers';
 
 // First slice of the former e2e.spec.ts "Sound Buddy E2E" describe (#225):
 // app boot, tab navigation, and the empty/loaded/cleared report-card states.
@@ -41,7 +41,7 @@ test.describe('Sound Buddy E2E — report card basics', () => {
     await expect(window.locator('#reportcard-view')).not.toHaveClass(/active/);
     await expect(window.locator('#tab-dir')).toHaveClass(/active/);
 
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await expect(window.locator('#reportcard-view')).toHaveClass(/active/);
     await expect(window.locator('#rc-empty')).toBeVisible();
   });
@@ -57,7 +57,7 @@ test.describe('Sound Buddy E2E — report card basics', () => {
   });
 
   test('report card shows empty state before any analysis', async () => {
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await expect(window.locator('#rc-empty')).toBeVisible();
     // The empty state is the file-loading form itself now (#203), not a
     // placeholder message pointing at a separate File tab.
@@ -69,12 +69,12 @@ test.describe('Sound Buddy E2E — report card basics', () => {
   });
 
   test('playback transport is absent (disabled/idle) before any analysis is loaded (#180)', async () => {
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await expect(window.locator('#spectro-play-btn')).toHaveCount(0);
   });
 
   test('analyzing a file populates the report card', async () => {
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
 
     // Load the fixture path directly, bypassing the native file-picker dialog.
     const fixturePath = path.join(__dirname, '..', 'fixtures', 'silence.wav');
@@ -96,7 +96,7 @@ test.describe('Sound Buddy E2E — report card basics', () => {
   });
 
   test('Clear returns to the empty/dropzone state to load a different file (#206)', async () => {
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     // A prior test already produced a report card, which hides the dropzone
     // behind #rc-content — load this file directly via the globals (see
     // loadAndAnalyze) so the card is guaranteed on screen.
@@ -141,7 +141,7 @@ test.describe('Sound Buddy E2E — report card basics', () => {
       });
     });
 
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     const fixturePath = path.join(__dirname, '..', 'fixtures', 'silence.wav');
     await loadAndAnalyze(window, fixturePath);
     await expect(window.locator('#rc-content')).toBeVisible();
@@ -173,7 +173,7 @@ test.describe('Sound Buddy E2E — report card basics', () => {
     // transition, and a prior test already left currentMode on 'reportcard' —
     // a same-tab click would no-op and never pick up the new liveWindows data.
     await window.locator('.mode-tab[data-mode="dir"]').click();
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await expect(window.locator('#rc-content')).toBeVisible();
     await expect(window.locator('#rc-filename')).toContainText('Live capture');
 

@@ -3,6 +3,7 @@ import { launchElectron } from './launch-electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { NO_TRIAL_ENV, makeLicenseKey, seedProLicense } from './license-fixture';
+import { gotoReportCard } from './e2e/e2e-helpers';
 
 // Purchase-path smoke test (#140): proves the app-side "money-in → access-out"
 // funnel is wired correctly end to end. checkout.test.ts unit-tests
@@ -79,7 +80,7 @@ async function launch(userDataDir: string = USER_DATA): Promise<void> {
 }
 
 async function analyzeAndOpenReportCard(): Promise<void> {
-  await win.locator('.mode-tab[data-mode="reportcard"]').click();
+  await gotoReportCard(win);
   // This spec tests checkout, not the #296 first-reveal hold — pre-seed the
   // flag so the upgrade card's CTAs are clickable without waiting out the
   // softened first-result delay.
@@ -149,7 +150,7 @@ test.describe.serial('Purchase path smoke test (#140)', () => {
     // The observable unlock: the upgrade card disappears from the still-open
     // report card, and a previously locked Pro tab loses its lock — the four
     // PRO_FEATURES themselves are entitlement-matrix's job, not this smoke test.
-    await win.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(win);
     await expect(win.locator('#rc-content')).toBeVisible();
     await expect(win.locator('#rc-upgrade')).toBeHidden();
     await expect(win.locator('.mode-tab[data-mode="live"] .tab-lock')).toBeHidden();

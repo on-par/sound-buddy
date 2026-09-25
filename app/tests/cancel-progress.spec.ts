@@ -3,6 +3,7 @@ import { launchElectron } from './launch-electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { NO_TRIAL_ENV } from './license-fixture';
+import { gotoReportCard } from './e2e/e2e-helpers';
 
 // Cancel button + coarse stage progress during file analysis (#125). Runs for
 // REAL against an isolated --user-data-dir (NO_TRIAL_ENV), with the
@@ -42,7 +43,7 @@ async function launch(): Promise<void> {
 }
 
 async function loadFakeFile(): Promise<void> {
-  await win.locator('.mode-tab[data-mode="reportcard"]').click();
+  await gotoReportCard(win);
   await win.evaluate((fp) => {
     (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
   }, FAKE_FILE);
