@@ -196,8 +196,8 @@ window.seekPlayback = (t) => transport.seek(t);
 // renders the tabs and dispatches every click through mode-switch.ts's
 // resolveModeSwitch/switchMode, which liveCaptureStore.appMode drives
 // (TD-001 slice 6e, #703). window.modeSwitch bridges applySpectrumForMode/
-// applySingleColumnSync for the remaining call sites below that aren't
-// inside switchMode() itself.
+// applySingleColumnSync/openReportCard for the remaining call sites below
+// that aren't inside switchMode() itself.
 
 /* ══ File mode ══
    The dropzone (click/drag/drop) and the Analyze button now live in
@@ -342,7 +342,8 @@ sb.onAnalysisResult((data) => {
 });
 
 sb.onMenuOpenFile((fp) => {
-  document.querySelector('.mode-tab[data-mode="reportcard"]').click();
+  // #1508: no peer-tab click — the Report Card tab goes away in #1507.
+  window.modeSwitch.openReportCard();
   loadFile(fp);
   runFileAnalysis(fp);
 });
