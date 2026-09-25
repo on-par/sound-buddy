@@ -17,6 +17,7 @@ import { handleFoundingCount } from "./handlers/founding-count";
 import { handleIngestEvent } from "./handlers/ingest";
 import { handleWaitlistSignup } from "./handlers/waitlist";
 import { handleInvite, handleListInvitees } from "./handlers/waitlist-invite";
+import { handleAuthSession, handleAuthStart, handleAuthVerify } from "./handlers/auth";
 
 /**
  * Environment bindings declared in wrangler.jsonc. Secret values
@@ -129,6 +130,9 @@ const routes: Route[] = [
   { method: "POST", path: "/api/waitlist", handler: handleWaitlistSignup },
   { method: "GET", path: "/api/waitlist/invitees", handler: handleListInvitees },
   { method: "POST", path: "/api/waitlist/invite", handler: handleInvite },
+  { method: "POST", path: "/api/auth/start", handler: handleAuthStart },
+  { method: "POST", path: "/api/auth/verify", handler: handleAuthVerify },
+  { method: "GET", path: "/api/auth/session", handler: handleAuthSession },
 ];
 
 export async function handleRequest(
