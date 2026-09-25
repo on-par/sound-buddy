@@ -108,34 +108,22 @@ test.describe('Sound Buddy E2E — recent services (#147)', () => {
 
     await window.locator('#recent-list .recent-row').first().click();
 
-    // The row click routes through the same tab, so the report-card view
-    // takes over the screen exactly as it does after a real analysis.
-    await expect(window.locator('#reportcard-view')).toHaveClass(/active/);
-    await expect(window.locator('#rc-content')).toBeVisible();
-    await expect(window.locator('#rc-empty')).toBeHidden();
-    await expect(window.locator('#rc-filename')).toHaveText('worship.wav');
-    await expect(window.locator('#rc-ring .letter')).toHaveText('A');
-    await expect(window.locator('#rc-ring .score')).toContainText('96');
-    await expect(window.locator('#rc-date')).toHaveText(new Date('2026-07-05T14:30:00.000Z').toLocaleString());
-
-    // Sections that need raw analysis data the stored summary doesn't have
-    // are hidden rather than rendered empty.
-    await expect(window.locator('#rc-metrics-section')).toBeHidden();
-    await expect(window.locator('#rc-why-section')).toBeHidden();
-    await expect(window.locator('#rc-bands-section')).toBeHidden();
-    await expect(window.locator('#rc-frames-section')).toBeHidden();
-    await expect(window.locator('#rc-profile-section')).toBeHidden();
+    // The row click lands on the Analyze stage directly (#1521), not the
+    // flag-gated Report Card workspace.
+    await expect(window.locator('#reportcard-view')).not.toHaveClass(/active/);
+    await expect(window.locator('#arc-content')).toBeVisible();
+    await expect(window.locator('#arc-filename')).toHaveText('worship.wav');
+    await expect(window.locator('#arc-ring .letter')).toHaveText('A');
+    await expect(window.locator('#arc-ring .score')).toContainText('96');
+    await expect(window.locator('#arc-date')).toHaveText(new Date('2026-07-05T14:30:00.000Z').toLocaleString());
 
     // Recommendations still render straight from the stored topFixes.
-    await expect(window.locator('#rc-recommendations .rc-rec')).toHaveCount(2);
+    await expect(window.locator('#arc-recommendations .rc-rec')).toHaveCount(2);
 
     // Never re-ran analysis — the stored record is all that backed the card.
     const analyzeFileCalls = await electronApp.evaluate(() =>
       (globalThis as unknown as { __analyzeFileCalls: number }).__analyzeFileCalls);
     expect(analyzeFileCalls).toBe(0);
-
-    // Clear is disabled — there is no file backing this card to clear.
-    await expect(window.locator('#reportcard-clear-btn')).toBeDisabled();
   });
 
   test('a crafted gradeLetter cannot break out of the style attribute or inject markup', async () => {
@@ -153,15 +141,15 @@ test.describe('Sound Buddy E2E — recent services (#147)', () => {
     await expect(window.locator('.recent-grade')).toHaveText(payload);
 
     await window.locator('#recent-list .recent-row').first().click();
-    await expect(window.locator('#rc-content')).toBeVisible();
+    await expect(window.locator('#arc-content')).toBeVisible();
     await expect(window.locator('#xss-probe')).toHaveCount(0);
-    await expect(window.locator('#rc-ring .letter')).toHaveText(payload);
+    await expect(window.locator('#arc-ring .letter')).toHaveText(payload);
 
     const fired = await window.evaluate(() => (window as unknown as { __xssFired?: boolean }).__xssFired);
     expect(fired).toBeUndefined();
   });
 
-  test('a history record with a missing gradeLetter does not crash the report card render', async () => {
+  test('a history record with a missing gradeLetter does not crash the Analyze rail render', async () => {
     // Bypasses storage.ts's own shape validation (unit-tested separately) to
     // exercise the renderer's own defensive fallback in gradeRingHTML — the
     // two guards are independent layers against the same malformed-record risk.
@@ -182,8 +170,8 @@ test.describe('Sound Buddy E2E — recent services (#147)', () => {
     await openRecentTab();
     await window.locator('#recent-list .recent-row').first().click();
 
-    await expect(window.locator('#rc-content')).toBeVisible();
-    await expect(window.locator('#rc-filename')).toHaveText('weird.wav');
+    await expect(window.locator('#arc-content')).toBeVisible();
+    await expect(window.locator('#arc-filename')).toHaveText('weird.wav');
     expect(pageErrors).toEqual([]);
   });
 
@@ -202,7 +190,7 @@ test.describe('Sound Buddy E2E — recent services (#147)', () => {
 
     await openRecentTab();
     await window.locator('#recent-list .recent-row').first().click();
-    await expect(window.locator('#rc-content')).toBeVisible();
+    await expect(window.locator('#arc-content')).toBeVisible();
 
     await expect(window.locator('#file-dropzone')).not.toHaveClass(/loaded/);
     await expect(window.locator('#file-dropzone')).toContainText('Drop audio file here');

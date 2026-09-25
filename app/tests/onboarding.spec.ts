@@ -53,7 +53,7 @@ test.describe.serial('First-run onboarding (#69)', () => {
     const dialog = win.locator('#onboarding-dialog');
     await expect(dialog).toBeVisible();
     await expect(win.locator('#onboarding-title')).toHaveText('Welcome to Sound Buddy');
-    await expect(win.locator('#onboarding-copy')).toContainText('report card');
+    await expect(win.locator('#onboarding-copy')).toContainText('Analyze');
     const runBtn = win.locator('#onboarding-run');
     await expect(runBtn).toHaveText(/Run your first analysis/);
 
@@ -129,17 +129,16 @@ test.describe.serial('First-run onboarding (#69)', () => {
     for (const mode of ALL_MODES) await expectTabHiddenAttr(mode, false);
   });
 
-  test('Simple mode onboarding points users at the Report Card dropzone or Analyze', async () => {
+  test('Simple mode onboarding points users at Analyze (#1521)', async () => {
     fs.rmSync(USER_DATA, { recursive: true, force: true });
     fs.mkdirSync(USER_DATA, { recursive: true });
     fs.writeFileSync(path.join(USER_DATA, 'settings.json'), JSON.stringify({ advancedFeaturesEnabled: false }, null, 2));
     await launchWithAdvancedEnvOverrideCleared();
 
     const copy = win.locator('#onboarding-copy');
-    await expect(copy).toHaveText("Drop last Sunday's recording on the Report Card panel - or click Analyze - and Sound Buddy hands back a report card telling you what to fix.");
-    await expect(copy).toContainText('report card');
-    await expect(copy).toContainText('Report Card');
+    await expect(copy).toHaveText("Click Analyze and choose last Sunday's recording - Sound Buddy hands back a grade and the fixes to make.");
     await expect(copy).toContainText('Analyze');
+    await expect(copy).not.toContainText('Report Card');
   });
 
   test('Simple mode hides advanced tabs but leaves their buttons mounted', async () => {
