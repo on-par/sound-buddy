@@ -14,8 +14,8 @@ const MAIN = path.join(__dirname, '..', 'dist', 'electron', 'main.js');
 const USER_DATA = path.join(__dirname, '..', 'test-results', 'onboarding-userdata');
 const SILENCE = path.join(__dirname, 'fixtures', 'silence.wav');
 const SIMPLE_MODES = ['analyze', 'history'];
-const ADVANCED_MODES = ['dir', 'live', 'console', 'recent', 'guide', 'ringout', 'reportcard'];
-const ALL_MODES = ['analyze', 'history', 'dir', 'live', 'console', 'recent', 'guide', 'ringout', 'reportcard'];
+const ADVANCED_MODES = ['dir', 'live', 'console', 'recent', 'guide', 'ringout'];
+const ALL_MODES = ['analyze', 'history', 'dir', 'live', 'console', 'recent', 'guide', 'ringout'];
 
 let app: ElectronApplication;
 let win: Page;
@@ -116,6 +116,7 @@ test.describe.serial('First-run onboarding (#69)', () => {
 
     await expect(win.locator('body')).not.toHaveClass(/simple-mode/);
     for (const mode of ALL_MODES) await expectTabHiddenAttr(mode, false);
+    await expect(win.locator('.mode-tab[data-mode="reportcard"]')).toHaveCount(0);
   });
 
   test('console network consent preserves Advanced tabs for existing users', async () => {
@@ -149,8 +150,7 @@ test.describe.serial('First-run onboarding (#69)', () => {
 
     await expect(win.locator('body')).toHaveClass(/simple-mode/);
     await expect(win.locator('#nav-history')).toBeVisible();
-    await expectTabHiddenAttr('reportcard', true);
-    await expect(win.locator('.mode-tab[data-mode="reportcard"]')).not.toBeVisible();
+    await expect(win.locator('.mode-tab[data-mode="reportcard"]')).toHaveCount(0);
     await expect(win.locator('#nav-analyze')).toBeVisible();
 
     for (const mode of ADVANCED_MODES) await expectTabHiddenAttr(mode, true);
@@ -193,7 +193,6 @@ test.describe.serial('First-run onboarding (#69)', () => {
     await expect(win.locator('#arc-content')).toBeVisible();
     await expect(win.locator('#arc-ring')).toBeVisible();
     await expect(win.locator('#reportcard-view')).not.toHaveClass(/active/);
-    await expectTabHiddenAttr('reportcard', true);
-    await expect(win.locator('.mode-tab[data-mode="reportcard"]')).not.toHaveClass(/active/);
+    await expect(win.locator('.mode-tab[data-mode="reportcard"]')).toHaveCount(0);
   });
 });

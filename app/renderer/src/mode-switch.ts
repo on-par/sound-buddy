@@ -232,7 +232,7 @@ export function switchMode(mode: WorkspaceMode, opts?: { boot?: boolean }): void
 }
 
 // #1508: the one programmatic path to Report Card that does not click the
-// peer .mode-tab button (which #1507 removes from Advanced). Same
+// peer .mode-tab button (which #1507 removed from Advanced). Same
 // resolve -> switch sequence as a tab click, so it is a noop while already
 // on Report Card, and Simple mode still redirects to the Analyze stage
 // inside switchMode (#1510 / ADR-0146).
@@ -270,7 +270,16 @@ export interface RestoreBootModeDeps {
 // never both, and never before hydration, so decideLiveAutoStart always sees
 // the real post-hydration rigStore/deviceHint state.
 export async function restoreBootMode(deps: RestoreBootModeDeps): Promise<void> {
+  const bootMode = deps.getCurrentMode();
   await deps.hydration;
+  // #1507: hydration (real settings + device/rig IPC) can take long enough
+  // for the user to have already navigated away from the boot default — e.g.
+  // clicking straight into Report Card from Recent/Build Guide/Live/onboarding.
+  // Advanced now clamps a persisted 'reportcard' to 'analyze' same as Simple,
+  // so without this guard a late hydration would yank that real navigation
+  // back to Analyze. Only apply the restore while still sitting on the exact
+  // mode painted at boot.
+  if (deps.getCurrentMode() !== bootMode) return;
   const lastMode = deps.getLastAppMode();
   const currentMode = deps.getCurrentMode();
   const restoredMode = lastMode ? clampBootMode(lastMode, deps.getSettings()) : lastMode;

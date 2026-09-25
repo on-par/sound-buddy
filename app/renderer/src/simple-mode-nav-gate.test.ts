@@ -34,9 +34,10 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
 
 describe('Simple-mode nav invariant', () => {
   it('ModeTabs keeps every workspace mounted and drives visibility from visibleTabModes', () => {
-    for (const mode of ['analyze', 'history', 'dir', 'live', 'console', 'recent', 'guide', 'ringout', 'reportcard']) {
+    for (const mode of ['analyze', 'history', 'dir', 'live', 'console', 'recent', 'guide', 'ringout']) {
       expect(modeTabsMarkup).toContain(`data-mode="${mode}"`);
     }
+    expect(modeTabsMarkup).not.toContain('data-mode="reportcard"');
     expect(modeTabsSrc).toContain('hidden={!visibleModes.includes(tab.mode)}');
     expect(visibleTabModes(settings({ advancedFeaturesEnabled: false }))).toEqual(['analyze', 'history']);
   });

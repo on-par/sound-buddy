@@ -197,7 +197,7 @@ export async function loadAndAnalyze(window: Page, fp: string) {
 // #1508: the canonical e2e path to the Report Card workspace. Goes through
 // the production mode-switch entry (window.modeSwitch.openReportCard, the
 // same resolve -> switch a tab click runs), never the peer
-// .mode-tab[data-mode="reportcard"] button, which #1507 removes.
+// .mode-tab[data-mode="reportcard"] button, which #1507 removed.
 export async function gotoReportCard(page: Page): Promise<void> {
   await page.evaluate(() => {
     (window as unknown as { modeSwitch: { openReportCard(): void } }).modeSwitch.openReportCard();
