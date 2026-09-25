@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
   SoundBuddyApi,
+  FilePathResolver,
   AnalyzeFileOpts,
   StartLiveOpts,
   StartMeasurementOpts,
@@ -38,7 +39,7 @@ export interface IpcRendererLike {
   removeAllListeners(channel: string): unknown;
 }
 
-export function createBridge(ipc: IpcRendererLike) {
+export function createBridge(ipc: IpcRendererLike, fileUtils: FilePathResolver) {
   return {
     getAppVersion: () => ipc.invoke('get-app-version'),
 
@@ -173,6 +174,10 @@ export function createBridge(ipc: IpcRendererLike) {
 
     openDirDialog: () => ipc.invoke('open-dir-dialog'),
 
+    // #1522: synchronous, no IPC round trip — webUtils.getPathForFile runs
+    // entirely in the preload context.
+    getPathForFile: (file: File) => fileUtils.getPathForFile(file),
+
     // Local-only save of the Export PNG button's rasterized report card (#368).
     saveReportImage: (bytes: Uint8Array, suggestedName: string) =>
       ipc.invoke('save-report-image', bytes, suggestedName),
@@ -257,5 +262,5 @@ export function createBridge(ipc: IpcRendererLike) {
 /* c8 ignore start -- Electron framework wiring: contextBridge only exists in
    a real sandboxed preload context; the bridge it exposes is fully covered
    via createBridge() in preload.test.ts. */
-contextBridge.exposeInMainWorld('soundBuddy', createBridge(ipcRenderer));
+contextBridge.exposeInMainWorld('soundBuddy', createBridge(ipcRenderer, webUtils));
 /* c8 ignore stop */

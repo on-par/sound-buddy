@@ -956,6 +956,16 @@ export interface DialogApi {
     bytes: Uint8Array,
     suggestedName: string
   ): Promise<{ saved: boolean; filePath?: string }>;
+  // #1522: a dropped File's real disk path. Synchronous, wraps Electron's
+  // webUtils.getPathForFile — Electron removed File.path in v32. Returns ''
+  // for a File with no disk backing (e.g. a File constructed in-memory).
+  getPathForFile(file: File): string;
+}
+
+// #1522: the preload-side seam for getPathForFile — injected into
+// createBridge so it can be exercised without a real Electron webUtils.
+export interface FilePathResolver {
+  getPathForFile(file: File): string;
 }
 
 export interface UpdateApi {
