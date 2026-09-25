@@ -20,6 +20,7 @@ import {
   upsertRig,
   deleteRig,
   setActiveRig,
+  saveCustomIdealProfiles,
   SETTING_SPECS,
   grantConsoleNetworkConsent,
   type AppSettings,
@@ -146,6 +147,17 @@ export function registerSettingsHandlers(): void {
     return deleteRig(id);
   });
   ipcMain.handle('set-active-rig', (_event, id: string | null) => setActiveRig(id));
+
+  // Custom ideal EQ curves (#1523) — dedicated CRUD surface, same reads-
+  // ungated/writes-Pro split as saved rigs above. Reading/selecting a
+  // previously saved curve happens through get-settings (ungated); only
+  // authoring goes through this handler.
+  ipcMain.handle('save-custom-ideal-profiles', (_event, profiles: unknown) => {
+    if (!isEntitled('custom-eq-curves')) {
+      throw new Error('Saving custom EQ curves requires a Pro license — start a trial or enter a license key in Settings.');
+    }
+    return saveCustomIdealProfiles(profiles);
+  });
 
   // get-demo-audio lives in ipc/analysis.ts (file-analysis domain); onboarding
   // just needs the dev/e2e switch here alongside the other misc app settings.

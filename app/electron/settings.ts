@@ -81,6 +81,9 @@ export const MAX_BUS_NAME_LEN = 40;
 // as MAX_BUS_NAME_LEN, kept as its own named constant since a pattern and a
 // name are conceptually distinct fields that happen to share a cap.
 export const MAX_BUS_PATTERN_LEN = 40;
+// Cap on the number of stored custom ideal EQ curves (#1523) — mirrors the
+// renderer's ideal-curves.js MAX_CUSTOM_PROFILES.
+export const MAX_CUSTOM_IDEAL_PROFILES = 24;
 
 /** A plain, non-array, non-null object. */
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -278,8 +281,9 @@ export const SETTING_SPECS: { [K in keyof AppSettings]: SettingSpec<AppSettings[
   },
   customIdealProfiles: {
     // Returns the stored array by reference, exactly as the pre-#747
-    // fileCustomIdealProfiles did — not patchable via IPC (profiles have their
-    // own CRUD surface), no env layer.
+    // fileCustomIdealProfiles did — not patchable via IPC. Profiles have
+    // their own CRUD surface (#1523): saveCustomIdealProfiles() below, wired
+    // to the Pro-gated 'save-custom-ideal-profiles' IPC handler. No env layer.
     default: [],
     sanitizeFile: (v) => (Array.isArray(v) ? v : SETTING_SPECS.customIdealProfiles.default),
   },
@@ -604,4 +608,29 @@ export function setActiveRig(id: string | null): AppSettings {
   }
   writeSettingsFile({ ...file, activeRigId: id });
   return getSettings();
+}
+
+// ── Custom ideal EQ curves (dedicated CRUD, #1523) ──────────────────────────
+// The generic update-settings patch path always drops customIdealProfiles
+// (SETTING_SPECS.customIdealProfiles has no sanitizePatch), so this is the
+// only main-side path that persists them. The IPC handler
+// ('save-custom-ideal-profiles') checks isEntitled('custom-eq-curves') before
+// calling this — this function itself is unaware of licensing, matching the
+// save-rig precedent (upsertRig/deleteRig are gated at the IPC layer, not here).
+
+/**
+ * Replace the full stored list of custom ideal EQ curves. `raw` is the
+ * renderer's normalized CustomIdealProfile[], validated structurally here
+ * (never trust the renderer): must be an array, entries must be non-null
+ * objects with a string `id`, and the result is capped at
+ * MAX_CUSTOM_IDEAL_PROFILES. Returns the merged effective settings.
+ */
+export function saveCustomIdealProfiles(raw: unknown): AppSettings {
+  if (!Array.isArray(raw)) {
+    throw new Error('Custom EQ curves must be a list — reopen the curve editor and save again.');
+  }
+  const kept = raw
+    .filter((entry): entry is Record<string, unknown> => isPlainObject(entry) && typeof entry.id === 'string')
+    .slice(0, MAX_CUSTOM_IDEAL_PROFILES) as unknown as CustomIdealProfile[];
+  return updateSettings({ customIdealProfiles: kept });
 }

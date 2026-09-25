@@ -841,6 +841,9 @@ export interface SettingsApi {
   // #1520: env-only (SOUND_BUDDY_FEATURES), resolved fresh in main and never
   // persisted — the non-hedgehog workspace gate (feature-flags.ts).
   getFeatureFlags(): Promise<FeatureFlags>;
+  // #1523: dedicated Pro-gated CRUD for custom ideal EQ curves — the generic
+  // update-settings patch path always drops customIdealProfiles.
+  saveCustomIdealProfiles(profiles: CustomIdealProfile[]): Promise<AppSettings>;
 }
 
 export interface StorageApi {

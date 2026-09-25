@@ -259,6 +259,25 @@ describe('save-rig / delete-rig Pro gating', () => {
   });
 });
 
+describe('save-custom-ideal-profiles Pro gating (#1523)', () => {
+  const curve = { id: 'sunday', label: 'Sunday target', description: '', freqs: [20], dbOffsets: [-1] };
+
+  it('entitled — stored file has the profiles', async () => {
+    const result = (await handlers.get('save-custom-ideal-profiles')!(null, [curve])) as { customIdealProfiles: unknown[] };
+
+    expect(result.customIdealProfiles).toEqual([curve]);
+    expect(readFile().customIdealProfiles).toEqual([curve]);
+  });
+
+  it('not entitled — rejects with an actionable message, leaves the file unchanged, and checks the right feature id', () => {
+    isEntitledMock.mockReturnValue(false);
+
+    expect(() => handlers.get('save-custom-ideal-profiles')!(null, [curve])).toThrow(/requires a Pro license/);
+    expect(isEntitledMock).toHaveBeenCalledWith('custom-eq-curves');
+    expect(fs.existsSync(settingsFile()) ? readFile().customIdealProfiles : []).toEqual([]);
+  });
+});
+
 describe('open-file-dialog / open-dir-dialog', () => {
   it('open-file-dialog returns the chosen path', async () => {
     openDialogResult = { canceled: false, filePaths: ['/x/audio.wav'] };

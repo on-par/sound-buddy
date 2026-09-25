@@ -35,6 +35,8 @@ import {
   deleteRig,
   setActiveRig,
   grantConsoleNetworkConsent,
+  saveCustomIdealProfiles,
+  MAX_CUSTOM_IDEAL_PROFILES,
   SETTING_SPECS,
   sanitizeGradingRubric,
   deriveAdvancedFeaturesDefault,
@@ -715,6 +717,46 @@ describe('customIdealProfiles', () => {
     const f = readFile();
     expect(f.idealProfile).toBe('custom:sunday');
     expect(f.customIdealProfiles).toEqual([curve]);
+  });
+});
+
+describe('saveCustomIdealProfiles (#1523 — dedicated Pro-gated CRUD surface)', () => {
+  const curve = {
+    id: 'sunday',
+    label: 'Sunday target',
+    description: 'Main room reference',
+    freqs: [20, 1000, 20000],
+    dbOffsets: [-2, 1, -1],
+    source: 'manual' as const,
+  };
+
+  it('persists an array to settings.json and a fresh getSettings() read sees it (AC3 relaunch proof)', () => {
+    const result = saveCustomIdealProfiles([curve]);
+
+    expect(result.customIdealProfiles).toEqual([curve]);
+    expect(readFile().customIdealProfiles).toEqual([curve]);
+    expect(getSettings().customIdealProfiles).toEqual([curve]);
+  });
+
+  it('throws an actionable error for non-array input', () => {
+    expect(() => saveCustomIdealProfiles('nope')).toThrow(/must be a list/);
+    expect(() => saveCustomIdealProfiles(null)).toThrow(/must be a list/);
+    expect(() => saveCustomIdealProfiles({ id: 'x' })).toThrow(/must be a list/);
+  });
+
+  it('drops non-object and id-less entries', () => {
+    const result = saveCustomIdealProfiles([curve, null, 'nope', 42, {}, { id: 'ok' }]);
+
+    expect(result.customIdealProfiles).toEqual([curve, { id: 'ok' }]);
+  });
+
+  it('caps the stored list at MAX_CUSTOM_IDEAL_PROFILES', () => {
+    const many = Array.from({ length: MAX_CUSTOM_IDEAL_PROFILES + 5 }, (_, i) => ({ id: `p${i}` }));
+
+    const result = saveCustomIdealProfiles(many);
+
+    expect(result.customIdealProfiles).toHaveLength(MAX_CUSTOM_IDEAL_PROFILES);
+    expect(result.customIdealProfiles).toEqual(many.slice(0, MAX_CUSTOM_IDEAL_PROFILES));
   });
 });
 

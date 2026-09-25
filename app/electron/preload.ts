@@ -21,6 +21,7 @@ import type {
   DiffScenesOpts,
   ConsoleLiveStateEvent,
   ConsoleSceneCaptureProgressDto,
+  CustomIdealProfile,
 } from './ipc/api';
 
 // The slice of Electron's IpcRenderer the bridge actually uses. Injected so
@@ -60,6 +61,11 @@ export function createBridge(ipc: IpcRendererLike, fileUtils: FilePathResolver) 
     // #1520 — env-only (SOUND_BUDDY_FEATURES) non-hedgehog workspace gate,
     // never persisted. See electron/feature-flags.ts.
     getFeatureFlags: () => ipc.invoke('get-feature-flags'),
+
+    // #1523 — dedicated Pro-gated CRUD for custom ideal EQ curves; the
+    // generic update-settings patch above always drops customIdealProfiles.
+    saveCustomIdealProfiles: (profiles: CustomIdealProfile[]) =>
+      ipc.invoke('save-custom-ideal-profiles', profiles),
 
     // Storage location + disk usage (#91). Informational only — Sound Buddy caps
     // nothing; this reports where recordings live and how much disk they use.
