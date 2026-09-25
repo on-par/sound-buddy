@@ -292,9 +292,14 @@ describe('Stats-row RMS/Peak unit spans carry ids for SPL calibration (#846)', (
 describe('Existing tabs stay intact under the unified Analyze picker (#543)', () => {
   it('keeps all workspace mode tabs available (now rendered by ModeTabs.tsx, TD-001 slice 6e, #703)', () => {
     const modeTabsMarkup = renderToString(createElement(ModeTabs));
-    ['dir', 'live', 'console', 'recent', 'guide', 'ringout', 'reportcard'].forEach((mode) => {
+    ['dir', 'live', 'console', 'recent', 'guide', 'ringout'].forEach((mode) => {
       expect(modeTabsMarkup).toContain(`data-mode="${mode}"`);
     });
+  });
+
+  it('no longer renders Report Card as a top-bar tab (#1507)', () => {
+    const modeTabsMarkup = renderToString(createElement(ModeTabs));
+    expect(modeTabsMarkup).not.toContain('data-mode="reportcard"');
   });
 
   it('has no retired standalone tab or portal island', () => {

@@ -25,7 +25,9 @@ interface TabDef {
   lock?: boolean;
 }
 
-// Verbatim port of root-markup.html's 9 buttons.
+// Verbatim port of root-markup.html's 9 buttons, minus Report Card, which
+// #1507 removed from the top bar. It stays reachable via
+// switchMode('reportcard') / openReportCard() (see mode-switch.ts).
 const TABS: TabDef[] = [
   { mode: 'analyze', id: 'nav-analyze', icon: 'activity', label: 'Analyze' },
   { mode: 'history', id: 'nav-history', icon: 'clock', label: 'History' },
@@ -35,7 +37,6 @@ const TABS: TabDef[] = [
   { mode: 'recent', icon: 'clock', label: 'Recent' },
   { mode: 'guide', icon: 'clipboard-check', label: 'Build Guide' },
   { mode: 'ringout', icon: 'waves', label: 'Ring Out' },
-  { mode: 'reportcard', icon: 'clipboard-check', label: 'Report Card' },
 ];
 
 function tabHtml(tab: TabDef): string {

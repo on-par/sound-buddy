@@ -752,17 +752,18 @@ describe('restoreBootMode', () => {
     expect(useAnalyzeEntryStore.getState().analyzeStage).toBe(true);
   });
 
-  it('a saved reportcard mode in Advanced mode still switches to Report Card', async () => {
+  it('a saved reportcard mode in Advanced mode lands on the Analyze stage (#1507)', async () => {
     useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: true, lastAppMode: 'reportcard' }) });
 
     await restoreBootMode({
       hydration: Promise.resolve(),
       getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
-      getCurrentMode: () => 'analyze',
+      getCurrentMode: () => 'recent',
       getSettings: () => useSettingsStore.getState().settings,
     });
 
-    expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');
-    expect(bodyClassList.contains('rc-active')).toBe(true);
+    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+    expect(useAnalyzeEntryStore.getState().analyzeStage).toBe(true);
+    expect(bodyClassList.contains('rc-active')).toBe(false);
   });
 });

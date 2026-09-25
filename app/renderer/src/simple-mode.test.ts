@@ -20,7 +20,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
 describe('simple-mode', () => {
   it('treats null settings as Advanced while the store is still loading', () => {
     expect(isSimpleMode(null)).toBe(false);
-    expect(visibleTabModes(null)).toEqual(['analyze', 'history', 'dir', 'live', 'console', 'recent', 'guide', 'ringout', 'reportcard']);
+    expect(visibleTabModes(null)).toEqual(['analyze', 'history', 'dir', 'live', 'console', 'recent', 'guide', 'ringout']);
   });
 
   it('is Simple mode only when advanced features are disabled', () => {
@@ -28,10 +28,10 @@ describe('simple-mode', () => {
     expect(visibleTabModes(settings({ advancedFeaturesEnabled: false }))).toEqual(['analyze', 'history']);
   });
 
-  it('keeps Report Card out of Simple mode but in Advanced', () => {
+  it('keeps Report Card out of every mode-tab list', () => {
     expect(visibleTabModes(settings({ advancedFeaturesEnabled: false }))).not.toContain('reportcard');
     expect(visibleTabModes(settings({ advancedFeaturesEnabled: false }))).toContain('analyze');
-    expect(visibleTabModes(settings())).toContain('reportcard');
+    expect(visibleTabModes(settings())).not.toContain('reportcard');
     expect(visibleTabModes(settings())).toEqual(ALL_TAB_MODES);
   });
 
@@ -51,7 +51,7 @@ describe('simple-mode', () => {
     expect(clampBootMode('soundcheck', settings())).toBe('analyze');
   });
 
-  it('keeps reportcard visible in Advanced mode', () => {
-    expect(clampBootMode('reportcard', settings())).toBe('reportcard');
+  it('clamps reportcard to analyze in Advanced mode too (#1507)', () => {
+    expect(clampBootMode('reportcard', settings())).toBe('analyze');
   });
 });

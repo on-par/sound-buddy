@@ -37,7 +37,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
 }
 
 describe('ModeTabs', () => {
-  it('renders all 9 buttons with their ids/data-mode', () => {
+  it('renders all 8 buttons with their ids/data-mode', () => {
     const html = renderMarkup();
     expect(html).toContain('id="nav-analyze" data-mode="analyze"');
     expect(html).toContain('id="nav-history" data-mode="history"');
@@ -47,12 +47,13 @@ describe('ModeTabs', () => {
     expect(html).toContain('data-mode="recent"');
     expect(html).toContain('data-mode="guide"');
     expect(html).toContain('data-mode="ringout"');
-    expect(html).toContain('data-mode="reportcard"');
+    expect(html).not.toContain('data-mode="reportcard"');
   });
 
-  it('marks the report card tab active by default', () => {
+  it('marks no tab active when appMode is reportcard (tab-less view)', () => {
+    useLiveCaptureStore.setState({ appMode: 'reportcard' });
     const html = renderMarkup();
-    expect(html).toContain('class="mode-tab active" data-mode="reportcard"');
+    expect(html).not.toContain('class="mode-tab active"');
   });
 
   it('marks whichever tab matches appMode as active instead', () => {
@@ -62,7 +63,6 @@ describe('ModeTabs', () => {
     expect(html).toContain('class="mode-tab active" data-mode="live"');
     expect(liveButton).toContain('data-mode="live"');
     expect(liveButton).toContain('Session');
-    expect(html).not.toContain('class="mode-tab active" data-mode="reportcard"');
   });
 
   it('renders the tab-lock decoration on Live only', () => {
@@ -90,7 +90,7 @@ describe('ModeTabs', () => {
     useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false }) });
     const html = renderMarkup();
 
-    for (const mode of ['dir', 'live', 'console', 'recent', 'guide', 'ringout', 'reportcard']) {
+    for (const mode of ['dir', 'live', 'console', 'recent', 'guide', 'ringout']) {
       const marker = `data-mode="${mode}"`;
       const start = html.indexOf(marker);
       const end = html.indexOf('</button>', start);
@@ -98,6 +98,7 @@ describe('ModeTabs', () => {
       expect(start).toBeGreaterThanOrEqual(0);
       expect(button).toContain('hidden=""');
     }
+    expect(html).not.toContain('data-mode="reportcard"');
     const analyzeStart = html.indexOf('id="nav-analyze"');
     const analyzeEnd = html.indexOf('</button>', analyzeStart);
     const analyzeButton = html.slice(analyzeStart, analyzeEnd);
@@ -111,15 +112,19 @@ describe('ModeTabs', () => {
     expect(historyButton).not.toContain('hidden=""');
   });
 
-  it('shows the Report Card tab unhidden in Advanced mode', () => {
+  it('renders no Report Card tab in Advanced mode', () => {
     useSettingsStore.setState({ settings: settings() });
     const html = renderMarkup();
 
-    const start = html.indexOf('data-mode="reportcard"');
-    const end = html.indexOf('</button>', start);
-    const button = html.slice(start, end);
-    expect(start).toBeGreaterThanOrEqual(0);
-    expect(button).not.toContain('hidden=""');
+    expect(html).not.toContain('data-mode="reportcard"');
+    for (const mode of ['analyze', 'history', 'dir', 'live', 'console', 'recent', 'guide', 'ringout']) {
+      const marker = `data-mode="${mode}"`;
+      const start = html.indexOf(marker);
+      const end = html.indexOf('</button>', start);
+      const button = html.slice(start, end);
+      expect(start).toBeGreaterThanOrEqual(0);
+      expect(button).not.toContain('hidden=""');
+    }
   });
 
 });

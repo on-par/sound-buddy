@@ -23,7 +23,8 @@ test.describe('Sound Buddy E2E — report card basics', () => {
     await expect(window.locator('#logo-text')).toHaveText('Sound Buddy');
     await expect(window.locator('.mode-tab[data-mode="dir"]')).toBeVisible();
     await expect(window.locator('.mode-tab[data-mode="live"]')).toBeVisible();
-    await expect(window.locator('.mode-tab[data-mode="reportcard"]')).toBeVisible();
+    await expect(window.locator('.mode-tab[data-mode="reportcard"]')).toHaveCount(0);
+    await expect(window.locator('#nav-analyze')).toBeVisible();
   });
 
   // Quarantined (#1510 -> #1514): #1510 moved the boot default off Report
