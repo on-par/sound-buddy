@@ -18,6 +18,7 @@ import { useRigStore } from './stores/rigStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useAnalysisStore } from './stores/analysisStore';
+import { useAnalyzeEntryStore } from './stores/analyzeEntryStore';
 import { SPECTRUM_TITLE } from './spectrum-chrome';
 import { decideLiveAutoStart } from './live-auto-start';
 import { startLiveCapture, runtime } from './LiveControls';
@@ -161,6 +162,12 @@ export function switchMode(mode: WorkspaceMode, opts?: { boot?: boolean }): void
   // Opt-in crash reporting (#473): the current screen is a safe breadcrumb
   // (a name, never content) a crash payload includes as `route`.
   sb.recordAppEvent(`screen.${mode === 'reportcard' ? 'reportcard' : mode}`);
+  // #1487: clicking a workspace tab always leaves the Analyze stage — the
+  // Analyze tab itself never reaches switchMode() (resolveModeSwitch's
+  // 'analyzeEntry' branch short-circuits before this), so every real call
+  // here is a navigation away from it. Never touches `listening` (see
+  // analyzeEntryStore's analyzeStage doc comment).
+  useAnalyzeEntryStore.getState().exitAnalyze();
   // Live replaces the spectrum area with unrelated content — don't leave the
   // analyzed file playing silently in the background with no visible control.
   if (mode === 'live') spectrumTransport.pauseIfPlaying();
