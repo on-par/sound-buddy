@@ -145,19 +145,53 @@ export function maybeAutoStartLive(): void {
   void startLiveCapture(runtime(), opts.windowSecs, opts.intervalSecs);
 }
 
+// #1510: the non-interactive Analyze-stage opener used by boot's default
+// mode, clampBootMode's Simple-mode fallback (via switchMode's redirect
+// below and restoreBootMode) and every other route that must land on the
+// Analyze results rail without starting a room-mic listen or opening the
+// entry dialog. Deliberately never calls exitAnalyze(), enterAnalyze(),
+// listenLive() or maybeAutoStartLive() — see the plan's rejected
+// alternatives for why enterAnalyze() is unsafe to reuse here.
+export function showAnalyzeStage(opts?: { boot?: boolean }): void {
+  getSoundBuddy().recordAppEvent('screen.analyze');
+  useLiveCaptureStore.getState().setAppMode('analyze');
+  if (!opts?.boot) void useSettingsStore.getState().updateSettings({ lastAppMode: 'analyze' });
+
+  document.body.classList.remove('live-active');
+  document.body.classList.remove('rc-active');
+  document.getElementById('reportcard-view')?.classList.remove('active');
+  document.querySelectorAll('.tab-content').forEach((tc) => tc.classList.remove('active'));
+
+  useAnalyzeEntryStore.getState().showStage();
+
+  applySpectrumForMode('analyze');
+  applySingleColumnSync();
+}
+
 // Verbatim port of the .mode-tab click listener's body (inline-app.js) minus
 // the tab-active class toggle, which ModeTabs.tsx now owns reactively.
 //
 // `opts.boot` (#1405) marks App.tsx's synchronous first-paint call, which
 // fires before settings have loaded and before inline-app.js's device/rig
 // hydration has settled. It is load-bearing in two ways: (1) it skips
-// persisting `mode` to settings, so the hardcoded initial 'reportcard'
-// default never clobbers a saved 'live' on disk before restoreBootMode gets
+// persisting `mode` to settings, so the hardcoded initial 'analyze' default
+// (#1510) never clobbers a saved 'live' on disk before restoreBootMode gets
 // a chance to read it back; (2) it skips the auto-start call, since
 // decideLiveAutoStart would read rigStore's still-empty activeRigId and
 // skip with a false 'no-last-used-device'. restoreBootMode is what performs
 // the real (non-boot) switch/auto-start once hydration has settled.
 export function switchMode(mode: WorkspaceMode, opts?: { boot?: boolean }): void {
+  // #1510: Report Card is no longer a visible Simple-mode tab (#1512) and its
+  // results now live in Analyze's results rail (#1505) — every request to
+  // switch to it while in Simple mode (the hidden tab's own programmatic
+  // click, RecentServicesPanel, BuildGuidePanel, LiveSessionOffers, the
+  // onboarding demo, and any future caller) redirects here instead, before
+  // any of the Report Card side effects below run.
+  if (mode === 'reportcard' && isSimpleMode(useSettingsStore.getState().settings)) {
+    showAnalyzeStage(opts);
+    return;
+  }
+
   const sb = getSoundBuddy();
   // Opt-in crash reporting (#473): the current screen is a safe breadcrumb
   // (a name, never content) a crash payload includes as `route`.
@@ -197,6 +231,17 @@ export function switchMode(mode: WorkspaceMode, opts?: { boot?: boolean }): void
   applySingleColumnSync();
 }
 
+// #1510: App.tsx's synchronous first-paint dispatch. liveCaptureStore's
+// initial appMode can now be 'analyze', which is not a WorkspaceMode, so the
+// old `if (isWorkspaceMode(initialMode)) switchMode(initialMode, { boot: true })`
+// silently no-op'd on it — this makes the 'analyze' initial value actually
+// paint the stage. Unknown values (should not occur) are a no-op, matching
+// the prior behavior.
+export function applyInitialMode(mode: string): void {
+  if (mode === 'analyze') showAnalyzeStage({ boot: true });
+  else if (isWorkspaceMode(mode)) switchMode(mode, { boot: true });
+}
+
 export interface RestoreBootModeDeps {
   // window.rendererHydration (inline-app.js) — settles once settings AND
   // devices-then-rigs have both loaded (or failed). Awaiting it, rather than
@@ -208,17 +253,24 @@ export interface RestoreBootModeDeps {
 }
 
 // #1405: the second half of the boot sequence, paired with App.tsx's
-// synchronous `switchMode(initialMode, { boot: true })`. That first call
-// paints the hardcoded default (Report Card) immediately so first paint
-// never blocks on IPC; this restores the user's actual last-active mode (or,
-// if it was already Live, runs the auto-start decision) once hydration has
-// settled — never both, and never before hydration, so decideLiveAutoStart
-// always sees the real post-hydration rigStore/deviceHint state.
+// synchronous `applyInitialMode(initialMode)`. That first call paints the
+// hardcoded default (Analyze, #1510) immediately so first paint never blocks
+// on IPC; this restores the user's actual last-active mode (or, if it was
+// already Live, runs the auto-start decision) once hydration has settled —
+// never both, and never before hydration, so decideLiveAutoStart always sees
+// the real post-hydration rigStore/deviceHint state.
 export async function restoreBootMode(deps: RestoreBootModeDeps): Promise<void> {
   await deps.hydration;
   const lastMode = deps.getLastAppMode();
   const currentMode = deps.getCurrentMode();
   const restoredMode = lastMode ? clampBootMode(lastMode, deps.getSettings()) : lastMode;
+  // #1510: a restored 'analyze' (e.g. a Simple-mode 'reportcard' clamped by
+  // clampBootMode) is not a WorkspaceMode, so it needs its own branch here,
+  // ahead of the workspace-mode one below.
+  if (restoredMode === 'analyze' && currentMode !== 'analyze') {
+    showAnalyzeStage();
+    return;
+  }
   if (restoredMode && isWorkspaceMode(restoredMode) && restoredMode !== currentMode) {
     switchMode(restoredMode);
     return;

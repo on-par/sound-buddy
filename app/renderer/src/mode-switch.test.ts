@@ -6,6 +6,8 @@ import {
   resolveModeSwitch,
   isWorkspaceMode,
   switchMode,
+  showAnalyzeStage,
+  applyInitialMode,
   applySpectrumForMode,
   applySingleColumnSync,
   maybeAutoStartLive,
@@ -457,6 +459,112 @@ describe('switchMode', () => {
 
     expect(useAnalyzeEntryStore.getState().analyzeStage).toBe(false);
   });
+
+  // #1510: Report Card is hidden in Simple mode (#1512); its results now live
+  // in Analyze's results rail (#1505), so every switchMode('reportcard') call
+  // while in Simple mode must redirect to the Analyze stage instead.
+  describe('reportcard redirect in Simple mode (#1510)', () => {
+    it('redirects to the Analyze stage instead of switching to Report Card', () => {
+      useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false }) });
+
+      switchMode('reportcard');
+
+      expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+      expect(bodyClassList.contains('rc-active')).toBe(false);
+      expect(elements['reportcard-view'].classList.contains('active')).toBe(false);
+      expect(useAnalyzeEntryStore.getState().analyzeStage).toBe(true);
+    });
+
+    it('does not record screen.reportcard or add rc-active', () => {
+      useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false }) });
+      const spy = vi.spyOn(mock.api, 'recordAppEvent');
+
+      switchMode('reportcard');
+
+      expect(spy).not.toHaveBeenCalledWith('screen.reportcard');
+      expect(spy).toHaveBeenCalledWith('screen.analyze');
+      expect(bodyClassList.contains('rc-active')).toBe(false);
+    });
+
+    it('switches to Report Card as usual in Advanced mode', () => {
+      useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: true }) });
+
+      switchMode('reportcard');
+
+      expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');
+      expect(bodyClassList.contains('rc-active')).toBe(true);
+    });
+
+    it('switches to Report Card as usual with settings still null', () => {
+      switchMode('reportcard');
+
+      expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');
+      expect(bodyClassList.contains('rc-active')).toBe(true);
+    });
+  });
+});
+
+describe('showAnalyzeStage (#1510)', () => {
+  it('sets appMode analyze, clears the Report Card/Live DOM state, opens the stage, and records + persists', () => {
+    bodyClassList.add('rc-active');
+    bodyClassList.add('live-active');
+    elements['reportcard-view'].classList.add('active');
+    tabContentEls.forEach((el) => el.classList.add('active'));
+    const eventSpy = vi.spyOn(mock.api, 'recordAppEvent');
+    const settingsSpy = vi.spyOn(mock.api, 'updateSettings');
+
+    showAnalyzeStage();
+
+    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+    expect(bodyClassList.contains('rc-active')).toBe(false);
+    expect(bodyClassList.contains('live-active')).toBe(false);
+    expect(elements['reportcard-view'].classList.contains('active')).toBe(false);
+    tabContentEls.forEach((el) => expect(el.classList.contains('active')).toBe(false));
+    expect(useAnalyzeEntryStore.getState().analyzeStage).toBe(true);
+    expect(eventSpy).toHaveBeenCalledWith('screen.analyze');
+    expect(settingsSpy).toHaveBeenCalledWith({ lastAppMode: 'analyze' });
+    expect(useAnalyzeEntryStore.getState().listening).toBe(false);
+    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
+  });
+
+  it('boot: true does not persist the mode', () => {
+    const settingsSpy = vi.spyOn(mock.api, 'updateSettings');
+
+    showAnalyzeStage({ boot: true });
+
+    expect(settingsSpy).not.toHaveBeenCalled();
+    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+  });
+});
+
+describe('applyInitialMode (#1510)', () => {
+  it("'analyze' shows the stage and never writes settings", () => {
+    const settingsSpy = vi.spyOn(mock.api, 'updateSettings');
+
+    applyInitialMode('analyze');
+
+    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+    expect(useAnalyzeEntryStore.getState().analyzeStage).toBe(true);
+    expect(settingsSpy).not.toHaveBeenCalled();
+  });
+
+  it('a workspace mode boots through switchMode without auto-start or a settings write', () => {
+    useRigStore.setState({ activeRigId: 'rig-1' });
+    const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture').mockResolvedValue(undefined);
+    const settingsSpy = vi.spyOn(mock.api, 'updateSettings');
+
+    applyInitialMode('live');
+
+    expect(useLiveCaptureStore.getState().appMode).toBe('live');
+    expect(startCapture).not.toHaveBeenCalled();
+    expect(settingsSpy).not.toHaveBeenCalled();
+  });
+
+  it('an unknown mode is a no-op', () => {
+    applyInitialMode('bogus');
+
+    expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');
+  });
 });
 
 describe('maybeAutoStartLive', () => {
@@ -542,7 +650,10 @@ describe('restoreBootMode', () => {
     expect(logSpy).not.toHaveBeenCalled();
   });
 
-  it('ignores a stale/unrecognized saved mode', async () => {
+  // #1510: clampBootMode's fallback is 'analyze' for every unrecognized mode
+  // now, not just hidden Simple-mode ones — a stale saved value lands on the
+  // Analyze stage rather than silently staying on the boot default.
+  it('clamps a stale/unrecognized saved mode to analyze', async () => {
     useSettingsStore.setState({ settings: settings({ lastAppMode: 'soundcheck' }) });
 
     await restoreBootMode({
@@ -552,10 +663,10 @@ describe('restoreBootMode', () => {
       getSettings: () => useSettingsStore.getState().settings,
     });
 
-    expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');
+    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
   });
 
-  it('clamps a saved hidden mode to reportcard in Simple mode', async () => {
+  it('clamps a saved hidden mode to analyze in Simple mode (#1510)', async () => {
     useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false, lastAppMode: 'live' }) });
 
     await restoreBootMode({
@@ -565,6 +676,53 @@ describe('restoreBootMode', () => {
       getSettings: () => useSettingsStore.getState().settings,
     });
 
+    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+  });
+
+  // #1510: a Simple-mode user's persisted 'reportcard' (saved before #1512
+  // hid the tab, or written by a stale build) must clamp to 'analyze' and
+  // land there, never on a tab-less Report Card workspace.
+  it('a saved reportcard mode in Simple mode with current already analyze stays put with no switch', async () => {
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false, lastAppMode: 'reportcard' }) });
+    useLiveCaptureStore.setState({ appMode: 'analyze' });
+    const spy = vi.spyOn(mock.api, 'recordAppEvent');
+
+    await restoreBootMode({
+      hydration: Promise.resolve(),
+      getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+      getCurrentMode: () => useLiveCaptureStore.getState().appMode,
+      getSettings: () => useSettingsStore.getState().settings,
+    });
+
+    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+    expect(spy).not.toHaveBeenCalledWith('screen.analyze');
+  });
+
+  it('a saved reportcard mode in Simple mode with a different current mode shows the Analyze stage', async () => {
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false, lastAppMode: 'reportcard' }) });
+
+    await restoreBootMode({
+      hydration: Promise.resolve(),
+      getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+      getCurrentMode: () => 'recent',
+      getSettings: () => useSettingsStore.getState().settings,
+    });
+
+    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+    expect(useAnalyzeEntryStore.getState().analyzeStage).toBe(true);
+  });
+
+  it('a saved reportcard mode in Advanced mode still switches to Report Card', async () => {
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: true, lastAppMode: 'reportcard' }) });
+
+    await restoreBootMode({
+      hydration: Promise.resolve(),
+      getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+      getCurrentMode: () => 'analyze',
+      getSettings: () => useSettingsStore.getState().settings,
+    });
+
     expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');
+    expect(bodyClassList.contains('rc-active')).toBe(true);
   });
 });
