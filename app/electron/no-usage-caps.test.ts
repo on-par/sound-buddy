@@ -53,6 +53,7 @@ const ALLOWED_PRO_FEATURES = new Set([
   'live-monitoring',
   'virtual-soundcheck',
   'ai-narrative',
+  'custom-eq-curves',
 ]);
 
 /** Pull the string literals out of a `['a', 'b', ...]` PRO_FEATURES definition. */

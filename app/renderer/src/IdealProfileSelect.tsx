@@ -10,7 +10,7 @@
 
 import { iconSvg } from './report-card';
 import { useStoreShallow } from './stores/useStoreShallow';
-import { useIdealProfilesStore } from './stores/idealProfilesStore';
+import { useIdealProfilesStore, useCanEditCurves } from './stores/idealProfilesStore';
 import { profileSelectOptions } from './ideal-profiles';
 
 export default function IdealProfileSelect() {
@@ -18,11 +18,18 @@ export default function IdealProfileSelect() {
     selectedId: s.selectedId,
     customProfiles: s.customProfiles,
   }));
+  // Same gate as idealProfilesStore's canEditCurves (#1523), reused via
+  // useCanEditCurves() rather than re-derived here. Selection stays enabled
+  // on every tier; only the Create/edit affordance is marked Pro when gated.
+  const canEdit = useCanEditCurves();
+  const editLabel = canEdit ? 'Create or edit ideal curve' : 'Create or edit ideal curve (Pro)';
 
   const options = profileSelectOptions(customProfiles);
   const builtin = options.filter((o) => o.group === 'builtin');
   const custom = options.filter((o) => o.group === 'custom');
-  const action = options.filter((o) => o.group === 'action');
+  const action = options.filter((o) => o.group === 'action').map((o) =>
+    o.value === '__new' && !canEdit ? { ...o, label: `${o.label} (Pro)` } : o
+  );
 
   return (
     <>
@@ -62,8 +69,8 @@ export default function IdealProfileSelect() {
       <button
         type="button"
         id="ideal-curve-edit-btn"
-        aria-label="Create or edit ideal curve"
-        title="Create or edit ideal curve"
+        aria-label={editLabel}
+        title={editLabel}
         onClick={() => useIdealProfilesStore.getState().openEditor()}
       >
         <span dangerouslySetInnerHTML={{ __html: iconSvg('settings', 15) }} />

@@ -24,29 +24,49 @@ const usableSpectrum = (): SpectrumData => ({
 
 function createFakeDeps() {
   const settingsCalls: UpdateSettingsPatch[] = [];
+  const savedProfileCalls: CustomIdealProfile[][] = [];
   const pushedProfiles: { profile: IdealProfileLike; isAuto: boolean }[] = [];
+  const editGatedCalls: number[] = [];
   let currentSpectrum: SpectrumData | null = null;
+  let canEdit = true;
   let updateSettingsImpl = async (patch: UpdateSettingsPatch): Promise<unknown> => {
     settingsCalls.push(patch);
     return {};
   };
+  let saveCustomProfilesImpl = async (profiles: CustomIdealProfile[]): Promise<unknown> => {
+    savedProfileCalls.push(profiles);
+    return {};
+  };
   const deps: IdealProfilesDeps = {
     updateSettings: (patch) => updateSettingsImpl(patch),
+    saveCustomProfiles: (profiles) => saveCustomProfilesImpl(profiles),
     getCurves: () => curves,
     getCurrentSpectrum: () => currentSpectrum,
     pushActiveProfile: (profile, isAuto) => {
       pushedProfiles.push({ profile, isAuto });
     },
+    canEditCurves: () => canEdit,
+    onEditGated: () => {
+      editGatedCalls.push(1);
+    },
   };
   return {
     deps,
     settingsCalls,
+    savedProfileCalls,
     pushedProfiles,
+    editGatedCalls,
     setSpectrum: (s: SpectrumData | null) => {
       currentSpectrum = s;
     },
     failUpdateSettings: (message: string) => {
       updateSettingsImpl = () => Promise.reject(new Error(message));
+    },
+    failSaveCustomProfiles: (message: string) => {
+      saveCustomProfilesImpl = () => Promise.reject(new Error(message));
+    },
+    setCanEditCurves: (v: boolean) => {
+      canEdit = v;
     },
   };
 }
@@ -227,7 +247,7 @@ describe('createIdealProfilesStore', () => {
 
   describe('save', () => {
     it('rejects an empty name without persisting', async () => {
-      const { deps, settingsCalls } = createFakeDeps();
+      const { deps, settingsCalls, savedProfileCalls } = createFakeDeps();
       const store = createIdealProfilesStore(deps);
       store.getState().openEditor();
       store.getState().setEditorName('   ');
@@ -237,10 +257,11 @@ describe('createIdealProfilesStore', () => {
       expect(store.getState().editor.status).toEqual({ text: 'Name the curve first.', kind: 'err' });
       expect(store.getState().editor.open).toBe(true);
       expect(settingsCalls).toHaveLength(0);
+      expect(savedProfileCalls).toHaveLength(0);
     });
 
     it('upserts, persists, selects the new custom profile, and closes the editor without analysis data', async () => {
-      const { deps, settingsCalls } = createFakeDeps();
+      const { deps, settingsCalls, savedProfileCalls } = createFakeDeps();
       const store = createIdealProfilesStore(deps);
       store.getState().openEditor();
       store.getState().setEditorName('Sunday AM');
@@ -251,10 +272,8 @@ describe('createIdealProfilesStore', () => {
       expect(store.getState().customProfiles).toHaveLength(1);
       expect(store.getState().customProfiles[0].label).toBe('Sunday AM');
       expect(store.getState().selectedId).toBe(`custom:${store.getState().customProfiles[0].id}`);
-      expect(settingsCalls.at(-1)).toEqual({
-        customIdealProfiles: store.getState().customProfiles,
-        idealProfile: store.getState().selectedId,
-      });
+      expect(savedProfileCalls.at(-1)).toEqual(store.getState().customProfiles);
+      expect(settingsCalls.at(-1)).toEqual({ idealProfile: store.getState().selectedId });
     });
 
     it('updates an existing custom profile in place without analysis data when editing it', async () => {
@@ -271,8 +290,8 @@ describe('createIdealProfilesStore', () => {
       expect(store.getState().customProfiles[0].label).toBe('Renamed target');
     });
 
-    it('sets an error status and keeps the editor open when the settings write fails', async () => {
-      const { deps, failUpdateSettings } = createFakeDeps();
+    it('keeps the saved curve but reverts the selection when only the settings write fails', async () => {
+      const { deps, failUpdateSettings, savedProfileCalls } = createFakeDeps();
       failUpdateSettings('disk full');
       const store = createIdealProfilesStore(deps);
       store.getState().openEditor();
@@ -281,7 +300,32 @@ describe('createIdealProfilesStore', () => {
       await store.getState().save();
 
       expect(store.getState().editor.open).toBe(true);
+      expect(store.getState().editor.status).toEqual({
+        text: 'Curve saved, but could not set it as the active profile.',
+        kind: 'err',
+      });
+      // saveCustomProfiles succeeded, so the curve itself stays in state — only
+      // the active-profile selection reverts.
+      expect(store.getState().customProfiles).toHaveLength(1);
+      expect(store.getState().customProfiles[0].label).toBe('Sunday AM');
+      expect(store.getState().selectedId).toBe('');
+      expect(savedProfileCalls).toHaveLength(1);
+    });
+
+    it('rolls back the optimistic curve list and selection when the curve write fails', async () => {
+      const { deps, failSaveCustomProfiles, settingsCalls } = createFakeDeps();
+      failSaveCustomProfiles('disk full');
+      const store = createIdealProfilesStore(deps);
+      store.getState().openEditor();
+      store.getState().setEditorName('Sunday AM');
+
+      await store.getState().save();
+
+      expect(store.getState().editor.open).toBe(true);
       expect(store.getState().editor.status).toEqual({ text: 'Could not save curve settings.', kind: 'err' });
+      expect(store.getState().customProfiles).toEqual([]);
+      expect(store.getState().selectedId).toBe('');
+      expect(settingsCalls).toHaveLength(0);
     });
   });
 
@@ -309,7 +353,7 @@ describe('createIdealProfilesStore', () => {
     });
 
     it('captures the current curve, persists it, and closes the editor', async () => {
-      const { deps, setSpectrum, settingsCalls } = createFakeDeps();
+      const { deps, setSpectrum, settingsCalls, savedProfileCalls } = createFakeDeps();
       setSpectrum(usableSpectrum());
       const store = createIdealProfilesStore(deps);
       store.getState().openEditor();
@@ -321,6 +365,7 @@ describe('createIdealProfilesStore', () => {
       expect(store.getState().customProfiles[0].label).toBe('Current mix');
       expect(store.getState().customProfiles[0].source).toBe('analysis');
       expect(settingsCalls).toHaveLength(1);
+      expect(savedProfileCalls).toHaveLength(1);
     });
 
     it('defaults the captured curve name to "Current analysis target" when the name field is empty', async () => {
@@ -402,7 +447,7 @@ describe('createIdealProfilesStore', () => {
     const liveBands = { subBass: -61, bass: -63, lowMid: -71, mid: -77, highMid: -96, presence: -93, brilliance: -104 };
 
     it('saves the live bands under the given meta and selects the new curve', async () => {
-      const { deps, settingsCalls } = createFakeDeps();
+      const { deps, settingsCalls, savedProfileCalls } = createFakeDeps();
       const store = createIdealProfilesStore(deps);
       const ok = await store.getState().saveMeasuredBands(liveBands, { id: 'strongmix-live', label: 'Target from Live capture — Crowd Mic' });
       expect(ok).toBe(true);
@@ -410,6 +455,7 @@ describe('createIdealProfilesStore', () => {
       expect(store.getState().customProfiles[0].label).toBe('Target from Live capture — Crowd Mic');
       expect(store.getState().customProfiles[0].description).toBe('Captured from a live capture');
       expect(settingsCalls).toHaveLength(1);
+      expect(savedProfileCalls).toHaveLength(1);
     });
 
     it('returns false without touching settings when the bands are unusable', async () => {
@@ -434,7 +480,7 @@ describe('createIdealProfilesStore', () => {
     });
 
     it('deletes the custom profile, clears the selection, persists, and closes the editor', async () => {
-      const { deps, settingsCalls } = createFakeDeps();
+      const { deps, settingsCalls, savedProfileCalls } = createFakeDeps();
       const store = createIdealProfilesStore(deps);
       store.setState({ selectedId: 'custom:sanctuary-ref', customProfiles: [customProfile()] });
       store.getState().openEditor();
@@ -444,7 +490,8 @@ describe('createIdealProfilesStore', () => {
       expect(store.getState().customProfiles).toEqual([]);
       expect(store.getState().selectedId).toBe('');
       expect(store.getState().editor.open).toBe(false);
-      expect(settingsCalls.at(-1)).toEqual({ customIdealProfiles: [], idealProfile: '' });
+      expect(savedProfileCalls.at(-1)).toEqual([]);
+      expect(settingsCalls.at(-1)).toEqual({ idealProfile: '' });
     });
   });
 
@@ -475,6 +522,99 @@ describe('createIdealProfilesStore', () => {
 
       expect(ok).toBe(false);
       expect(settingsCalls).toHaveLength(0);
+    });
+  });
+
+  describe('Pro gating (#1523) — canEditCurves() false', () => {
+    it('openEditor does not open the editor and calls onEditGated once', () => {
+      const { deps, setCanEditCurves, editGatedCalls } = createFakeDeps();
+      setCanEditCurves(false);
+      const store = createIdealProfilesStore(deps);
+
+      store.getState().openEditor();
+
+      expect(store.getState().editor.open).toBe(false);
+      expect(editGatedCalls).toHaveLength(1);
+    });
+
+    it('save does not call saveCustomProfiles', async () => {
+      const { deps, setCanEditCurves, savedProfileCalls, editGatedCalls } = createFakeDeps();
+      const store = createIdealProfilesStore(deps);
+      store.getState().openEditor();
+      store.getState().setEditorName('Sunday AM');
+      setCanEditCurves(false);
+
+      await store.getState().save();
+
+      expect(savedProfileCalls).toHaveLength(0);
+      expect(editGatedCalls).toHaveLength(1);
+    });
+
+    it('capture does not call saveCustomProfiles', async () => {
+      const { deps, setSpectrum, setCanEditCurves, savedProfileCalls, editGatedCalls } = createFakeDeps();
+      setSpectrum(usableSpectrum());
+      const store = createIdealProfilesStore(deps);
+      store.getState().openEditor();
+      setCanEditCurves(false);
+
+      await store.getState().capture();
+
+      expect(savedProfileCalls).toHaveLength(0);
+      expect(editGatedCalls).toHaveLength(1);
+    });
+
+    it('remove does not call saveCustomProfiles', async () => {
+      const { deps, setCanEditCurves, savedProfileCalls, editGatedCalls } = createFakeDeps();
+      const store = createIdealProfilesStore(deps);
+      store.setState({ selectedId: 'custom:sanctuary-ref', customProfiles: [customProfile()] });
+      store.getState().openEditor();
+      setCanEditCurves(false);
+
+      await store.getState().remove();
+
+      expect(savedProfileCalls).toHaveLength(0);
+      expect(editGatedCalls).toHaveLength(1);
+    });
+
+    it('saveMeasured resolves false and calls onEditGated', async () => {
+      const { deps, setCanEditCurves, savedProfileCalls, editGatedCalls } = createFakeDeps();
+      setCanEditCurves(false);
+      const store = createIdealProfilesStore(deps);
+
+      const ok = await store.getState().saveMeasured(
+        { freqs: GRID_FREQS, db: GRID_FREQS.map(() => -18) },
+        { label: 'Target from service' }
+      );
+
+      expect(ok).toBe(false);
+      expect(savedProfileCalls).toHaveLength(0);
+      expect(editGatedCalls).toHaveLength(1);
+    });
+
+    it('saveMeasuredBands resolves false and calls onEditGated', async () => {
+      const liveBands = { subBass: -61, bass: -63, lowMid: -71, mid: -77, highMid: -96, presence: -93, brilliance: -104 };
+      const { deps, setCanEditCurves, savedProfileCalls, editGatedCalls } = createFakeDeps();
+      setCanEditCurves(false);
+      const store = createIdealProfilesStore(deps);
+
+      const ok = await store.getState().saveMeasuredBands(liveBands, { label: 'Target from Live capture' });
+
+      expect(ok).toBe(false);
+      expect(savedProfileCalls).toHaveLength(0);
+      expect(editGatedCalls).toHaveLength(1);
+    });
+
+    it('select() and hydrate() still work while gated (a saved curve loads for Free)', async () => {
+      const { deps, setCanEditCurves, editGatedCalls } = createFakeDeps();
+      setCanEditCurves(false);
+      const store = createIdealProfilesStore(deps);
+
+      store.getState().hydrate({ idealProfile: 'custom:sanctuary-ref', customIdealProfiles: [customProfile()] } as unknown as AppSettings);
+      expect(store.getState().customProfiles).toEqual([customProfile()]);
+
+      await store.getState().select('flat');
+      expect(store.getState().selectedId).toBe('flat');
+      expect(editGatedCalls).toHaveLength(0);
     });
   });
 });

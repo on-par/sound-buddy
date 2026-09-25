@@ -14,7 +14,8 @@
 import { create } from 'zustand';
 import type { StoreApi, UseBoundStore } from 'zustand';
 import { getSoundBuddy } from '../useElectron';
-import type { AppSettings, CustomIdealProfile, UpdateSettingsPatch } from '../../../electron/ipc/api';
+import { useStoreShallow } from './useStoreShallow';
+import type { AppSettings, CustomIdealProfile, LicenseState, UpdateSettingsPatch } from '../../../electron/ipc/api';
 import { GRID_FREQS } from '@sound-buddy/audio-engine/dist/profiles/index.js';
 import type { IdealProfileLike, SpectrumCurve, SpectrumData } from '../spectrum-display';
 import { hasUsableCurve } from '../spectrum-display';
@@ -29,6 +30,7 @@ import {
 } from '../ideal-profiles';
 import { useAnalysisStore } from './analysisStore';
 import { extractSpectrum, useSpectrumStore } from './spectrumStore';
+import { useLicensingStore } from './licensingStore';
 
 export interface CurveEditorState {
   open: boolean;
@@ -54,6 +56,10 @@ const CLOSED_EDITOR: CurveEditorState = {
 
 export interface IdealProfilesDeps {
   updateSettings(patch: UpdateSettingsPatch): Promise<unknown>;
+  /** Persist the full custom-curve list through the dedicated Pro-gated
+   *  CRUD surface (#1523) — the generic updateSettings patch always drops
+   *  customIdealProfiles. */
+  saveCustomProfiles(profiles: CustomIdealProfile[]): Promise<unknown>;
   getCurves(): IdealCurvesApi;
   getCurrentSpectrum(): SpectrumData | null;
   /** The live-capture card's 7-band levels when a live source (and no file
@@ -61,6 +67,13 @@ export interface IdealProfilesDeps {
    *  callers/tests that never capture from live need no change. */
   getCurrentLiveBands?(): Record<string, number> | null;
   pushActiveProfile(profile: IdealProfileLike, isAuto: boolean): void;
+  /** Whether the current license entitles curve authoring (#1523) — same
+   *  rule as isEntitled('custom-eq-curves'): tier === 'pro' (trial/grace
+   *  count as Pro). Reading/selecting an existing curve is never gated. */
+  canEditCurves(): boolean;
+  /** Called instead of mutating state when canEditCurves() is false — opens
+   *  the license dialog. */
+  onEditGated(): void;
 }
 
 export const LIVE_CAPTURE_TARGET_NAME = 'Live capture target';
@@ -94,11 +107,32 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
     // inline-app.js's persistCustomIdealProfiles.
     async function persist(nextProfiles: CustomIdealProfile[], nextSelectedId: string): Promise<boolean> {
       const customProfiles = deps.getCurves().normalizeProfiles(nextProfiles, GRID_FREQS);
+      const previousProfiles = get().customProfiles;
+      const previousSelectedId = get().selectedId;
       set({ customProfiles, selectedId: nextSelectedId });
       try {
-        await deps.updateSettings({ customIdealProfiles: customProfiles, idealProfile: nextSelectedId });
+        await deps.saveCustomProfiles(customProfiles);
       } catch {
-        set((state) => ({ editor: { ...state.editor, status: { text: 'Could not save curve settings.', kind: 'err' } } }));
+        // The curve list itself never made it to disk — roll the optimistic
+        // update back so state doesn't claim a curve exists that wasn't saved.
+        set({
+          customProfiles: previousProfiles,
+          selectedId: previousSelectedId,
+          editor: { ...get().editor, status: { text: 'Could not save curve settings.', kind: 'err' } },
+        });
+        get().syncActiveProfile();
+        return false;
+      }
+      try {
+        await deps.updateSettings({ idealProfile: nextSelectedId });
+      } catch {
+        // The curve list saved fine — only the active-selection write failed.
+        // Keep the saved curve, but revert the selection since it wasn't persisted.
+        set({
+          selectedId: previousSelectedId,
+          editor: { ...get().editor, status: { text: 'Curve saved, but could not set it as the active profile.', kind: 'err' } },
+        });
+        get().syncActiveProfile();
         return false;
       }
       get().syncActiveProfile();
@@ -107,6 +141,15 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
 
     function liveBands(): Record<string, number> | null {
       return deps.getCurrentLiveBands ? deps.getCurrentLiveBands() : null;
+    }
+
+    // Curve authoring is Pro-gated (#1523); reading/selecting an existing
+    // curve is not. Returns true (and opens the license dialog) when the
+    // caller should bail without mutating state or persisting.
+    function gated(): boolean {
+      if (deps.canEditCurves()) return false;
+      deps.onEditGated();
+      return true;
     }
 
     // The custom profile the open editor is editing (undefined for a new
@@ -146,6 +189,7 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
       },
 
       openEditor() {
+        if (gated()) return;
         const { selectedId, customProfiles } = get();
         const init = curveEditorInit(selectedId, customProfiles, deps.getCurrentSpectrum(), deps.getCurves(), liveBands());
         set({
@@ -184,6 +228,7 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
       },
 
       async save() {
+        if (gated()) return;
         const { editor, customProfiles } = get();
         const name = editor.name.trim();
         if (!name) {
@@ -203,6 +248,7 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
       },
 
       async capture() {
+        if (gated()) return;
         const { editor, customProfiles } = get();
         const spectrum = deps.getCurrentSpectrum();
         const curves = deps.getCurves();
@@ -238,6 +284,7 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
       },
 
       async remove() {
+        if (gated()) return;
         const { editor, customProfiles } = get();
         if (!editor.editingId) return;
         const next = deps.getCurves().deleteProfile(customProfiles, editor.editingId);
@@ -245,6 +292,7 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
       },
 
       async saveMeasured(curve, meta) {
+        if (gated()) return false;
         const curves = deps.getCurves();
         const profile = curves.profileFromMeasuredCurve(curve, GRID_FREQS, meta);
         if (!profile) return false;
@@ -253,6 +301,7 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
       },
 
       async saveMeasuredBands(bands, meta) {
+        if (gated()) return false;
         if (!hasUsableLiveBands(bands)) return false;
         const curves = deps.getCurves();
         const profile = curves.profileFromBands(captureBandOffsets(bands, (b) => curves.profileFromBands(b, GRID_FREQS, { label: meta.label })), GRID_FREQS, {
@@ -270,8 +319,27 @@ function getIdealCurves(): IdealCurvesApi {
   return (window as unknown as { idealCurves: IdealCurvesApi }).idealCurves;
 }
 
+// Pro-gate predicate for curve authoring (#1523) — trial and grace both
+// report tier 'pro'. Single source of truth: reused by the store's
+// imperative canEditCurves() dep (gated()) and by useCanEditCurves() below,
+// so components don't independently re-derive the same rule from
+// useLicensingStore.
+export function isProLicensed(status: LicenseState | null | undefined): boolean {
+  return status?.tier === 'pro';
+}
+
+// Reactive form of the same Pro gate, for components that render the
+// authoring affordance (e.g. IdealProfileSelect's Create/edit button). Uses
+// useStoreShallow rather than the bound useLicensingStore hook directly — see
+// useStoreShallow's doc comment for why (its server snapshot must read live
+// state, not the frozen getInitialState() zustand's own hook uses in tests).
+export function useCanEditCurves(): boolean {
+  return useStoreShallow(useLicensingStore, (s) => isProLicensed(s.licenseStatus));
+}
+
 export const useIdealProfilesStore = createIdealProfilesStore({
   updateSettings: (patch) => getSoundBuddy().updateSettings(patch),
+  saveCustomProfiles: (profiles) => getSoundBuddy().saveCustomIdealProfiles(profiles),
   getCurves: getIdealCurves,
   getCurrentSpectrum: () => extractSpectrum(useAnalysisStore.getState().currentAnalysis),
   // Only while the LIVE card is showing (no file analysis wins over it).
@@ -280,4 +348,7 @@ export const useIdealProfilesStore = createIdealProfilesStore({
     return !currentAnalysis && liveSource ? liveSource.bands : null;
   },
   pushActiveProfile: (profile, isAuto) => useSpectrumStore.getState().setIdealProfile(profile, isAuto),
+  // Reads (hydrate/select) never call this.
+  canEditCurves: () => isProLicensed(useLicensingStore.getState().licenseStatus),
+  onEditGated: () => useLicensingStore.getState().openDialog(),
 });

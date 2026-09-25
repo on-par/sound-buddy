@@ -87,8 +87,10 @@ const FREE_STATE: LicenseState = { tier: 'free', status: 'none' };
 
 /** Pro-gated features. Anything not listed here is free — the report card
  * (score, metrics, recommendations) is the funnel, not the product. Gating
- * must key off THESE flags only — never recording count/length/size (#91). */
-const PRO_FEATURES = new Set(['saved-rigs', 'live-monitoring', 'virtual-soundcheck', 'ai-narrative']);
+ * must key off THESE flags only — never recording count/length/size (#91).
+ * 'custom-eq-curves' (#1523) gates authoring/editing user-defined ideal EQ
+ * curves; reading/selecting an already-saved curve stays ungated (#54). */
+const PRO_FEATURES = new Set(['saved-rigs', 'live-monitoring', 'virtual-soundcheck', 'ai-narrative', 'custom-eq-curves']);
 
 function licensePath(): string {
   return path.join(app.getPath('userData'), 'license.json');

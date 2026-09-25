@@ -59,6 +59,7 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
     args: [],
   },
   { method: 'getFeatureFlags', channel: 'get-feature-flags', args: [] },
+  { method: 'saveCustomIdealProfiles', channel: 'save-custom-ideal-profiles', args: [[]] },
   { method: 'getStorageUsage', channel: 'get-storage-usage', args: [] },
   { method: 'getLicense', channel: 'get-license', args: [] },
   { method: 'activateLicense', channel: 'activate-license', args: ['SB-TEST-KEY'] },

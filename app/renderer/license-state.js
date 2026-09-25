@@ -17,7 +17,7 @@
 
   // Pro-gated features — must mirror PRO_FEATURES in app/electron/license.ts.
   // Everything else (the full report card) is free: the funnel, not the product.
-  var PRO_FEATURES = ['saved-rigs', 'live-monitoring', 'virtual-soundcheck', 'ai-narrative'];
+  var PRO_FEATURES = ['saved-rigs', 'live-monitoring', 'virtual-soundcheck', 'ai-narrative', 'custom-eq-curves'];
 
   // Length of the first-launch trial — must mirror TRIAL_DAYS in license.ts (#61).
   var TRIAL_DAYS = 14;
