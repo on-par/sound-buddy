@@ -5,7 +5,10 @@
 export const FOUNDING_CAP = 10;
 
 /** Placeholder Payment Link — mirrors app/electron/checkout.ts's convention.
- *  Real link arrives with #56/#116. */
+ *  Real link arrives with #56/#116. Live-mode `npm run build` now refuses to
+ *  proceed while the URL resolves to this placeholder (#1528,
+ *  scripts/check-founding-checkout.mjs); the fallback survives for waitlist
+ *  builds and the #602 parity build. */
 export const PLACEHOLDER_FOUNDING_URL = 'https://buy.stripe.com/sound-buddy-founding-lifetime';
 
 const MS_PER_MINUTE = 60_000;

@@ -246,6 +246,9 @@ jobs:
       - name: Verify (check + build + link smoke)
         env:
           PUBLIC_SITE_MODE: live
+          # Synthetic test-mode link so the live-mode prebuild Founding-checkout
+          # gate (#1528) passes — never a real Payment Link.
+          PUBLIC_FOUNDING_CHECKOUT_URL: https://buy.stripe.com/test_ci_founding
         run: npm run verify
 
   # The Stripe / licensing API Worker (worker/, #107) is a standalone package
