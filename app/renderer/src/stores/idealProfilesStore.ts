@@ -107,12 +107,32 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
     // inline-app.js's persistCustomIdealProfiles.
     async function persist(nextProfiles: CustomIdealProfile[], nextSelectedId: string): Promise<boolean> {
       const customProfiles = deps.getCurves().normalizeProfiles(nextProfiles, GRID_FREQS);
+      const previousProfiles = get().customProfiles;
+      const previousSelectedId = get().selectedId;
       set({ customProfiles, selectedId: nextSelectedId });
       try {
         await deps.saveCustomProfiles(customProfiles);
+      } catch {
+        // The curve list itself never made it to disk — roll the optimistic
+        // update back so state doesn't claim a curve exists that wasn't saved.
+        set({
+          customProfiles: previousProfiles,
+          selectedId: previousSelectedId,
+          editor: { ...get().editor, status: { text: 'Could not save curve settings.', kind: 'err' } },
+        });
+        get().syncActiveProfile();
+        return false;
+      }
+      try {
         await deps.updateSettings({ idealProfile: nextSelectedId });
       } catch {
-        set((state) => ({ editor: { ...state.editor, status: { text: 'Could not save curve settings.', kind: 'err' } } }));
+        // The curve list saved fine — only the active-selection write failed.
+        // Keep the saved curve, but revert the selection since it wasn't persisted.
+        set({
+          selectedId: previousSelectedId,
+          editor: { ...get().editor, status: { text: 'Curve saved, but could not set it as the active profile.', kind: 'err' } },
+        });
+        get().syncActiveProfile();
         return false;
       }
       get().syncActiveProfile();

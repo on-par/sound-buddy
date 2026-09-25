@@ -290,8 +290,8 @@ describe('createIdealProfilesStore', () => {
       expect(store.getState().customProfiles[0].label).toBe('Renamed target');
     });
 
-    it('sets an error status and keeps the editor open when the settings write fails', async () => {
-      const { deps, failUpdateSettings } = createFakeDeps();
+    it('keeps the saved curve but reverts the selection when only the settings write fails', async () => {
+      const { deps, failUpdateSettings, savedProfileCalls } = createFakeDeps();
       failUpdateSettings('disk full');
       const store = createIdealProfilesStore(deps);
       store.getState().openEditor();
@@ -300,7 +300,32 @@ describe('createIdealProfilesStore', () => {
       await store.getState().save();
 
       expect(store.getState().editor.open).toBe(true);
+      expect(store.getState().editor.status).toEqual({
+        text: 'Curve saved, but could not set it as the active profile.',
+        kind: 'err',
+      });
+      // saveCustomProfiles succeeded, so the curve itself stays in state — only
+      // the active-profile selection reverts.
+      expect(store.getState().customProfiles).toHaveLength(1);
+      expect(store.getState().customProfiles[0].label).toBe('Sunday AM');
+      expect(store.getState().selectedId).toBe('');
+      expect(savedProfileCalls).toHaveLength(1);
+    });
+
+    it('rolls back the optimistic curve list and selection when the curve write fails', async () => {
+      const { deps, failSaveCustomProfiles, settingsCalls } = createFakeDeps();
+      failSaveCustomProfiles('disk full');
+      const store = createIdealProfilesStore(deps);
+      store.getState().openEditor();
+      store.getState().setEditorName('Sunday AM');
+
+      await store.getState().save();
+
+      expect(store.getState().editor.open).toBe(true);
       expect(store.getState().editor.status).toEqual({ text: 'Could not save curve settings.', kind: 'err' });
+      expect(store.getState().customProfiles).toEqual([]);
+      expect(store.getState().selectedId).toBe('');
+      expect(settingsCalls).toHaveLength(0);
     });
   });
 
