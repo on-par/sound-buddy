@@ -271,4 +271,30 @@ describe('createAnalyzeEntryStore (#1468)', () => {
       expect(store.getState().analyzeStage).toBe(false);
     });
   });
+
+  describe('showStage() (#1510)', () => {
+    it('opens the stage without touching listening or dialogOpen', () => {
+      const { deps, startSecondaryMeasurement, chooseAndAnalyzeFile, openSettingsAudio } = createFakeDeps();
+      const store = createAnalyzeEntryStore(deps);
+
+      store.getState().showStage();
+
+      expect(store.getState().analyzeStage).toBe(true);
+      expect(store.getState().listening).toBe(false);
+      expect(store.getState().dialogOpen).toBe(false);
+      expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+      expect(chooseAndAnalyzeFile).not.toHaveBeenCalled();
+      expect(openSettingsAudio).not.toHaveBeenCalled();
+    });
+
+    it('is idempotent when the stage is already open', () => {
+      const { deps } = createFakeDeps();
+      const store = createAnalyzeEntryStore(deps);
+      store.getState().showStage();
+
+      store.getState().showStage();
+
+      expect(store.getState().analyzeStage).toBe(true);
+    });
+  });
 });

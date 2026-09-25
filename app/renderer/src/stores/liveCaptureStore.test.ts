@@ -72,7 +72,7 @@ describe('createLiveCaptureStore', () => {
     expect(s.channelConfig).toEqual([]);
     expect(s.isCapturing).toBe(false);
     expect(s.liveWindows).toEqual([]);
-    expect(s.appMode).toBe('reportcard');
+    expect(s.appMode).toBe('analyze');
     expect(s.ringout).toEqual({ stepIndex: 0, cut: null });
     expect(s.measurementSource).toBeNull();
     expect(s.selectedChannel).toBeNull();

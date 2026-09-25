@@ -35,15 +35,23 @@ describe('simple-mode', () => {
     expect(visibleTabModes(settings())).toEqual(ALL_TAB_MODES);
   });
 
-  it('clamps a hidden boot mode to reportcard in Simple mode', () => {
-    expect(clampBootMode('live', settings({ advancedFeaturesEnabled: false }))).toBe('reportcard');
+  it('clamps a hidden boot mode to analyze in Simple mode', () => {
+    expect(clampBootMode('live', settings({ advancedFeaturesEnabled: false }))).toBe('analyze');
   });
 
-  it('leaves visible modes unchanged and falls back to reportcard for programmatic modes hidden in Simple mode', () => {
+  it('leaves visible modes unchanged and falls back to analyze for programmatic modes hidden in Simple mode', () => {
     const s = settings({ advancedFeaturesEnabled: false });
     expect(clampBootMode('analyze', s)).toBe('analyze');
     expect(clampBootMode('history', s)).toBe('history');
-    expect(clampBootMode('reportcard', s)).toBe('reportcard');
+    expect(clampBootMode('reportcard', s)).toBe('analyze');
     expect(clampBootMode('guide', settings())).toBe('guide');
+  });
+
+  it('falls back to analyze for an unrecognized mode in Advanced mode too (#1510)', () => {
+    expect(clampBootMode('soundcheck', settings())).toBe('analyze');
+  });
+
+  it('keeps reportcard visible in Advanced mode', () => {
+    expect(clampBootMode('reportcard', settings())).toBe('reportcard');
   });
 });

@@ -16,6 +16,10 @@ export function visibleTabModes(settings: AppSettings | null): readonly ModeSwit
   return isSimpleMode(settings) ? SIMPLE_TAB_MODES : ALL_TAB_MODES;
 }
 
+// #1510: the fallback used to be 'reportcard', but Report Card is no longer
+// a visible tab in Simple mode (#1512) and its results now live in Analyze's
+// results rail (#1505) — mode-switch.ts's showAnalyzeStage() is what actually
+// paints the 'analyze' fallback onto the screen.
 export function clampBootMode(mode: string, settings: AppSettings | null): string {
-  return visibleTabModes(settings).includes(mode as ModeSwitchRequest) ? mode : 'reportcard';
+  return visibleTabModes(settings).includes(mode as ModeSwitchRequest) ? mode : 'analyze';
 }
