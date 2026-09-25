@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { sendDunningEmail, sendLicenseEmail, sendWaitlistConfirmationEmail } from "./delivery";
+import {
+  buildSignInCodeEmail,
+  sendDunningEmail,
+  sendLicenseEmail,
+  sendSignInCodeEmail,
+  sendWaitlistConfirmationEmail,
+} from "./delivery";
 import type { Env } from "./index";
 
 function makeEnv(overrides: Partial<Env> = {}): Env {
@@ -344,5 +350,112 @@ describe("waitlist confirmation email delivery (#639, #609)", () => {
         { fetch: throwingFetch as unknown as typeof fetch },
       ),
     ).resolves.toEqual({ ok: false });
+  });
+});
+
+describe("sign-in code email (#1525)", () => {
+  it("buildSignInCodeEmail contains the code, escapes HTML, and never explains why an account is needed", () => {
+    const { subject, text, html } = buildSignInCodeEmail("482913");
+
+    expect(subject).toBe("Your Sound Buddy sign-in code");
+    expect(text).toContain("482913");
+    expect(html).toContain("482913");
+    expect(text).toContain("It expires in 10 minutes.");
+    for (const content of [text, html]) {
+      expect(content).not.toMatch(/\b(why|because|required|need an account|free account)\b/i);
+    }
+  });
+
+  it("buildSignInCodeEmail escapes HTML-significant characters in the code via escapeHtml", () => {
+    const { html } = buildSignInCodeEmail("<b>1</b>2");
+
+    expect(html).not.toContain("<b>1</b>2");
+    expect(html).toContain("&lt;b&gt;1&lt;/b&gt;2");
+  });
+
+  it("Scenario: sends via Resend with the right shape", async () => {
+    const env = makeEnv();
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }));
+
+    const result = await sendSignInCodeEmail(
+      env,
+      { to: "pat@example.com", code: "123456" },
+      { fetch: fetchMock as unknown as typeof fetch },
+    );
+
+    expect(result).toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const calls = fetchMock.mock.calls as unknown as [string, RequestInit][];
+    expect(calls[0][0]).toBe("https://api.resend.com/emails");
+
+    const body = requestBody(fetchMock);
+    expect(body.from).toBe(env.FROM_EMAIL);
+    expect(body.to).toEqual(["pat@example.com"]);
+    expect(body.subject).toBe("Your Sound Buddy sign-in code");
+    expect(body.text).toContain("123456");
+    expect(body.html).toContain("123456");
+  });
+
+  it("Scenario: missing RESEND_API_KEY is skipped", async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }));
+
+    await expect(
+      sendSignInCodeEmail(
+        makeEnv({ RESEND_API_KEY: "" }),
+        { to: "pat@example.com", code: "123456" },
+        { fetch: fetchMock as unknown as typeof fetch },
+      ),
+    ).resolves.toEqual({ ok: false });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("Scenario: Resend error status is non-fatal", async () => {
+    const failingStatus = vi.fn(async () => ({ ok: false, status: 500 }));
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      sendSignInCodeEmail(
+        makeEnv(),
+        { to: "pat@example.com", code: "123456" },
+        { fetch: failingStatus as unknown as typeof fetch },
+      ),
+    ).resolves.toEqual({ ok: false });
+    expect(consoleErrorSpy).toHaveBeenCalledWith("sign-in code email send failed", { status: 500 });
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("Scenario: a thrown fetch is non-fatal", async () => {
+    const throwingFetch = vi.fn(async () => {
+      throw new Error("network down");
+    });
+
+    await expect(
+      sendSignInCodeEmail(
+        makeEnv(),
+        { to: "pat@example.com", code: "123456" },
+        { fetch: throwingFetch as unknown as typeof fetch },
+      ),
+    ).resolves.toEqual({ ok: false });
+  });
+
+  it("Scenario: never logs the recipient or the code", async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }));
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await sendSignInCodeEmail(
+      makeEnv(),
+      { to: "pat@example.com", code: "999999" },
+      { fetch: fetchMock as unknown as typeof fetch },
+    );
+
+    for (const call of logSpy.mock.calls) {
+      const serialized = call.map((arg) => JSON.stringify(arg)).join(" ");
+      expect(serialized).not.toContain("pat@example.com");
+      expect(serialized).not.toContain("999999");
+    }
+
+    logSpy.mockRestore();
   });
 });
