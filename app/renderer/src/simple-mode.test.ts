@@ -2,7 +2,7 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { describe, it, expect } from 'vitest';
-import { clampBootMode, isSimpleMode, visibleTabModes } from './simple-mode';
+import { ALL_TAB_MODES, clampBootMode, isSimpleMode, visibleTabModes } from './simple-mode';
 import type { AppSettings } from '../../electron/ipc/api';
 
 function settings(overrides: Partial<AppSettings> = {}): AppSettings {
@@ -25,14 +25,21 @@ describe('simple-mode', () => {
 
   it('is Simple mode only when advanced features are disabled', () => {
     expect(isSimpleMode(settings({ advancedFeaturesEnabled: false }))).toBe(true);
-    expect(visibleTabModes(settings({ advancedFeaturesEnabled: false }))).toEqual(['analyze', 'history', 'reportcard']);
+    expect(visibleTabModes(settings({ advancedFeaturesEnabled: false }))).toEqual(['analyze', 'history']);
+  });
+
+  it('keeps Report Card out of Simple mode but in Advanced', () => {
+    expect(visibleTabModes(settings({ advancedFeaturesEnabled: false }))).not.toContain('reportcard');
+    expect(visibleTabModes(settings({ advancedFeaturesEnabled: false }))).toContain('analyze');
+    expect(visibleTabModes(settings())).toContain('reportcard');
+    expect(visibleTabModes(settings())).toEqual(ALL_TAB_MODES);
   });
 
   it('clamps a hidden boot mode to reportcard in Simple mode', () => {
     expect(clampBootMode('live', settings({ advancedFeaturesEnabled: false }))).toBe('reportcard');
   });
 
-  it('leaves visible and programmatic modes unchanged', () => {
+  it('leaves visible modes unchanged and falls back to reportcard for programmatic modes hidden in Simple mode', () => {
     const s = settings({ advancedFeaturesEnabled: false });
     expect(clampBootMode('analyze', s)).toBe('analyze');
     expect(clampBootMode('history', s)).toBe('history');

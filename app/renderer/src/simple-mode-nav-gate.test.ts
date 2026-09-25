@@ -34,7 +34,7 @@ describe('Simple-mode nav invariant', () => {
       expect(modeTabsMarkup).toContain(`data-mode="${mode}"`);
     }
     expect(modeTabsSrc).toContain('hidden={!visibleModes.includes(tab.mode)}');
-    expect(visibleTabModes(settings({ advancedFeaturesEnabled: false }))).toEqual(['analyze', 'history', 'reportcard']);
+    expect(visibleTabModes(settings({ advancedFeaturesEnabled: false }))).toEqual(['analyze', 'history']);
   });
 
   it('CSS has no bare display:none rule on mode-tab data-mode selectors', () => {
