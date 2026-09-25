@@ -53,6 +53,12 @@ export interface AnalyzeEntryState {
   stopListening(): Promise<void>;
   enterAnalyze(): Promise<void>;
   exitAnalyze(): void;
+  // #1510: the non-interactive stage opener used by boot and Simple-mode
+  // Report Card redirects (mode-switch.ts's showAnalyzeStage()) — sets
+  // analyzeStage only, never `listening` or `dialogOpen`, so landing here
+  // never auto-starts a room-mic listen or pops the entry dialog.
+  // enterAnalyze() stays the Analyze tab click's own action.
+  showStage(): void;
 }
 
 export function createAnalyzeEntryStore(
@@ -104,6 +110,10 @@ export function createAnalyzeEntryStore(
     // does today (see analyzeStage's doc comment above).
     exitAnalyze() {
       set({ analyzeStage: false });
+    },
+
+    showStage() {
+      set({ analyzeStage: true });
     },
 
     async listenLive() {
