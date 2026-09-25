@@ -40,3 +40,12 @@ site/.wrangler/
 # authoritative standards instance, so it belongs in version control.
 .factory/*
 !.factory/constitution.md
+
+# Agent brief drops (local)
+.claude-briefs/
+
+# SwiftPM / Xcode local
+apps/ios/**/.build/
+**/DerivedData/
+xcuserdata/
+*.xcuserstate

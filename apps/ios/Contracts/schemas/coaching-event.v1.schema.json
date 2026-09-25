@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/on-par/sound-buddy/apps/ios/Contracts/schemas/coaching-event.v1.schema.json",
+  "title": "CoachingEvent v1",
+  "description": "One rendered coaching hint. Mac and iOS must round-trip the same shape (for LAN companion later and for snapshot tests now). message is already-rendered narrative text; data is the flat {name} placeholder record from ADR 0028 so a client can re-render from the shared template registry.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "ruleType", "severity", "message", "source", "sessionTime"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "ruleType": {
+      "description": "Rule family. harshness/gate/phase/gain are the ADR 0028 RuleType union; band-deviation is the live 7-band EQ-vs-ideal rule the phone runs first.",
+      "enum": ["band-deviation", "harshness", "gate", "phase", "gain"]
+    },
+    "severity": {
+      "description": "Matches Insight.severity in packages/shared.",
+      "enum": ["info", "warning", "suggestion"]
+    },
+    "band": {
+      "description": "7-band key from BAND_METADATA in packages/audio-engine/src/bands.ts, when the event is about one band.",
+      "enum": ["subBass", "bass", "lowMid", "mid", "highMid", "presence", "brilliance"]
+    },
+    "message": { "type": "string", "minLength": 1 },
+    "data": {
+      "description": "Flat placeholder record (ADR 0028 RuleNarrativeData): string or number values only.",
+      "type": "object",
+      "additionalProperties": { "type": ["string", "number"] }
+    },
+    "source": {
+      "description": "Where the measurement came from. phone-mic-estimate drives the \"phone mic estimate\" honesty cue in the UI.",
+      "enum": ["phone-mic-estimate", "mac-measurement"]
+    },
+    "sessionTime": {
+      "description": "Seconds since the live session started.",
+      "type": "number",
+      "minimum": 0
+    }
+  }
+}

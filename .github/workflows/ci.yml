@@ -1,10 +1,17 @@
 name: CI
 
 on:
+  # The iOS app tree has its own informational workflow (ios.yml). A change
+  # touching only apps/ios/** skips this suite; any change that also touches
+  # other paths still runs it in full.
   push:
     branches: [main]
+    paths-ignore:
+      - 'apps/ios/**'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'apps/ios/**'
 
 jobs:
   ci:

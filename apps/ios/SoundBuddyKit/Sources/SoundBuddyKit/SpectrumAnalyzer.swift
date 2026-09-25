@@ -1,0 +1,201 @@
+import Accelerate
+import Foundation
+
+/// Accelerate port of the Mac engine's 7-band energy
+/// (packages/audio-engine/scripts/spectrum.py), one analysis frame at a time.
+///
+/// Per frame: periodic Hann window -> real FFT -> per-bin power scaled to
+/// numpy's unnormalized rfft -> mean power over each band's bins (edges
+/// inclusive, like compute_band_energy) -> dB with spectrum.py's silence
+/// floor. SpectrumParityTests pins this against a spectrum.py golden fixture.
+///
+/// TODO(parity): spectrum.py averages power over a centered, zero-padded STFT
+/// (HOP = N_FFT/4) and also reduces to a 48-point log grid (curve_from_power).
+/// Port both, with fixtures from make_spectrum_parity_fixture.py, before any
+/// grade or match score is computed on the phone.
+/// `analyze` also reduces the same power spectrum to the display-only RTA grid
+/// (RTALayout) in dBFS; coaching keeps using the 7 bands.
+///
+/// TODO(calibration): phone-mic dB is uncalibrated — levels are relative, so
+/// the UI must keep the "phone mic estimate" cue.
+public final class SpectrumAnalyzer {
+    public enum ConfigurationError: Error, Equatable, LocalizedError {
+        case fftSizeNotPowerOfTwo(Int)
+        case frameLengthMismatch(expected: Int, got: Int)
+        case invalidSampleRate(Double)
+
+        public var errorDescription: String? {
+            switch self {
+            case .fftSizeNotPowerOfTwo(let size):
+                "FFT size \(size) is not a power of two — use 1024, 2048, 4096 (default), or 8192."
+            case .frameLengthMismatch(let expected, let got):
+                "Got a \(got)-sample frame but the analyzer expects \(expected) — read exactly fftSize samples from the ring buffer."
+            case .invalidSampleRate(let rate):
+                "Input sample rate \(rate) Hz is unusable — pass the audio input's real sample rate (for example 48000)."
+            }
+        }
+    }
+
+    /// Same as spectrum.py N_FFT.
+    public static let defaultFFTSize = 4096
+    /// Same as spectrum.py SILENCE_FLOOR_DB.
+    public static let silenceFloorDb = -120.0
+    /// amplitude_to_db's clamp (max(rms, 1e-10)).
+    private static let minimumAmplitude = 1e-10
+    /// vDSP's real FFT returns 2x numpy's unnormalized rfft.
+    private static let vDSPRealFFTScale: Float = 2
+
+    public let fftSize: Int
+    public let sampleRate: Double
+    private let fft: vDSP.FFT<DSPSplitComplex>
+    private let window: [Float]
+    private let bandBins: [Band: ClosedRange<Int>]
+    private let rtaLayout: RTALayout
+    /// Summed one-sided bin power of a full-scale sine (Parseval with the
+    /// window's energy), so an RTA band holding a full-scale tone reads 0 dBFS.
+    private let fullScaleSinePower: Double
+
+    public init(
+        fftSize: Int = SpectrumAnalyzer.defaultFFTSize,
+        sampleRate: Double,
+        rtaLayout: RTALayout = .standard
+    ) throws {
+        guard fftSize > 1, fftSize & (fftSize - 1) == 0 else {
+            throw ConfigurationError.fftSizeNotPowerOfTwo(fftSize)
+        }
+        // A 0 Hz / NaN rate would make binHz 0 or NaN, and Int(bandHz / binHz)
+        // below would trap instead of throwing.
+        guard sampleRate.isFinite, sampleRate > 0 else {
+            throw ConfigurationError.invalidSampleRate(sampleRate)
+        }
+        let log2n = vDSP_Length(fftSize.trailingZeroBitCount)
+        guard let fft = vDSP.FFT(log2n: log2n, radix: .radix2, ofType: DSPSplitComplex.self) else {
+            throw ConfigurationError.fftSizeNotPowerOfTwo(fftSize)
+        }
+        self.fftSize = fftSize
+        self.sampleRate = sampleRate
+        self.fft = fft
+        // Periodic Hann, the exact formula spectrum.py's _stft_mag uses.
+        window = (0..<fftSize).map { Float(0.5 - 0.5 * cos(2 * Double.pi * Double($0) / Double(fftSize))) }
+
+        let binHz = sampleRate / Double(fftSize)
+        let lastBin = fftSize / 2
+        // Clamp in Double first: a tiny positive rate makes bandHz / binHz
+        // overflow Int (or reach +inf), which would trap on conversion.
+        let binLimit = Double(lastBin + 1)
+        var bins: [Band: ClosedRange<Int>] = [:]
+        for band in Band.allCases {
+            let lo = Int(min(binLimit, (band.lowHz / binHz).rounded(.up)))
+            let hi = min(lastBin, Int(min(binLimit, (band.highHz / binHz).rounded(.down))))
+            if lo <= hi { bins[band] = lo...hi }
+        }
+        bandBins = bins
+        self.rtaLayout = rtaLayout
+        let windowEnergy = window.reduce(0.0) { $0 + Double($1) * Double($1) }
+        fullScaleSinePower = Double(fftSize) * windowEnergy / 4
+    }
+
+    /// Per-bin power for bins 0...fftSize/2, on numpy's rfft scale.
+    public func powerSpectrum(_ frame: [Float]) throws -> [Float] {
+        guard frame.count == fftSize else {
+            throw ConfigurationError.frameLengthMismatch(expected: fftSize, got: frame.count)
+        }
+        let half = fftSize / 2
+        let windowed = vDSP.multiply(frame, window)
+        var real = [Float](repeating: 0, count: half)
+        var imag = [Float](repeating: 0, count: half)
+        var power = [Float](repeating: 0, count: half + 1)
+        let scale = Self.vDSPRealFFTScale
+
+        real.withUnsafeMutableBufferPointer { realPtr in
+            imag.withUnsafeMutableBufferPointer { imagPtr in
+                var split = DSPSplitComplex(realp: realPtr.baseAddress!, imagp: imagPtr.baseAddress!)
+                windowed.withUnsafeBytes { raw in
+                    vDSP_ctoz(raw.bindMemory(to: DSPComplex.self).baseAddress!, 2, &split, 1, vDSP_Length(half))
+                }
+                fft.forward(input: split, output: &split)
+                // Packed format: realp[0] = DC, imagp[0] = Nyquist.
+                power[0] = pow(realPtr[0] / scale, 2)
+                power[half] = pow(imagPtr[0] / scale, 2)
+                for k in 1..<half {
+                    power[k] = (realPtr[k] * realPtr[k] + imagPtr[k] * imagPtr[k]) / (scale * scale)
+                }
+            }
+        }
+        return power
+    }
+
+    /// 7-band energy (dB) for one frame of exactly `fftSize` samples.
+    public func bandLevels(_ frame: [Float]) throws -> BandLevels {
+        try bandLevels(power: powerSpectrum(frame))
+    }
+
+    /// One FFT, both reductions: 7-band levels for the coach and the RTA grid
+    /// for the display.
+    public func analyze(_ frame: [Float]) throws -> SpectrumReading {
+        let power = try powerSpectrum(frame)
+        return SpectrumReading(bands: bandLevels(power: power), rtaDb: rtaLevels(power: power))
+    }
+
+    /// Per-RTA-band level in dBFS: summed power of the bins inside the band.
+    /// A low band narrower than one bin reads the power interpolated at its
+    /// center, scaled to its width, so adjacent low bars ramp instead of
+    /// repeating one bin. Bands above Nyquist read the silence floor.
+    func rtaLevels(power: [Float]) -> [Double] {
+        let binHz = sampleRate / Double(fftSize)
+        let lastBin = fftSize / 2
+        let nyquist = sampleRate / 2
+        return rtaLayout.bands.map { band in
+            guard band.lowHz < nyquist else { return Self.silenceFloorDb }
+            let lo = Int((band.lowHz / binHz).rounded(.up))
+            let hi = min(lastBin, Int((band.highHz / binHz).rounded(.up)) - 1)
+            let bandPower: Double
+            if lo <= hi {
+                bandPower = (lo...hi).reduce(0.0) { $0 + Double(power[$1]) }
+            } else {
+                let position = band.centerHz / binHz
+                let k0 = min(lastBin, Int(position))
+                let k1 = min(lastBin, k0 + 1)
+                let t = position - Double(k0)
+                let density = Double(power[k0]) * (1 - t) + Double(power[k1]) * t
+                bandPower = density * (band.highHz - band.lowHz) / binHz
+            }
+            return Self.powerToDb(bandPower / fullScaleSinePower)
+        }
+    }
+
+    private func bandLevels(power: [Float]) -> BandLevels {
+        var db: [Band: Double] = [:]
+        for band in Band.allCases {
+            guard let bins = bandBins[band] else {
+                db[band] = Self.silenceFloorDb
+                continue
+            }
+            let meanPower = bins.reduce(0.0) { $0 + Double(power[$1]) } / Double(bins.count)
+            db[band] = Self.amplitudeToDb(meanPower.squareRoot())
+        }
+        return BandLevels(db: db)
+    }
+
+    /// Power ratio to dB, sharing amplitudeToDb's floor and clamp.
+    static func powerToDb(_ ratio: Double) -> Double {
+        amplitudeToDb(ratio.squareRoot())
+    }
+
+    /// spectrum.py amplitude_to_db.
+    static func amplitudeToDb(_ rms: Double) -> Double {
+        rms <= 0 ? silenceFloorDb : 20 * log10(max(rms, minimumAmplitude))
+    }
+}
+
+/// One analysis frame's output: the 7 coaching bands plus the display RTA.
+public struct SpectrumReading: Equatable, Sendable {
+    public var bands: BandLevels
+    /// dBFS per RTALayout band, low to high.
+    public var rtaDb: [Double]
+
+    public init(bands: BandLevels, rtaDb: [Double]) {
+        self.bands = bands
+        self.rtaDb = rtaDb
+    }
+}

@@ -1,0 +1,26 @@
+{
+  "source": "packages/audio-engine/scripts/spectrum.py (single frame; see make_spectrum_parity_fixture.py)",
+  "signal": {
+    "sampleRate": 48000,
+    "fftSize": 4096,
+    "tones": [
+      {
+        "hz": 1000.0,
+        "amplitude": 0.5
+      },
+      {
+        "hz": 100.0,
+        "amplitude": 0.25
+      }
+    ]
+  },
+  "expectedBandDb": {
+    "subBass": 1.3562,
+    "bass": 37.8843,
+    "lowMid": -39.0653,
+    "mid": 34.8742,
+    "highMid": -82.9987,
+    "presence": -108.1401,
+    "brilliance": -127.9024
+  }
+}
