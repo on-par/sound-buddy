@@ -1,0 +1,49 @@
+name: iOS
+
+# Informational check for the iOS app tree (apps/ios). NOT a required check —
+# do not add it to the main ruleset. Electron's required suite (ci.yml) ignores
+# apps/ios/** so iOS-only edits never wait on it, and this workflow never waits
+# on Electron.
+#
+# Runs on Ubuntu, so it cannot compile Swift: SoundBuddyKit imports Accelerate
+# and the app needs the iOS SDK, both Apple-only. There is deliberately no
+# xcodebuild here until a macOS runner is budgeted. It validates the shared
+# JSON contracts (apps/ios/Contracts) — the only iOS artifact Linux can check.
+# Swift is verified locally: see apps/ios/README.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/ios/**'
+      - '.github/workflows/ios.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/ios/**'
+      - '.github/workflows/ios.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    name: Validate JSON contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install jsonschema
+        run: python -m pip install 'jsonschema>=4.18'
+
+      - name: Validator tests
+        working-directory: apps/ios/scripts
+        run: python test_validate_contracts.py
+
+      - name: Validate schemas and examples
+        run: python apps/ios/scripts/validate_contracts.py

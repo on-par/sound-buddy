@@ -47,5 +47,5 @@ site/.wrangler/
 # SwiftPM / Xcode local
 apps/ios/**/.build/
 **/DerivedData/
+xcuserdata/
 *.xcuserstate
-.claude-briefs/
