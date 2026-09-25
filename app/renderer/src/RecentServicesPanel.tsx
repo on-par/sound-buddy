@@ -12,7 +12,7 @@ import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useAnalysisStore } from './stores/analysisStore';
 import { spectrumTransport } from './spectrum-transport';
-import { switchMode } from './mode-switch';
+import { showAnalyzeStage } from './mode-switch';
 import { iconSvg } from './report-card';
 import { buildTrendReportRows, trendReportHtml, MIN_TREND_ENTRIES } from './trend-export';
 import type { AnalysisSummary } from '../../electron/ipc/api';
@@ -23,13 +23,13 @@ function gradeColorVar(gradeLetter: string): string {
   return `var(--grade-${(gradeLetter || '').toLowerCase().replace(/[^a-z]/g, '')})`;
 }
 
-// Loads a stored summary into the report card view without re-running any
-// analysis — the row's record is all the report card ever reads (#147).
+// Loads a stored summary into the Analyze results rail without re-running
+// any analysis — the row's record is all the rail ever reads (#147).
 // prevSummary (#259) feeds the "vs. last time" delta — only the newest
 // history entry (index 0) gets one, compared against the second-newest.
-// Verbatim port of loadHistoryEntry (inline-app.js), calling switchMode()
-// directly instead of simulating a .mode-tab click — this is React calling
-// a real TS function now, no DOM indirection needed.
+// #1521: lands on the Analyze stage directly via showAnalyzeStage() rather
+// than switchMode('reportcard') — History no longer depends on the
+// flag-gated Report Card workspace to show a result.
 export function loadHistoryEntry(summary: AnalysisSummary, prevSummary: AnalysisSummary | null): void {
   spectrumTransport.pauseIfPlaying(); // don't leave a previous file's playback running behind the summary card
   useAnalysisStore.getState().setHistorySummary(summary);
@@ -47,7 +47,7 @@ export function loadHistoryEntry(summary: AnalysisSummary, prevSummary: Analysis
     if (rcOffer) rcOffer.style.display = 'none';
     if (rcNotEnough) rcNotEnough.style.display = 'none';
   }
-  switchMode('reportcard');
+  showAnalyzeStage();
 }
 
 // Writes the trend PDF's HTML into the always-present, normally-hidden
