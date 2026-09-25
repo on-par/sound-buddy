@@ -14,7 +14,8 @@
 import { create } from 'zustand';
 import type { StoreApi, UseBoundStore } from 'zustand';
 import { getSoundBuddy } from '../useElectron';
-import type { AppSettings, CustomIdealProfile, UpdateSettingsPatch } from '../../../electron/ipc/api';
+import { useStoreShallow } from './useStoreShallow';
+import type { AppSettings, CustomIdealProfile, LicenseState, UpdateSettingsPatch } from '../../../electron/ipc/api';
 import { GRID_FREQS } from '@sound-buddy/audio-engine/dist/profiles/index.js';
 import type { IdealProfileLike, SpectrumCurve, SpectrumData } from '../spectrum-display';
 import { hasUsableCurve } from '../spectrum-display';
@@ -298,6 +299,24 @@ function getIdealCurves(): IdealCurvesApi {
   return (window as unknown as { idealCurves: IdealCurvesApi }).idealCurves;
 }
 
+// Pro-gate predicate for curve authoring (#1523) — trial and grace both
+// report tier 'pro'. Single source of truth: reused by the store's
+// imperative canEditCurves() dep (gated()) and by useCanEditCurves() below,
+// so components don't independently re-derive the same rule from
+// useLicensingStore.
+export function isProLicensed(status: LicenseState | null | undefined): boolean {
+  return status?.tier === 'pro';
+}
+
+// Reactive form of the same Pro gate, for components that render the
+// authoring affordance (e.g. IdealProfileSelect's Create/edit button). Uses
+// useStoreShallow rather than the bound useLicensingStore hook directly — see
+// useStoreShallow's doc comment for why (its server snapshot must read live
+// state, not the frozen getInitialState() zustand's own hook uses in tests).
+export function useCanEditCurves(): boolean {
+  return useStoreShallow(useLicensingStore, (s) => isProLicensed(s.licenseStatus));
+}
+
 export const useIdealProfilesStore = createIdealProfilesStore({
   updateSettings: (patch) => getSoundBuddy().updateSettings(patch),
   saveCustomProfiles: (profiles) => getSoundBuddy().saveCustomIdealProfiles(profiles),
@@ -309,8 +328,7 @@ export const useIdealProfilesStore = createIdealProfilesStore({
     return !currentAnalysis && liveSource ? liveSource.bands : null;
   },
   pushActiveProfile: (profile, isAuto) => useSpectrumStore.getState().setIdealProfile(profile, isAuto),
-  // Same rule as isEntitled('custom-eq-curves') in the main process — trial
-  // and grace both report tier 'pro'. Reads (hydrate/select) never call this.
-  canEditCurves: () => useLicensingStore.getState().licenseStatus?.tier === 'pro',
+  // Reads (hydrate/select) never call this.
+  canEditCurves: () => isProLicensed(useLicensingStore.getState().licenseStatus),
   onEditGated: () => useLicensingStore.getState().openDialog(),
 });

@@ -619,18 +619,52 @@ export function setActiveRig(id: string | null): AppSettings {
 // save-rig precedent (upsertRig/deleteRig are gated at the IPC layer, not here).
 
 /**
+ * Validate + construct a single stored custom ideal EQ curve entry from an
+ * untrusted value. Mirrors the shape checks the renderer's ideal-curves.js
+ * normalizeProfile applies client-side — never trust the renderer's raw
+ * payload. Returns null for anything that doesn't structurally satisfy
+ * CustomIdealProfile (a non-string id/label/description, or freqs/dbOffsets
+ * that aren't same-length finite-number arrays).
+ */
+function sanitizeCustomIdealProfile(entry: unknown): CustomIdealProfile | null {
+  if (!isPlainObject(entry)) return null;
+  if (typeof entry.id !== 'string' || entry.id.trim() === '') return null;
+  if (typeof entry.label !== 'string' || entry.label.trim() === '') return null;
+  if (typeof entry.description !== 'string') return null;
+  const isFiniteNumberArray = (v: unknown): v is number[] =>
+    Array.isArray(v) && v.every((n) => typeof n === 'number' && Number.isFinite(n));
+  if (!isFiniteNumberArray(entry.freqs)) return null;
+  if (!isFiniteNumberArray(entry.dbOffsets) || entry.dbOffsets.length !== entry.freqs.length) return null;
+
+  const profile: CustomIdealProfile = {
+    id: entry.id,
+    label: entry.label,
+    description: entry.description,
+    freqs: entry.freqs,
+    dbOffsets: entry.dbOffsets,
+  };
+  if (entry.source === 'manual' || entry.source === 'analysis') profile.source = entry.source;
+  if (typeof entry.createdAt === 'string') profile.createdAt = entry.createdAt;
+  if (typeof entry.updatedAt === 'string') profile.updatedAt = entry.updatedAt;
+  return profile;
+}
+
+/**
  * Replace the full stored list of custom ideal EQ curves. `raw` is the
- * renderer's normalized CustomIdealProfile[], validated structurally here
- * (never trust the renderer): must be an array, entries must be non-null
- * objects with a string `id`, and the result is capped at
- * MAX_CUSTOM_IDEAL_PROFILES. Returns the merged effective settings.
+ * renderer's normalized CustomIdealProfile[], validated + reconstructed
+ * structurally here (never trust the renderer): must be an array, and each
+ * kept entry is capped at MAX_CUSTOM_IDEAL_PROFILES. Returns the merged
+ * effective settings.
  */
 export function saveCustomIdealProfiles(raw: unknown): AppSettings {
   if (!Array.isArray(raw)) {
     throw new Error('Custom EQ curves must be a list — reopen the curve editor and save again.');
   }
-  const kept = raw
-    .filter((entry): entry is Record<string, unknown> => isPlainObject(entry) && typeof entry.id === 'string')
-    .slice(0, MAX_CUSTOM_IDEAL_PROFILES) as unknown as CustomIdealProfile[];
+  const kept: CustomIdealProfile[] = [];
+  for (const entry of raw) {
+    if (kept.length >= MAX_CUSTOM_IDEAL_PROFILES) break;
+    const profile = sanitizeCustomIdealProfile(entry);
+    if (profile) kept.push(profile);
+  }
   return updateSettings({ customIdealProfiles: kept });
 }

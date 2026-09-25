@@ -744,19 +744,38 @@ describe('saveCustomIdealProfiles (#1523 — dedicated Pro-gated CRUD surface)',
     expect(() => saveCustomIdealProfiles({ id: 'x' })).toThrow(/must be a list/);
   });
 
-  it('drops non-object and id-less entries', () => {
-    const result = saveCustomIdealProfiles([curve, null, 'nope', 42, {}, { id: 'ok' }]);
+  it('drops non-object, id-less, and structurally incomplete entries', () => {
+    const second = { ...curve, id: 'weekday', label: 'Weekday target' };
+    const result = saveCustomIdealProfiles([
+      curve,
+      null,
+      'nope',
+      42,
+      {},
+      { id: 'ok' }, // no label/description/freqs/dbOffsets — dropped, not stored half-shaped
+      { ...curve, id: 'bad-lengths', dbOffsets: [-2, 1] }, // dbOffsets.length !== freqs.length
+      second,
+    ]);
 
-    expect(result.customIdealProfiles).toEqual([curve, { id: 'ok' }]);
+    expect(result.customIdealProfiles).toEqual([curve, second]);
   });
 
   it('caps the stored list at MAX_CUSTOM_IDEAL_PROFILES', () => {
-    const many = Array.from({ length: MAX_CUSTOM_IDEAL_PROFILES + 5 }, (_, i) => ({ id: `p${i}` }));
+    const many = Array.from({ length: MAX_CUSTOM_IDEAL_PROFILES + 5 }, (_, i) => ({ ...curve, id: `p${i}` }));
 
     const result = saveCustomIdealProfiles(many);
 
     expect(result.customIdealProfiles).toHaveLength(MAX_CUSTOM_IDEAL_PROFILES);
     expect(result.customIdealProfiles).toEqual(many.slice(0, MAX_CUSTOM_IDEAL_PROFILES));
+  });
+
+  it('drops an entry with a blank label or non-string description', () => {
+    const result = saveCustomIdealProfiles([
+      { ...curve, id: 'blank-label', label: '  ' },
+      { ...curve, id: 'bad-description', description: 42 },
+    ]);
+
+    expect(result.customIdealProfiles).toEqual([]);
   });
 });
 

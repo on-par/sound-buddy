@@ -10,8 +10,7 @@
 
 import { iconSvg } from './report-card';
 import { useStoreShallow } from './stores/useStoreShallow';
-import { useIdealProfilesStore } from './stores/idealProfilesStore';
-import { useLicensingStore } from './stores/licensingStore';
+import { useIdealProfilesStore, useCanEditCurves } from './stores/idealProfilesStore';
 import { profileSelectOptions } from './ideal-profiles';
 
 export default function IdealProfileSelect() {
@@ -19,10 +18,10 @@ export default function IdealProfileSelect() {
     selectedId: s.selectedId,
     customProfiles: s.customProfiles,
   }));
-  // Same gate as idealProfilesStore's canEditCurves (#1523) — trial/grace
-  // both report tier 'pro'. Selection stays enabled on every tier; only the
-  // Create/edit affordance is marked Pro when gated.
-  const canEdit = useStoreShallow(useLicensingStore, (s) => s.licenseStatus?.tier === 'pro');
+  // Same gate as idealProfilesStore's canEditCurves (#1523), reused via
+  // useCanEditCurves() rather than re-derived here. Selection stays enabled
+  // on every tier; only the Create/edit affordance is marked Pro when gated.
+  const canEdit = useCanEditCurves();
   const editLabel = canEdit ? 'Create or edit ideal curve' : 'Create or edit ideal curve (Pro)';
 
   const options = profileSelectOptions(customProfiles);
