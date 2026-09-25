@@ -4,11 +4,13 @@ import SwiftUI
 import UIKit
 #endif
 
-/// The P0 Analyze screen: large 7-band EQ meter, the short coaching stack,
-/// and mic start/stop. Pure rendering — every decision lives in AnalyzeModel
-/// (SoundBuddyKit), which is where the tests are.
+/// The P0 Analyze screen: a console-style RTA, the short coaching stack, and
+/// the phone-mic honesty cue. Always listening while on screen in the
+/// foreground — no Start/Stop control; lifecycle events go to the model.
+/// Pure rendering — every decision lives in AnalyzeModel (SoundBuddyKit),
+/// which is where the tests are.
 ///
-/// TODO(ipad): the layout is single-column; switch the bands and coaching
+/// TODO(ipad): the layout is single-column; switch the RTA and coaching
 /// stack side by side on a regular horizontal size class.
 struct AnalyzeView: View {
     let model: AnalyzeModel
@@ -17,26 +19,41 @@ struct AnalyzeView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
             header
-            EQBandsView(levels: model.bandLevels, isLive: model.state == .live)
-            CoachingStackView(events: model.coaching, state: model.state)
+            RTAView(model: model)
+            CoachingStackView(model: model)
             Spacer(minLength: 0)
-            StatusMessageView(state: model.state)
-            startStopButton
+            StatusMessageView(model: model)
         }
         .padding(Layout.screenPadding)
         .background(Palette.background.ignoresSafeArea())
         .preferredColorScheme(.dark)
+        .task { await model.appear() }
+        .onDisappear { model.disappear() }
         // No background audio mode in P0: release the mic when the app leaves
-        // the foreground instead of letting the OS cut the engine.
+        // the foreground instead of letting the OS cut the engine, and pick it
+        // back up on return. .inactive (permission alert, Control Center) is
+        // deliberately ignored.
         .onChange(of: scenePhase) { _, phase in
-            if phase == .background { model.stop() }
+            switch phase {
+            case .background: model.enterBackground()
+            case .active: Task { await model.enterForeground() }
+            default: break
+            }
         }
+        #if canImport(UIKit)
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willTerminateNotification)) { _ in
+            model.terminate()
+        }
+        #endif
     }
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text("Analyze")
-                .font(.largeTitle.weight(.bold))
+            VStack(alignment: .leading, spacing: Layout.headerSpacing) {
+                Text("Analyze")
+                    .font(.largeTitle.weight(.bold))
+                ListeningIndicator(state: model.state)
+            }
             Spacer()
             Label(AnalyzeModel.honestyCue, systemImage: "iphone.gen3")
                 .font(.caption.weight(.semibold))
@@ -47,116 +64,77 @@ struct AnalyzeView: View {
                 .accessibilityLabel("\(AnalyzeModel.honestyCue): readings are relative, not calibrated")
         }
     }
-
-    private var startStopButton: some View {
-        let live = model.state == .live
-        return Button {
-            if live {
-                model.stop()
-            } else {
-                Task { await model.start() }
-            }
-        } label: {
-            Label(live ? "Stop" : "Start listening", systemImage: live ? "stop.fill" : "mic.fill")
-                .font(.title3.weight(.semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, Layout.buttonPaddingV)
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(live ? Palette.stop : Palette.accent)
-        .disabled(model.state == .requestingPermission)
-        .accessibilityHint(live ? "Stops the microphone" : "Starts listening through the iPhone microphone")
-    }
 }
 
-// MARK: - EQ bands
-
-/// Seven tall bars, one per band, scaled relative to the loudest band.
-struct EQBandsView: View {
-    /// Bars span this many dB below the loudest band (relative display — see
-    /// BandLevels.barFractions).
-    static let displayRangeDb = 36.0
-
-    let levels: BandLevels
-    let isLive: Bool
+/// Small status line under the title — the only listening chrome.
+private struct ListeningIndicator: View {
+    let state: AnalyzeModel.State
 
     var body: some View {
-        let fractions = levels.barFractions(rangeDb: Self.displayRangeDb)
-        HStack(alignment: .bottom, spacing: Layout.barSpacing) {
-            ForEach(Band.allCases, id: \.self) { band in
-                BandBar(band: band, fraction: fractions[band] ?? 0, db: levels[band], isLive: isLive)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: Layout.bandsHeight)
-        .padding(Layout.cardPadding)
-        .background(Palette.surface, in: RoundedRectangle(cornerRadius: Layout.cornerRadius))
-        .animation(.linear(duration: Layout.meterAnimationSeconds), value: levels)
-    }
-}
-
-private struct BandBar: View {
-    let band: Band
-    let fraction: Double
-    let db: Double
-    let isLive: Bool
-
-    var body: some View {
-        VStack(spacing: Layout.barLabelSpacing) {
-            GeometryReader { geo in
-                ZStack(alignment: .bottom) {
-                    RoundedRectangle(cornerRadius: Layout.barCornerRadius)
-                        .fill(Palette.track)
-                    RoundedRectangle(cornerRadius: Layout.barCornerRadius)
-                        .fill(Palette.bar)
-                        .frame(height: geo.size.height * fraction)
-                }
-            }
-            Text(band.label)
-                .font(.caption2.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(Layout.labelMinScale)
-            Text(isLive ? String(format: "%.0f", db) : "–")
-                .font(.caption2.monospacedDigit())
+        HStack(spacing: Layout.indicatorSpacing) {
+            Circle()
+                .fill(state == .live ? Palette.live : Palette.secondaryText)
+                .frame(width: Layout.indicatorDot, height: Layout.indicatorDot)
+            Text(text)
+                .font(.footnote.weight(.semibold))
                 .foregroundStyle(Palette.secondaryText)
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(band.label), \(band.rangeLabel)")
-        .accessibilityValue(isLive ? "\(Int(db.rounded())) dB, estimated" : "not listening")
+        .accessibilityElement(children: .combine)
+    }
+
+    private var text: String {
+        switch state {
+        case .live: "Listening"
+        case .requestingPermission: "Starting microphone…"
+        case .idle: "Paused"
+        case .micDenied: "Microphone off"
+        case .failed: "Microphone unavailable"
+        }
     }
 }
 
 // MARK: - Coaching
 
-/// The short coaching stack (at most BandDeviationCoach.maxEvents cards).
+/// The short coaching stack: BandDeviationCoach.maxEvents fixed slots, each
+/// updated in place. Slots are identified by position (not by event), and
+/// nothing here animates — the model refreshes the stack about once a second,
+/// and an implicit animation over changing text cross-fades old and new
+/// copies into ghosted, double-drawn text.
 struct CoachingStackView: View {
-    let events: [CoachingEvent]
-    let state: AnalyzeModel.State
+    let model: AnalyzeModel
 
     var body: some View {
+        let events = model.coaching
         VStack(alignment: .leading, spacing: Layout.cardSpacing) {
             Text("Coaching")
                 .font(.headline)
-            if events.isEmpty {
-                Text(emptyText)
-                    .font(.subheadline)
-                    .foregroundStyle(Palette.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(Layout.cardPadding)
-                    .background(Palette.surface, in: RoundedRectangle(cornerRadius: Layout.cornerRadius))
-            } else {
-                ForEach(events) { event in
-                    CoachingCard(event: event)
+            ForEach(0..<BandDeviationCoach.maxEvents, id: \.self) { slot in
+                if slot < events.count {
+                    CoachingCard(event: events[slot])
+                } else if slot == 0 {
+                    CoachingPlaceholder(text: model.coachingPlaceholder)
+                } else {
+                    // Keeps the stack's height steady as hints come and go.
+                    Color.clear
+                        .frame(height: Layout.coachingSlotMinHeight)
+                        .accessibilityHidden(true)
                 }
             }
         }
-        .animation(.default, value: events)
+        .transaction { $0.animation = nil }
     }
+}
 
-    private var emptyText: String {
-        state == .live
-            ? "Balance looks close to the target. Keep listening."
-            : "Tap Start listening and play program material through the PA."
+private struct CoachingPlaceholder: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.subheadline)
+            .foregroundStyle(Palette.secondaryText)
+            .frame(maxWidth: .infinity, minHeight: Layout.coachingSlotMinHeight, alignment: .leading)
+            .padding(.horizontal, Layout.cardPadding)
+            .background(Palette.surface, in: RoundedRectangle(cornerRadius: Layout.cornerRadius))
     }
 }
 
@@ -164,14 +142,16 @@ private struct CoachingCard: View {
     let event: CoachingEvent
 
     var body: some View {
-        HStack(alignment: .top, spacing: Layout.cardSpacing) {
+        HStack(alignment: .center, spacing: Layout.cardSpacing) {
             Image(systemName: icon)
                 .foregroundStyle(Palette.accent)
             Text(event.message)
                 .font(.subheadline)
+                .lineLimit(Layout.coachingMaxLines)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(Layout.cardPadding)
+        .frame(minHeight: Layout.coachingSlotMinHeight)
+        .padding(.horizontal, Layout.cardPadding)
         .background(Palette.surface, in: RoundedRectangle(cornerRadius: Layout.cornerRadius))
         .accessibilityElement(children: .combine)
     }
@@ -189,10 +169,10 @@ private struct CoachingCard: View {
 
 /// Mic-denied and start-failure messages, each with the next step.
 private struct StatusMessageView: View {
-    let state: AnalyzeModel.State
+    let model: AnalyzeModel
 
     var body: some View {
-        switch state {
+        switch model.state {
         case .micDenied:
             VStack(alignment: .leading, spacing: Layout.cardSpacing) {
                 Text("Microphone access is off. Turn it on in Settings > Sound Buddy to analyze the room.")
@@ -206,9 +186,14 @@ private struct StatusMessageView: View {
                 #endif
             }
         case .failed(let message):
-            Text(message)
-                .font(.subheadline)
-                .foregroundStyle(Palette.stop)
+            VStack(alignment: .leading, spacing: Layout.cardSpacing) {
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(Palette.error)
+                Button("Try again") {
+                    Task { await model.retry() }
+                }
+            }
         case .idle, .requestingPermission, .live:
             EmptyView()
         }
@@ -220,19 +205,17 @@ private struct StatusMessageView: View {
 private enum Layout {
     static let screenPadding: CGFloat = 20
     static let sectionSpacing: CGFloat = 20
+    static let headerSpacing: CGFloat = 4
     static let cardSpacing: CGFloat = 10
     static let cardPadding: CGFloat = 14
     static let cornerRadius: CGFloat = 12
     static let badgePaddingH: CGFloat = 10
     static let badgePaddingV: CGFloat = 5
-    static let buttonPaddingV: CGFloat = 8
-    static let bandsHeight: CGFloat = 260
-    static let barSpacing: CGFloat = 8
-    static let barLabelSpacing: CGFloat = 4
-    static let barCornerRadius: CGFloat = 4
-    static let labelMinScale: CGFloat = 0.6
-    /// Matches MicCapture's 20 Hz meter tick so bars glide between readings.
-    static let meterAnimationSeconds = 0.05
+    static let indicatorSpacing: CGFloat = 6
+    static let indicatorDot: CGFloat = 8
+    /// Fits a two-line coaching hint with padding, so cards keep one height.
+    static let coachingSlotMinHeight: CGFloat = 64
+    static let coachingMaxLines = 3
 }
 
 /// Mirrors the Mac renderer's design tokens (app/renderer :root) — dark
@@ -240,10 +223,9 @@ private enum Layout {
 private enum Palette {
     static let background = hex(0x0B0C0F) // --neutral-950 (--bg-app)
     static let surface = hex(0x1B1F26) // --neutral-800 (--surface)
-    static let track = hex(0x2B303A) // --neutral-700
-    static let bar = hex(0xEBB93C) // --gold-500
     static let accent = hex(0xEBB93C) // --gold-500
-    static let stop = hex(0xE5534B)
+    static let live = hex(0x3FB950)
+    static let error = hex(0xE5534B)
     static let secondaryText = hex(0xA2AAB6) // --neutral-300 (--text-secondary)
 
     private static func hex(_ rgb: UInt32) -> Color {

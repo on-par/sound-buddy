@@ -11,11 +11,13 @@
 		103C7871F627A5A38E5EE737 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 770C099101BBBDBF216FAB1C /* Assets.xcassets */; };
 		3279118DA6CB9871F5E784AF /* SoundBuddyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D108D9CDAC13447AF712A950 /* SoundBuddyApp.swift */; };
 		8CF1A9637FF98C01600EAE09 /* MicCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFE5C6E8ED35B6519E4778A2 /* MicCapture.swift */; };
+		916A8C2FF1E1C54F80B2A226 /* RTAView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C666B2B6DB4351AE3267F91 /* RTAView.swift */; };
 		96D509041CC976F5A4EB18F4 /* SoundBuddyKit in Frameworks */ = {isa = PBXBuildFile; productRef = 9E121744FE2F1E49545AFCD3 /* SoundBuddyKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		0FAA0DA15310AF31C79E438F /* SoundBuddy.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SoundBuddy.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3C666B2B6DB4351AE3267F91 /* RTAView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTAView.swift; sourceTree = "<group>"; };
 		5156C524554BC91E2837D621 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		6F16C27B342308E5868ED13A /* AnalyzeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyzeView.swift; sourceTree = "<group>"; };
 		770C099101BBBDBF216FAB1C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -52,6 +54,7 @@
 				770C099101BBBDBF216FAB1C /* Assets.xcassets */,
 				5156C524554BC91E2837D621 /* Info.plist */,
 				FFE5C6E8ED35B6519E4778A2 /* MicCapture.swift */,
+				3C666B2B6DB4351AE3267F91 /* RTAView.swift */,
 				D108D9CDAC13447AF712A950 /* SoundBuddyApp.swift */,
 			);
 			path = SoundBuddy;
@@ -151,6 +154,7 @@
 			files = (
 				0CDC60465904A92EF0D2D810 /* AnalyzeView.swift in Sources */,
 				8CF1A9637FF98C01600EAE09 /* MicCapture.swift in Sources */,
+				916A8C2FF1E1C54F80B2A226 /* RTAView.swift in Sources */,
 				3279118DA6CB9871F5E784AF /* SoundBuddyApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -9,7 +9,8 @@ struct SystemMicPermission: MicPermission {
 }
 
 /// Built-in mic -> AVAudioEngine input tap -> SampleRingBuffer; a main-actor
-/// meter loop pulls the newest FFT frame and runs SpectrumAnalyzer.
+/// meter loop pulls the newest FFT frame and runs SpectrumAnalyzer (coaching
+/// bands + the display RTA from one FFT).
 ///
 /// TODO(session): handle AVAudioSession interruptions (calls, Siri) and route
 /// changes — pause with a visible state and resume per the architecture plan.
@@ -29,7 +30,7 @@ final class MicCapture: LiveAudioSource {
     private var ring: SampleRingBuffer?
     private var meterTask: Task<Void, Never>?
 
-    func start(onLevels: @escaping @MainActor (BandLevels) -> Void) throws {
+    func start(onReading: @escaping @MainActor (SpectrumReading) -> Void) throws {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         // .measurement turns off the system's voice processing and AGC so the
@@ -68,8 +69,8 @@ final class MicCapture: LiveAudioSource {
             while !Task.isCancelled {
                 try? await Task.sleep(for: interval)
                 guard let frame = ring.latest(analyzer.fftSize),
-                      let levels = try? analyzer.bandLevels(frame) else { continue }
-                onLevels(levels)
+                      let reading = try? analyzer.analyze(frame) else { continue }
+                onReading(reading)
             }
         }
     }

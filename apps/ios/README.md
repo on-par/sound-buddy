@@ -1,7 +1,8 @@
 # Sound Buddy for iPhone (P0 scaffold)
 
-A standalone iPhone app: the built-in mic feeds a live 7-band spectrum, with EQ
-coaching from the same rules the Mac uses. All analysis runs on the phone. No
+A standalone iPhone app: the built-in mic feeds an always-on, console-style
+RTA (1/6-octave bars, 20 Hz-20 kHz, dBFS), with EQ coaching from the same
+7-band rules the Mac uses. All analysis runs on the phone. No
 audio leaves the device, and the app has no upload path. The LAN companion
 (phone ↔ Mac) is parked. For that reason the app has no local-network
 entitlement and no Bonjour keys.
@@ -45,18 +46,23 @@ Capabilities**. The project sets no team on purpose.
 ## Simulator smoke test
 
 1. Run the **SoundBuddy** scheme (⌘R) on an iPhone Simulator.
-2. Tap **Start listening**. The first time, iOS asks for microphone access.
-   Allow it.
+2. The app starts listening by itself. It has no Start or Stop button. The
+   first time, iOS asks for microphone access. Allow it. "Listening" shows
+   under the title.
 3. The Simulator uses your Mac's default input. Play music or speak near the
-   Mac. The seven bars move, and each band shows a dB reading.
+   Mac. The RTA bars move, and white peak ticks hold above them for a moment.
+   Lows glow green to orange as they get hot; mids and highs are cyan to blue.
 4. Play something tonally lopsided, such as a bass-heavy track. Within a
    second, up to three coaching cards appear. An example: "Bass is 6.2 dB over
-   the target. Try a gentle cut around 60-250 Hz."
+   the target. Try a gentle cut around 60-250 Hz." The cards update in place
+   about once a second.
 5. Check that the **Phone mic estimate** badge is always visible.
-6. Tap **Stop**. The bars freeze and the mic indicator goes off.
+6. Go to the Home Screen. The app releases the mic (P0 has no background
+   audio). Open the app again: it resumes listening by itself.
 7. To test the denied path, run `xcrun simctl privacy booted revoke microphone
-   com.soundbuddy.ios` and tap **Start listening** again. The screen tells you
-   to turn access on in Settings and shows an **Open Settings** button.
+   com.soundbuddy.ios` and relaunch. The screen tells you to turn access on in
+   Settings and shows an **Open Settings** button. After you allow access and
+   return, listening starts.
 
 ## Tests
 
