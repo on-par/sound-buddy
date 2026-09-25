@@ -13,8 +13,8 @@ import { FAKE_ANALYSIS } from './e2e/e2e-helpers';
 const MAIN = path.join(__dirname, '..', 'dist', 'electron', 'main.js');
 const USER_DATA = path.join(__dirname, '..', 'test-results', 'onboarding-userdata');
 const SILENCE = path.join(__dirname, 'fixtures', 'silence.wav');
-const SIMPLE_MODES = ['analyze', 'history', 'reportcard'];
-const ADVANCED_MODES = ['dir', 'live', 'console', 'recent', 'guide', 'ringout'];
+const SIMPLE_MODES = ['analyze', 'history'];
+const ADVANCED_MODES = ['dir', 'live', 'console', 'recent', 'guide', 'ringout', 'reportcard'];
 const ALL_MODES = ['analyze', 'history', 'dir', 'live', 'console', 'recent', 'guide', 'ringout', 'reportcard'];
 
 let app: ElectronApplication;
@@ -144,7 +144,7 @@ test.describe.serial('First-run onboarding (#69)', () => {
 
     await expect(win.locator('body')).toHaveClass(/simple-mode/);
     await expect(win.locator('#nav-history')).toBeVisible();
-    await expect(win.locator('.mode-tab[data-mode="reportcard"]')).toBeVisible();
+    await expectTabHiddenAttr('reportcard', true);
     await expect(win.locator('#nav-analyze')).toBeVisible();
 
     for (const mode of ADVANCED_MODES) await expectTabHiddenAttr(mode, true);

@@ -346,8 +346,8 @@ test.describe('Settings dialog (#204)', () => {
 });
 
 test.describe('Advanced features setting (#1422)', () => {
-  const advancedTabs = ['dir', 'live', 'console', 'recent', 'guide', 'ringout'];
-  const simpleTabs = ['analyze', 'history', 'reportcard'];
+  const advancedTabs = ['dir', 'live', 'console', 'recent', 'guide', 'ringout', 'reportcard'];
+  const simpleTabs = ['analyze', 'history'];
   const userDataDir = path.join(__dirname, '..', '..', 'test-results', `e2e-advanced-features-${process.pid}-${Date.now()}`);
 
   async function launchPersisted(): Promise<{ electronApp: ElectronApplication; window: Page }> {

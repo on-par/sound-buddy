@@ -90,7 +90,7 @@ describe('ModeTabs', () => {
     useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false }) });
     const html = renderMarkup();
 
-    for (const mode of ['dir', 'live', 'console', 'recent', 'guide', 'ringout']) {
+    for (const mode of ['dir', 'live', 'console', 'recent', 'guide', 'ringout', 'reportcard']) {
       const marker = `data-mode="${mode}"`;
       const start = html.indexOf(marker);
       const end = html.indexOf('</button>', start);
@@ -103,8 +103,23 @@ describe('ModeTabs', () => {
     const analyzeButton = html.slice(analyzeStart, analyzeEnd);
     expect(analyzeStart).toBeGreaterThanOrEqual(0);
     expect(analyzeButton).not.toContain('hidden=""');
-    expect(html).toContain('id="nav-history" data-mode="history"');
-    expect(html).toContain('data-mode="reportcard"');
+
+    const historyStart = html.indexOf('id="nav-history"');
+    const historyEnd = html.indexOf('</button>', historyStart);
+    const historyButton = html.slice(historyStart, historyEnd);
+    expect(historyStart).toBeGreaterThanOrEqual(0);
+    expect(historyButton).not.toContain('hidden=""');
+  });
+
+  it('shows the Report Card tab unhidden in Advanced mode', () => {
+    useSettingsStore.setState({ settings: settings() });
+    const html = renderMarkup();
+
+    const start = html.indexOf('data-mode="reportcard"');
+    const end = html.indexOf('</button>', start);
+    const button = html.slice(start, end);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(button).not.toContain('hidden=""');
   });
 
 });

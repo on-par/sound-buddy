@@ -5,7 +5,7 @@ import type { AppSettings } from '../../electron/ipc/api';
 import type { ModeSwitchRequest } from './mode-switch';
 
 export const ALL_TAB_MODES: readonly ModeSwitchRequest[] = ['analyze', 'history', 'dir', 'live', 'console', 'recent', 'guide', 'ringout', 'reportcard'];
-const SIMPLE_TAB_MODES: readonly ModeSwitchRequest[] = ['analyze', 'history', 'reportcard'];
+const SIMPLE_TAB_MODES: readonly ModeSwitchRequest[] = ['analyze', 'history'];
 
 export function isSimpleMode(settings: AppSettings | null): boolean {
   return settings !== null
