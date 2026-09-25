@@ -13,8 +13,10 @@ requireTests: true
 Sound Buddy is a Mac desktop application (Electron + React) for church audio
 engineers. It analyzes recordings, generates report cards, recommends EQ
 changes, captures live multi-channel audio from a Midas M32R/X32 console, and
-supports virtual soundcheck playback. A Cloudflare Worker (`worker/`) handles
-Stripe webhooks, offline license minting, and email delivery. The app is a paid
+supports virtual soundcheck playback. A Free web tier (browser, `site/`)
+uploads recordings to the Cloudflare Worker (`worker/`) for server-side
+analysis; the desktop app is the Pro path. The Worker also handles Stripe
+webhooks, offline license minting, and email delivery. The app is a paid
 product — a change that damages a paying customer's trust is a failed change,
 regardless of whether the tests pass.
 
@@ -59,9 +61,18 @@ The factory leases each lane a dedicated port and injects `PORT`,
 - Never ship a change that can revoke, corrupt, or fail-closed a valid
   customer license. License validation failures must degrade to the last known
   good state, not to locked-out.
-- Audio analysis stays fully local. A change that sends audio, file paths, or
-  recording content off the machine violates the product's core privacy claim
-  and fails regardless of test status.
+- Pro/desktop analysis stays on-device. A change to the desktop app (`app/`)
+  or to the `packages/*` it bundles fails regardless of test status if it
+  sends audio, file paths, or recording content off the machine. This is the
+  Pro privacy claim.
+- Free web tier may upload. Free-tier browser flows may upload audio to the
+  worker/server for analysis. Changes under `site/` and `worker/` free-tier
+  paths are not held to the on-device rule. Uploads must stay scoped to the
+  Free web flow and must never be wired into the desktop app.
+- No global "never leaves your machine" claims. New or edited marketing/
+  product copy must scope any on-device privacy claim to Pro/desktop. The
+  existing locked phrase in `scripts/check-positioning.mjs` stays as-is until
+  a follow-up site copy PR requalifies it in the same PR as the copy.
 - The updater is check-only by design. Do not convert it to auto-install
   without an explicit issue authorizing it.
 
@@ -83,6 +94,10 @@ CLAUDE.md's Dispute Rules govern. In addition:
   quarantine the spec in the same PR with an issue link.
 - A coverage floor may only be lowered in a PR that deletes the code it
   covered, and the boss must verify the deletion is correct.
+- A checker must not cite "audio must stay local" (or the Pro/desktop
+  on-device rule) as a hard fail for a Free-tier upload change under `site/`
+  or `worker/` free-tier paths. A checker should cite it only if the upload
+  path reaches `app/` or bundled `packages/*`.
 
 ## Non-Goals
 
