@@ -21,3 +21,12 @@ it.each(["/activate", "/api/license"])(
     ))).toBe("licensing");
   },
 );
+
+// Free browser auth gate (#1525): the exact-match /api/waitlist pattern
+// wouldn't cover these sub-paths, so this guards the wildcard route.
+it.each(["/api/auth/start", "/api/auth/verify", "/api/auth/session"])(
+  "routes %s to licensing",
+  (path) => {
+    expect(matchRoutes(routes, new URL(`https://soundbuddy.online${path}`))).toBe("licensing");
+  },
+);

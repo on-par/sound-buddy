@@ -26,7 +26,9 @@
     { "pattern": "soundbuddy.online/api/waitlist", "zone_name": "soundbuddy.online" },
     // Sub-paths of /api/waitlist — the exact-match pattern above does NOT cover them (#642).
     { "pattern": "soundbuddy.online/api/waitlist/invitees", "zone_name": "soundbuddy.online" },
-    { "pattern": "soundbuddy.online/api/waitlist/invite", "zone_name": "soundbuddy.online" }
+    { "pattern": "soundbuddy.online/api/waitlist/invite", "zone_name": "soundbuddy.online" },
+    // Free browser auth gate (#1525): /api/auth/start, /api/auth/verify, /api/auth/session.
+    { "pattern": "soundbuddy.online/api/auth/*", "zone_name": "soundbuddy.online" }
   ],
 
   // Bindings later stories fill. The KV namespace `id` is set out-of-band (H4);

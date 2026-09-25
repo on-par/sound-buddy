@@ -5,10 +5,33 @@
         <span class="eyebrow">Browser Lite</span>
         <h2>Run a fast local stereo check.</h2>
         <p>
-          Upload a stereo recording or tap a live input. Everything stays in the browser. No upload,
-          no account, no “send your service to our servers” story.
+          Upload a stereo recording or tap a live input. Everything stays in the browser.
         </p>
       </div>
+
+      <div class="control-group auth-panel" data-auth-panel hidden>
+        <label class="auth-panel-heading">Sign in</label>
+        <form data-auth-email-form>
+          <label for="auth-email-input">Email</label>
+          <input id="auth-email-input" type="email" class="browser-select" data-auth-email required />
+          <button type="submit" class="btn btn-primary" data-auth-send-code>Email me a code</button>
+        </form>
+        <form class="auth-code-form" data-auth-code-form hidden>
+          <label for="auth-code-input">Sign-in code</label>
+          <input
+            id="auth-code-input"
+            class="browser-select"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            maxlength="6"
+            data-auth-code
+            required
+          />
+          <button type="submit" class="btn btn-primary" data-auth-verify-code>Sign in</button>
+        </form>
+        <p class="hint" data-auth-status aria-live="polite"></p>
+      </div>
+      <p class="hint" data-auth-signed-in hidden></p>
 
       <div class="control-group">
         <label for="preset-select">Target preset</label>
@@ -216,6 +239,15 @@
     centroidFromBandDbs,
     type BandKey,
   } from '../lib/eq-bands';
+  import {
+    AUTH_COPY,
+    fetchSessionState,
+    normalizeCode,
+    normalizeEmail,
+    requestSignInCode,
+    verifySignInCode,
+    type SessionState,
+  } from '../lib/auth-gate';
 
   (() => {
     const root = document.querySelector<HTMLElement>('[data-browser-analyzer]');
@@ -331,6 +363,13 @@
       balance: required(root.querySelector<HTMLElement>('[data-balance]'), '[data-balance]'),
       dynamic: required(root.querySelector<HTMLElement>('[data-dynamic]'), '[data-dynamic]'),
       centroid: required(root.querySelector<HTMLElement>('[data-centroid]'), '[data-centroid]'),
+      authPanel: required(root.querySelector<HTMLElement>('[data-auth-panel]'), '[data-auth-panel]'),
+      authEmailForm: required(root.querySelector<HTMLFormElement>('[data-auth-email-form]'), '[data-auth-email-form]'),
+      authEmailInput: required(root.querySelector<HTMLInputElement>('[data-auth-email]'), '[data-auth-email]'),
+      authCodeForm: required(root.querySelector<HTMLFormElement>('[data-auth-code-form]'), '[data-auth-code-form]'),
+      authCodeInput: required(root.querySelector<HTMLInputElement>('[data-auth-code]'), '[data-auth-code]'),
+      authStatus: required(root.querySelector<HTMLElement>('[data-auth-status]'), '[data-auth-status]'),
+      authSignedIn: required(root.querySelector<HTMLElement>('[data-auth-signed-in]'), '[data-auth-signed-in]'),
     };
 
     const state: {
@@ -348,6 +387,7 @@
       scalarAverager: ReturnType<typeof createRollingAverager>;
       rmsAverager: ReturnType<typeof createRollingAverager>;
       peakHold: ReturnType<typeof createRollingMax>;
+      session: SessionState;
     } = {
       audioContext: null,
       stream: null,
@@ -363,7 +403,42 @@
       scalarAverager: createRollingAverager(LIVE_AVG_WINDOW_MS, 'linear'),
       rmsAverager: createRollingAverager(LIVE_AVG_WINDOW_MS, 'db'),
       peakHold: createRollingMax(LIVE_AVG_WINDOW_MS),
+      session: { signedIn: false },
     };
+
+    // Set by ensureSignedIn when a gated action is deferred behind the
+    // sign-in panel; run once and cleared after a successful verify (#1525).
+    let pendingAction: (() => void) | null = null;
+
+    function showSignedIn(email: string): void {
+      els.authSignedIn.hidden = false;
+      els.authSignedIn.textContent = AUTH_COPY.signedInAs(email);
+    }
+
+    /** Gate for the two Free-tier analyze entry points (file pick, live
+     * check): runs `action` immediately if already signed in, else re-checks
+     * the session with the worker (a returning visitor may have signed in on
+     * a prior visit) before falling back to showing the sign-in panel and
+     * deferring `action` until verify succeeds (#1525). */
+    async function ensureSignedIn(action: () => void): Promise<void> {
+      if (state.session.signedIn) {
+        action();
+        return;
+      }
+
+      state.session = await fetchSessionState(fetch);
+      if (state.session.signedIn) {
+        showSignedIn(state.session.email);
+        action();
+        return;
+      }
+
+      pendingAction = action;
+      els.authStatus.textContent = '';
+      els.authCodeForm.hidden = true;
+      els.authPanel.hidden = false;
+      els.authEmailInput.focus();
+    }
 
     const RESPONSE_TIME_CONSTANTS_MS: Record<MeterResponse, number> = {
       slow: SLOW_TIME_CONSTANT_MS,
@@ -935,28 +1010,30 @@
       tick(performance.now());
     }
 
+    async function analyzeFile(file: File): Promise<void> {
+      els.runMode.textContent = 'Analyzing';
+      els.statusCopy.textContent = `Decoding ${file.name} locally...`;
+      const context = new AudioContext();
+      try {
+        const data = await file.arrayBuffer();
+        const buffer = await context.decodeAudioData(data.slice(0));
+        await analyzeDecodedBuffer(buffer, file.name);
+        els.runMode.textContent = 'File';
+        els.statusCopy.textContent = `${file.name} analyzed locally in your browser.`;
+      } catch {
+        els.runMode.textContent = 'Idle';
+        els.statusCopy.textContent =
+          `Couldn't decode ${file.name}. Try a standard stereo WAV, AIFF, MP3, AAC, or M4A file.`;
+      } finally {
+        await context.close();
+      }
+    }
+
     els.file.addEventListener('change', (event) => {
       const target = event.target as HTMLInputElement;
       const file = target.files?.[0];
       if (!file) return;
-      void (async () => {
-        els.runMode.textContent = 'Analyzing';
-        els.statusCopy.textContent = `Decoding ${file.name} locally...`;
-        const context = new AudioContext();
-        try {
-          const data = await file.arrayBuffer();
-          const buffer = await context.decodeAudioData(data.slice(0));
-          await analyzeDecodedBuffer(buffer, file.name);
-          els.runMode.textContent = 'File';
-          els.statusCopy.textContent = `${file.name} analyzed locally in your browser.`;
-        } catch {
-          els.runMode.textContent = 'Idle';
-          els.statusCopy.textContent =
-            `Couldn't decode ${file.name}. Try a standard stereo WAV, AIFF, MP3, AAC, or M4A file.`;
-        } finally {
-          await context.close();
-        }
-      })();
+      void ensureSignedIn(() => void analyzeFile(file));
     });
 
     els.refreshDevices.addEventListener('click', () => {
@@ -964,11 +1041,46 @@
     });
 
     els.startLive.addEventListener('click', () => {
-      void startLive();
+      void ensureSignedIn(() => void startLive());
     });
 
     els.stopLive.addEventListener('click', () => {
       stopLive();
+    });
+
+    els.authEmailForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      void (async () => {
+        const email = normalizeEmail(els.authEmailInput.value);
+        if (!email) return;
+        els.authStatus.textContent = 'Sending…';
+        const result = await requestSignInCode(fetch, email);
+        els.authStatus.textContent = result.message;
+        if (result.ok) {
+          els.authCodeForm.hidden = false;
+          els.authCodeInput.focus();
+        }
+      })();
+    });
+
+    els.authCodeForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      void (async () => {
+        const email = normalizeEmail(els.authEmailInput.value);
+        const code = normalizeCode(els.authCodeInput.value);
+        const result = await verifySignInCode(fetch, email, code);
+        els.authStatus.textContent = result.message;
+        if (!result.ok) return;
+
+        state.session = { signedIn: true, email };
+        els.authPanel.hidden = true;
+        els.authCodeForm.hidden = true;
+        showSignedIn(email);
+
+        const action = pendingAction;
+        pendingAction = null;
+        if (action) action();
+      })();
     });
 
     els.copySummary.addEventListener('click', () => {
@@ -1007,6 +1119,10 @@
     renderLiveLevelMode();
     renderLiveTargetBand();
     renderBands(EQ_BAND_DEFS.map(() => -120));
+    void fetchSessionState(fetch).then((session) => {
+      state.session = session;
+      if (session.signedIn) showSignedIn(session.email);
+    });
   })();
 </script>
 
@@ -1070,6 +1186,26 @@
     font: var(--fw-regular) var(--fs-body-sm)/1.5 var(--font-sans);
   }
   .live-actions { display: flex; gap: 10px; }
+  .auth-panel {
+    padding: 16px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .auth-panel-heading {
+    display: block;
+    margin-bottom: 4px;
+  }
+  .auth-panel form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .auth-panel form label {
+    color: var(--text-secondary);
+    font: var(--fw-medium) var(--fs-label)/1 var(--font-sans);
+  }
   .mini-btn {
     padding: 0;
     border: 0;

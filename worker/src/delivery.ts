@@ -267,6 +267,86 @@ export async function sendWaitlistConfirmationEmail(
   }
 }
 
+export interface SendSignInCodeParams {
+  /** Recipient, already lowercased by the handler. Never logged. */
+  to: string;
+  /** Plaintext 6-digit code. Rendered into the email; never logged. */
+  code: string;
+}
+
+/** No copy about why an account is needed — the sign-in flow itself is
+ * unexplained by product decision (#1525 AC3). */
+export function buildSignInCodeEmail(code: string): {
+  subject: string;
+  text: string;
+  html: string;
+} {
+  const subject = "Your Sound Buddy sign-in code";
+
+  const text = [
+    "Hi,",
+    "",
+    "Your sign-in code is:",
+    code,
+    "",
+    "It expires in 10 minutes. If you didn't ask for it, you can ignore this email.",
+  ].join("\n");
+
+  const html = [
+    "<p>Hi,</p>",
+    "<p>Your sign-in code is:</p>",
+    `<pre><code>${escapeHtml(code)}</code></pre>`,
+    "<p>It expires in 10 minutes. If you didn't ask for it, you can ignore this email.</p>",
+  ].join("");
+
+  return { subject, text, html };
+}
+
+/**
+ * Deliver the one-time sign-in code (#1525). Mirrors
+ * `sendWaitlistConfirmationEmail` exactly: best-effort, called via
+ * `ctx.waitUntil`, outcome-only logs. Never logs `to` or `code`.
+ */
+export async function sendSignInCodeEmail(
+  env: Env,
+  params: SendSignInCodeParams,
+  deps: DeliveryDeps = {},
+): Promise<{ ok: boolean }> {
+  try {
+    if (!env.RESEND_API_KEY) {
+      console.error("sign-in code email: RESEND_API_KEY not configured");
+      return { ok: false };
+    }
+
+    const { subject, text, html } = buildSignInCodeEmail(params.code);
+    const res = await (deps.fetch ?? fetch)("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: env.FROM_EMAIL,
+        to: [params.to],
+        subject,
+        text,
+        html,
+      }),
+    });
+
+    if (!res.ok) {
+      console.error("sign-in code email send failed", { status: res.status });
+      return { ok: false };
+    }
+
+    console.log("sign-in code email sent");
+    return { ok: true };
+  } catch {
+    console.error("sign-in code email send failed", { status: undefined });
+    return { ok: false };
+  }
+}
+
 /**
  * Upsert a signup into the configured Resend Audience (#640), so broadcasts
  * have a real list to send to and unsubscribe/bounce handling lives with the

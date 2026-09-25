@@ -117,4 +117,41 @@ describe("worker router", () => {
     expect(res.status).toBe(405);
     expect(res.headers.get("allow")).toBe("POST");
   });
+
+  it("POST /api/auth/start is wired (behaviour covered in auth.test.ts)", async () => {
+    // Invalid JSON so the handler responds before touching WAITLIST_KV — the
+    // stub binding here is a bare `{}`.
+    const res = await worker.fetch(
+      new Request("https://sound-buddy-api.test/api/auth/start", {
+        method: "POST",
+        body: "not json",
+      }),
+      env,
+      ctx,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("GET /api/auth/start is 405 with an Allow header", async () => {
+    const res = await call("GET", "/api/auth/start");
+    expect(res.status).toBe(405);
+    expect(res.headers.get("allow")).toBe("POST");
+  });
+
+  it("POST /api/auth/verify is wired (behaviour covered in auth.test.ts)", async () => {
+    const res = await worker.fetch(
+      new Request("https://sound-buddy-api.test/api/auth/verify", {
+        method: "POST",
+        body: "not json",
+      }),
+      env,
+      ctx,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("GET /api/auth/session is wired (behaviour covered in auth.test.ts)", async () => {
+    const res = await call("GET", "/api/auth/session");
+    expect(res.status).toBe(401);
+  });
 });
