@@ -48,4 +48,13 @@ describe('#1496 analyze layout: the live EQ owns the primary stage', () => {
     expect(appCss).not.toContain('body.analyze-listening #live-eq-pane');
     expect(panelSrc).not.toContain('live-eq-pane');
   });
+
+  // #1487: the results rail folds onto the #1496 stage as a second column —
+  // the room EQ stays flex:1 inside .analyze-stage, the rail is a fixed
+  // width so it never competes with the EQ for the dominant column.
+  it('lays the results rail out as a fixed-width second column beside the (still flex:1) room EQ', () => {
+    expect(appCss).toContain('.analyze-stage { display:flex; flex-direction:row; gap:16px; flex:1; min-height:0; }');
+    expect(appCss).toContain('.analyze-results-rail { width:320px; flex-shrink:0;');
+    expect(appCss).not.toContain('.analyze-results-rail { flex:1');
+  });
 });
