@@ -15,6 +15,32 @@ private func sine(hz: Double, amplitude: Double, count: Int) -> [Float] {
         }
     }
 
+    /// The Simulator can report a 0 Hz input format (AURemoteIO -10851). Every
+    /// unusable rate must throw, never trap converting bandHz / binHz to Int.
+    @Test(arguments: [0.0, -48_000.0, .nan, .infinity, -.infinity])
+    func rejectsAnUnusableSampleRate(_ rate: Double) {
+        let error = #expect(throws: SpectrumAnalyzer.ConfigurationError.self) {
+            try SpectrumAnalyzer(sampleRate: rate)
+        }
+        guard case .invalidSampleRate(let reported) = error else {
+            Issue.record("expected invalidSampleRate, got \(String(describing: error))")
+            return
+        }
+        #expect(reported.isNaN == rate.isNaN)
+        if !rate.isNaN { #expect(reported == rate) }
+        #expect(error?.errorDescription?.contains("sample rate") == true)
+    }
+
+    /// A positive but absurdly small rate makes bandHz / binHz overflow Int —
+    /// it must still build, with every band out of range at the floor.
+    @Test func aTinyPositiveSampleRateDoesNotTrap() throws {
+        let analyzer = try SpectrumAnalyzer(fftSize: 1024, sampleRate: .leastNonzeroMagnitude)
+        let levels = try analyzer.bandLevels(Array(repeating: 0.5, count: 1024))
+        for band in Band.allCases {
+            #expect(levels[band] == SpectrumAnalyzer.silenceFloorDb)
+        }
+    }
+
     @Test func rejectsFrameOfTheWrongLength() throws {
         let analyzer = try SpectrumAnalyzer(fftSize: 1024, sampleRate: sampleRate)
         #expect(throws: SpectrumAnalyzer.ConfigurationError.frameLengthMismatch(expected: 1024, got: 10)) {

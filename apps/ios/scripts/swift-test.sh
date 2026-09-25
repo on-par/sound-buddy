@@ -9,7 +9,9 @@ set -euo pipefail
 cd "$(dirname "$0")/../SoundBuddyKit"
 
 if xcrun --sdk macosx --show-sdk-path >/dev/null 2>&1; then
-  exec swift test "$@"
+  # xcrun, not bare `swift`: PATH may hold an older Command Line Tools swift
+  # that cannot build against the selected Xcode's SDK.
+  exec xcrun swift test "$@"
 fi
 
 CLT=/Library/Developer/CommandLineTools

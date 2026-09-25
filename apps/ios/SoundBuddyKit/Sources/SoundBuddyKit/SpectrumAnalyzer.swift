@@ -19,6 +19,7 @@ public final class SpectrumAnalyzer {
     public enum ConfigurationError: Error, Equatable, LocalizedError {
         case fftSizeNotPowerOfTwo(Int)
         case frameLengthMismatch(expected: Int, got: Int)
+        case invalidSampleRate(Double)
 
         public var errorDescription: String? {
             switch self {
@@ -26,6 +27,8 @@ public final class SpectrumAnalyzer {
                 "FFT size \(size) is not a power of two — use 1024, 2048, 4096 (default), or 8192."
             case .frameLengthMismatch(let expected, let got):
                 "Got a \(got)-sample frame but the analyzer expects \(expected) — read exactly fftSize samples from the ring buffer."
+            case .invalidSampleRate(let rate):
+                "Input sample rate \(rate) Hz is unusable — pass the audio input's real sample rate (for example 48000)."
             }
         }
     }
@@ -49,6 +52,11 @@ public final class SpectrumAnalyzer {
         guard fftSize > 1, fftSize & (fftSize - 1) == 0 else {
             throw ConfigurationError.fftSizeNotPowerOfTwo(fftSize)
         }
+        // A 0 Hz / NaN rate would make binHz 0 or NaN, and Int(bandHz / binHz)
+        // below would trap instead of throwing.
+        guard sampleRate.isFinite, sampleRate > 0 else {
+            throw ConfigurationError.invalidSampleRate(sampleRate)
+        }
         let log2n = vDSP_Length(fftSize.trailingZeroBitCount)
         guard let fft = vDSP.FFT(log2n: log2n, radix: .radix2, ofType: DSPSplitComplex.self) else {
             throw ConfigurationError.fftSizeNotPowerOfTwo(fftSize)
@@ -61,10 +69,13 @@ public final class SpectrumAnalyzer {
 
         let binHz = sampleRate / Double(fftSize)
         let lastBin = fftSize / 2
+        // Clamp in Double first: a tiny positive rate makes bandHz / binHz
+        // overflow Int (or reach +inf), which would trap on conversion.
+        let binLimit = Double(lastBin + 1)
         var bins: [Band: ClosedRange<Int>] = [:]
         for band in Band.allCases {
-            let lo = Int((band.lowHz / binHz).rounded(.up))
-            let hi = min(lastBin, Int((band.highHz / binHz).rounded(.down)))
+            let lo = Int(min(binLimit, (band.lowHz / binHz).rounded(.up)))
+            let hi = min(lastBin, Int(min(binLimit, (band.highHz / binHz).rounded(.down))))
             if lo <= hi { bins[band] = lo...hi }
         }
         bandBins = bins

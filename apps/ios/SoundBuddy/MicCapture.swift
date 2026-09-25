@@ -38,20 +38,30 @@ final class MicCapture: LiveAudioSource {
         try session.setActive(true)
         #endif
 
+        let analyzer: SpectrumAnalyzer
+        let ring: SampleRingBuffer
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
-        let analyzer = try SpectrumAnalyzer(sampleRate: format.sampleRate)
-        let ring = SampleRingBuffer(capacity: analyzer.fftSize * Self.ringFrames)
-        self.ring = ring
-
-        input.installTap(onBus: 0, bufferSize: Self.tapBufferFrames, format: format, block: Self.tapBlock(writingTo: ring))
-        engine.prepare()
         do {
-            try engine.start()
+            // The Simulator can report a 0 Hz / 0-channel input; refuse it
+            // before a tap is installed or the engine starts.
+            try LiveInputFormat.validate(sampleRate: format.sampleRate, channelCount: Int(format.channelCount))
+            analyzer = try SpectrumAnalyzer(sampleRate: format.sampleRate)
+            ring = SampleRingBuffer(capacity: analyzer.fftSize * Self.ringFrames)
+            input.installTap(onBus: 0, bufferSize: Self.tapBufferFrames, format: format, block: Self.tapBlock(writingTo: ring))
+            engine.prepare()
+            do {
+                try engine.start()
+            } catch {
+                input.removeTap(onBus: 0)
+                throw error
+            }
         } catch {
-            input.removeTap(onBus: 0)
+            engine.stop()
+            Self.releaseSession()
             throw error
         }
+        self.ring = ring
 
         let interval = Duration.seconds(1 / Self.meterRefreshHz)
         meterTask = Task { @MainActor in
@@ -82,6 +92,10 @@ final class MicCapture: LiveAudioSource {
         engine.stop()
         ring?.reset()
         ring = nil
+        Self.releaseSession()
+    }
+
+    private static func releaseSession() {
         #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         #endif
