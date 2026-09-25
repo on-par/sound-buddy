@@ -2,6 +2,7 @@
 // Copy lives here, not in index.astro, so it can't drift from the guarantee
 // constants and stays testable/greppable.
 import { GUARANTEE_WINDOW_DAYS, REFUND_PATH } from './guarantee';
+import { FREE_MONTHLY_UPLOADS } from './packaging-copy';
 
 export interface FaqEntry {
   /** Stable slug, used as the disclosure's DOM id so answers are deep-linkable. */
@@ -20,10 +21,10 @@ export interface FaqEntry {
 export const FAQ_ENTRIES: FaqEntry[] = [
   {
     id: 'privacy',
-    question: "Is my church's audio really private?",
+    question: 'Where does my audio get analyzed?',
     answer: [
-      'Yes. Sound Buddy analyzes your recordings on your own Mac. There is no cloud upload step, no account to create, and nothing that tracks you across the web — the analysis engine, the report card, and virtual soundcheck all run locally.',
-      'Browser Lite is local-only too: audio is decoded and graded inside your browser tab, not on a server. If you unplug the network mid-analysis, nothing breaks.',
+      'On Pro, on your Mac. The desktop app analyzes your recordings and live input on your own machine — the analysis engine, the report card, and EQ all run locally.',
+      `Free runs in your browser: you sign in with your email and upload a recording (up to ${FREE_MONTHLY_UPLOADS} a month), and it is analyzed on our server.`,
     ],
     link: { href: '/privacy', label: 'Read the full Privacy Policy →' },
   },
@@ -67,22 +68,22 @@ export const FAQ_ENTRIES: FaqEntry[] = [
     id: 'offline',
     question: 'Do I need an account or an internet connection?',
     answer: [
-      "No account, ever. There's no sign-up, no login, and no license server phoning home — a paid license key is checked offline and never expires. Once the app is downloaded you can run a whole Sunday's analysis on a disconnected machine.",
+      `Free runs in your browser and needs a free account — sign in with your email and a one-time code. Pro runs on your Mac: a paid license key is checked offline and never expires, and once the app is downloaded you can analyze a whole Sunday on a disconnected machine.`,
     ],
   },
   {
     id: 'free-tier',
     question: 'What does the free tier actually include?',
     answer: [
-      'Free is a real tier, not a crippled demo: up to 8 channels of capture, the complete report card with its letter grade, full spectral and dynamics analysis, and virtual soundcheck playback. No time limit and no recording cap.',
-      'Pro adds 32-channel capture, per-strip stems and session manifests, the AI analyst, channel groups, rigs and profiles, and priority support.',
+      `Free runs in your browser. Create a free account with your email, then upload up to ${FREE_MONTHLY_UPLOADS} recordings a month for a full report card and letter grade — nothing to install.`,
+      'Pro is the Mac app: live listening right at the desk, customizable EQ curves, channel select, 32-channel capture with per-strip stems, the AI analyst, and priority support.',
     ],
   },
   {
     id: 'trial',
     question: 'How do I try Pro?',
     answer: [
-      "Every download starts a 14-day Pro trial on first launch — no card and no account. When it ends the app drops to the Free tier rather than locking you out, and your existing recordings and report cards stay exactly where they are.",
+      "Every download starts a 14-day Pro trial on first launch — no card needed. When it ends the app never locks you out, and your existing recordings and report cards stay exactly where they are.",
     ],
     link: { href: '#pricing', label: 'See pricing →' },
   },

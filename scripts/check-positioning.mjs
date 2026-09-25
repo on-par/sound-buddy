@@ -30,20 +30,25 @@ const LOCKED = [
     ],
   },
   {
+    // #1527 / ADR-0147 retired this phrase from the public landing: global
+    // local-only claims are banned in marketing copy now that Free is a
+    // browser product. It stays locked on the Pro/desktop surfaces below,
+    // and site/src/lib/packaging-copy.ts's GLOBAL_PRIVACY_CLAIM_PATTERNS
+    // keeps it (and its paraphrases) off site landing/FAQ copy.
     phrase: 'Your audio never leaves your machine',
     required: [
-      'site/src/pages/index.astro',         // landing — privacy callout (headline-level)
       'app/renderer/src/settings-help.ts',  // app — usage-signal note copy (#1007 moved the Settings row notes out of SettingsPanel.tsx's JSX into this single-source-of-truth table)
       'README.md',                          // docs — top-level positioning
     ],
     forbidden: [],
   },
   {
-    // #91 — Sound Buddy has no usage caps on any tier. This line locks that in
-    // so it can't drift via pricing copy or gating implementation.
+    // #91 — Pro/desktop has no usage caps. The Free web tier is capped at
+    // FREE_MONTHLY_UPLOADS uploads a month under the #1518 product lock, so
+    // this line must stay scoped to Pro.
     phrase: 'Unlimited recordings. Stored on your machine.',
     required: [
-      'site/src/pages/index.astro',         // landing — privacy callout
+      'site/src/lib/packaging-copy.ts',     // landing — Pro tier feature list (#1527)
       'app/renderer/src/SettingsPanel.tsx', // app — Storage settings tab (#204: index.html's static dialog markup was fully absorbed into this React island)
       'README.md',                          // docs — top-level positioning
     ],
