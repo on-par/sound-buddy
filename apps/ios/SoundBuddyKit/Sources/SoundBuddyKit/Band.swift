@@ -69,6 +69,18 @@ public struct BandLevels: Equatable, Sendable {
         Band.allCases.reduce(Band.subBass) { self[$1] > self[$0] ? $1 : $0 }
     }
 
+    /// EQ bar heights in 0...1, relative to the loudest band: it fills the
+    /// bar, and a band `rangeDb` or more below it is empty. Relative display
+    /// is deliberate — phone-mic dB is uncalibrated. Silence is all-empty.
+    public func barFractions(rangeDb: Double) -> [Band: Double] {
+        let top = self[loudest]
+        let silentInput = top <= SpectrumAnalyzer.silenceFloorDb
+        return Dictionary(uniqueKeysWithValues: Band.allCases.map { band in
+            let fraction = silentInput ? 0 : (self[band] - (top - rangeDb)) / rangeDb
+            return (band, min(1, max(0, fraction)))
+        })
+    }
+
     public static let silent = BandLevels(
         db: Dictionary(uniqueKeysWithValues: Band.allCases.map { ($0, SpectrumAnalyzer.silenceFloorDb) })
     )

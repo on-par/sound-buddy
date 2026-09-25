@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Merged with the build-setting-generated keys (GENERATE_INFOPLIST_FILE = YES).
+  Deliberately absent while the LAN companion is parked:
+  NSLocalNetworkUsageDescription, NSBonjourServices, and any
+  com.apple.developer.networking.* entitlement.
+  Deliberately absent for P0: UIBackgroundModes "audio" (the mic stops when
+  the app backgrounds; a "walk mode" would add it later).
+-->
+<plist version="1.0">
+<dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Sound Buddy listens through the microphone to estimate your room's tonal balance and suggest EQ changes. Audio is analyzed on this iPhone and never leaves it.</string>
+</dict>
+</plist>

@@ -42,8 +42,8 @@ private func levels(base: Double = -30, _ overrides: [Band: Double] = [:]) -> Ba
 
 @MainActor
 @Suite struct AnalyzeModelTests {
-    let source = FakeSource()
-    let clock = FakeClock()
+    fileprivate let source = FakeSource()
+    fileprivate let clock = FakeClock()
 
     func model(granted: Bool = true) -> AnalyzeModel {
         AnalyzeModel(permission: FakePermission(granted: granted), source: source, now: { [clock] in clock.now })
@@ -96,7 +96,8 @@ private func levels(base: Double = -30, _ overrides: [Band: Double] = [:]) -> Ba
         await m.start()
         clock.advance(4)
         let reading = levels([.lowMid: -22])
-        try #require(source.onLevels)(reading)
+        let deliver = try #require(source.onLevels)
+        deliver(reading)
         #expect(m.bandLevels == reading)
         let event = try #require(m.coaching.first)
         #expect(event.band == .lowMid)

@@ -89,7 +89,7 @@ public struct IdealCurve: Codable, Equatable, Sendable {
     public static let flat = IdealCurve(
         id: "flat",
         label: "Flat / neutral",
-        description: "No tilt — useful as a neutral reference.",
+        description: "Neutral reference — no target tilt.",
         freqs: gridFreqs,
         dbOffsets: Array(repeating: 0, count: gridPoints)
     )

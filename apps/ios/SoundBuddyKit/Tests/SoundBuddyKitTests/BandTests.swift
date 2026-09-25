@@ -33,3 +33,21 @@ import Testing
         #expect(Band.containing(hz: 22000) == nil)
     }
 }
+
+@Suite struct BandLevelsDisplayTests {
+    @Test func barsAreRelativeToTheLoudestBand() {
+        var db = BandLevels.silent.db
+        db[.mid] = -20
+        db[.bass] = -35
+        db[.presence] = -80
+        let bars = BandLevels(db: db).barFractions(rangeDb: 30)
+        #expect(abs((bars[.mid] ?? 0) - 1) < 1e-9)
+        #expect(abs((bars[.bass] ?? 0) - 0.5) < 1e-9)
+        #expect(bars[.presence] == 0, "anything below the display range pins to empty")
+    }
+
+    @Test func silenceShowsEmptyBars() {
+        let bars = BandLevels.silent.barFractions(rangeDb: 30)
+        #expect(Band.allCases.allSatisfy { bars[$0] == 0 })
+    }
+}
