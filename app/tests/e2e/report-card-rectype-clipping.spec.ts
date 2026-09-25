@@ -1,6 +1,6 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
 import * as path from 'path';
-import { launchApp, loadAndAnalyze, LOW_GAIN_ANALYSIS, CLIPPING_ANALYSIS } from './e2e-helpers';
+import { launchApp, loadAndAnalyze, LOW_GAIN_ANALYSIS, CLIPPING_ANALYSIS, gotoReportCard } from './e2e-helpers';
 
 // Reproduces #1484: a long amber recording-type note ("Low Recording Gain —
 // Mix is fine but USB record level is low. Raise console USB output toward
@@ -24,7 +24,7 @@ async function showReportCard(w: Page, app: ElectronApplication, analysis: unkno
     ipcMain.removeHandler('analyze-file');
     ipcMain.handle('analyze-file', () => ({ success: true, data }));
   }, analysis);
-  await w.locator('.mode-tab[data-mode="reportcard"]').click();
+  await gotoReportCard(w);
   await loadAndAnalyze(w, fixturePath());
   await expect(w.locator('#rc-content')).toBeVisible();
 }

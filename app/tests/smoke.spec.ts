@@ -2,6 +2,7 @@ import { test, expect, type ElectronApplication, type Page } from '@playwright/t
 import { launchElectron } from './launch-electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import { gotoReportCard } from './e2e/e2e-helpers';
 
 // Instrumented smoke run: launches the REAL app (no IPC stubs) and exercises
 // every flow so genuine runtime/environment errors surface, capturing renderer
@@ -61,7 +62,7 @@ test('smoke: exercise all flows and collect errors', async () => {
   await win.waitForTimeout(2500);
 
   // 4. Report card render
-  await win.locator('.mode-tab[data-mode="reportcard"]').click();
+  await gotoReportCard(win);
   await win.waitForTimeout(400);
 
   // 5. Live: enumerate devices (real python stream.py)

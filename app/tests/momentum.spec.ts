@@ -3,6 +3,7 @@ import { launchElectron } from './launch-electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { NO_TRIAL_ENV, makeLicenseKey } from './license-fixture';
+import { gotoReportCard } from './e2e/e2e-helpers';
 
 // The post-report-card "Keep improving" momentum card (#58). Runs for REAL
 // against an isolated --user-data-dir on the deterministic free tier
@@ -52,7 +53,7 @@ async function launch(): Promise<void> {
 async function analyzeAndOpenReportCard(): Promise<void> {
   // The File tab is gone (#203) — file loading now lives in the Report Card
   // tab's empty state, which is also the default landing tab.
-  await win.locator('.mode-tab[data-mode="reportcard"]').click();
+  await gotoReportCard(win);
   await win.evaluate(() => {
     (window as unknown as { loadFile: (p: string) => void }).loadFile('/fake/momentum.wav');
   });
@@ -75,7 +76,7 @@ test.describe.serial('Upgrade momentum card (#58)', () => {
   test('hidden before any analysis (never over an empty report)', async () => {
     await launch();
     await expect(win.locator('#license-badge')).toHaveText('FREE');
-    await win.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(win);
     await expect(win.locator('#rc-empty')).toBeVisible();
     await expect(win.locator('#rc-upgrade')).toBeHidden();
   });
@@ -148,7 +149,7 @@ test.describe.serial('Upgrade momentum card (#58)', () => {
     // Leaving and returning to the report card keeps it dismissed. (No
     // standalone File tab to leave to anymore, #203 — any other tab works.)
     await win.locator('.mode-tab[data-mode="dir"]').click();
-    await win.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(win);
     await expect(win.locator('#rc-content')).toBeVisible();
     await expect(win.locator('#rc-upgrade')).toBeHidden();
   });
@@ -165,7 +166,7 @@ test.describe.serial('Upgrade momentum card (#58)', () => {
     await expect(win.locator('#license-badge')).toHaveText('PRO');
 
     // Even with a rendered report card and no dismissal, a Pro user never sees it.
-    await win.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(win);
     await expect(win.locator('#rc-content')).toBeVisible();
     await expect(win.locator('#rc-upgrade')).toBeHidden();
   });

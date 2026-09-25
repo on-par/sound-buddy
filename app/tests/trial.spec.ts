@@ -3,6 +3,7 @@ import { launchElectron } from './launch-electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { LICENSE_ENV, seedTrial } from './license-fixture';
+import { gotoReportCard } from './e2e/e2e-helpers';
 
 // First-launch Pro trial (#61), run for REAL against an isolated license.json
 // in a throwaway --user-data-dir: a brand-new user boots straight into Pro with
@@ -73,7 +74,7 @@ test.describe.serial('First-launch Pro trial (#61)', () => {
     await win.locator('.mode-tab[data-mode="live"]').click();
     await expect(win.locator('#tab-live .pro-gate')).toBeVisible();
     // The free funnel is untouched.
-    await win.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(win);
     await expect(win.locator('#reportcard-view')).toBeVisible();
   });
 });

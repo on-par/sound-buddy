@@ -1,6 +1,6 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
 import * as path from 'path';
-import { launchApp, loadAndAnalyze, FAKE_ANALYSIS } from './e2e-helpers';
+import { launchApp, loadAndAnalyze, FAKE_ANALYSIS, gotoReportCard } from './e2e-helpers';
 
 // Playback transport (#180) — split out of e2e.spec.ts (#225) as its own file.
 // Every test here re-stubs analyze-file and calls loadAndAnalyze itself, so
@@ -36,7 +36,7 @@ test.describe('playback transport (#180)', () => {
       ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
     }, { ...FAKE_ANALYSIS, filePath: realFixturePath, spectrum: { ...FAKE_ANALYSIS.spectrum, frames: playbackFrames } });
 
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await loadAndAnalyze(window, realFixturePath);
 
     const playBtn = window.locator('#spectro-play-btn');
@@ -93,7 +93,7 @@ test.describe('playback transport (#180)', () => {
       ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
     }, { ...FAKE_ANALYSIS, filePath: realFixturePath, spectrum: { ...FAKE_ANALYSIS.spectrum, frames: playbackFrames } });
 
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await loadAndAnalyze(window, realFixturePath);
 
     const playBtn = window.locator('#spectro-play-btn');
@@ -135,7 +135,7 @@ test.describe('playback transport (#180)', () => {
       ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
     }, { ...FAKE_ANALYSIS, filePath: realFixturePath, spectrum: { ...FAKE_ANALYSIS.spectrum, frames: playbackFrames } });
 
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await loadAndAnalyze(window, realFixturePath);
 
     const playBtn = window.locator('#spectro-play-btn');
@@ -170,7 +170,7 @@ test.describe('playback transport (#180)', () => {
       ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
     }, { ...FAKE_ANALYSIS, filePath: realFixturePath, spectrum: { ...FAKE_ANALYSIS.spectrum, frames: playbackFrames } });
 
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await loadAndAnalyze(window, realFixturePath);
 
     const playBtn = window.locator('#spectro-play-btn');

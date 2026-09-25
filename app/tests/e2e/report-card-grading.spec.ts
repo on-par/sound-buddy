@@ -8,6 +8,7 @@ import {
   WORSHIP_MUSIC_ANALYSIS,
   DEDUCTING_ANALYSIS,
   SHORT_ANALYSIS,
+  gotoReportCard,
 } from './e2e-helpers';
 
 // Final slice of the former e2e.spec.ts "Sound Buddy E2E" describe (#225):
@@ -58,7 +59,7 @@ test.describe('Sound Buddy E2E — report card grading', () => {
   });
 
   test('report card renders grade, metric rows, and recommendations', async () => {
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     // This file runs standalone (its own Electron session), so — unlike the
     // original single-session file, where the prior "playback transport"
     // describe left the default FAKE_ANALYSIS loaded — load it explicitly here.
@@ -92,7 +93,7 @@ test.describe('Sound Buddy E2E — report card grading', () => {
   test('"Why this grade" shows the positive no-deductions state for a clean grade (#133)', async () => {
     // The default fixture grades an A (in-band RMS, healthy DR, balanced bands),
     // so the breakdown is the explicit positive state — never a blank box.
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await loadAndAnalyze(window, fixturePath());
     await expect(window.locator('#rc-content')).toBeVisible();
     await expect(window.locator('#rc-why .rc-why-none')).toBeVisible();
@@ -108,7 +109,7 @@ test.describe('Sound Buddy E2E — report card grading', () => {
       ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
     }, DEDUCTING_ANALYSIS);
 
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await loadAndAnalyze(window, fixturePath());
 
     const rows = window.locator('#rc-why .rc-why-row');
@@ -135,7 +136,7 @@ test.describe('Sound Buddy E2E — report card grading', () => {
       ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
     }, WORSHIP_SERVICE_ANALYSIS);
 
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await loadAndAnalyze(window, fixturePath());
 
     await expect(window.locator('#rc-rec-type')).toContainText('Dynamic Service');
@@ -158,7 +159,7 @@ test.describe('Sound Buddy E2E — report card grading', () => {
   });
 
   test('report card shows a heatmap thumbnail and representative frame curves', async () => {
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await expect(window.locator('#rc-content')).toBeVisible();
 
     await expect(window.locator('#rc-frames-section')).toBeVisible();
@@ -175,7 +176,7 @@ test.describe('Sound Buddy E2E — report card grading', () => {
       ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
     }, SHORT_ANALYSIS);
 
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await loadAndAnalyze(window, fixturePath());
 
     // Heatmap collapses to a single column; the scrubber still starts on average.
@@ -193,7 +194,7 @@ test.describe('Sound Buddy E2E — report card grading', () => {
       ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
     }, FAKE_ANALYSIS);
 
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await loadAndAnalyze(window, fixturePath());
 
     // Cycle away and back through another mode so the real analysis (with its
@@ -203,7 +204,7 @@ test.describe('Sound Buddy E2E — report card grading', () => {
     // tab used, so this reproduces the original round trip now that File is
     // gone (#203).
     await window.locator('.mode-tab[data-mode="dir"]').click();
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
 
     // The measured bars remain, with the dashed ideal target overlaid on top.
     await expect(window.locator('#spectrum-chart .veq-bar')).toHaveCount(7);
@@ -219,7 +220,7 @@ test.describe('Sound Buddy E2E — report card grading', () => {
   });
 
   test('creates a custom ideal curve from the current analysis', async () => {
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
 
     await window.locator('#ideal-profile-select').selectOption('flat');
     await expect(window.locator('.spectrum-legend')).toContainText('Flat / neutral');
@@ -235,7 +236,7 @@ test.describe('Sound Buddy E2E — report card grading', () => {
     await expect(window.locator('.spectrum-legend')).toContainText('Sanctuary reference');
 
     // Report card reflects the override with a match score + deviation curve.
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await expect(window.locator('#rc-profile-section')).toBeVisible();
     await expect(window.locator('#rc-profile')).toContainText('Sanctuary reference');
     await expect(window.locator('#rc-profile .rcp-score .num')).toHaveText(/^\d{1,3}$/);

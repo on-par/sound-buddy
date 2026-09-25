@@ -1,6 +1,6 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
 import * as path from 'path';
-import { launchApp } from './e2e-helpers';
+import { launchApp, gotoReportCard } from './e2e-helpers';
 
 // Scene-file diff (#264): the report-card empty state's second, optional
 // #scene-dropzone drop target parses and diffs two dropped M32R .scn files
@@ -40,7 +40,7 @@ test.describe('Sound Buddy E2E — scene-file diff (#264)', () => {
   });
 
   test('one scene shows "nothing to compare yet"; a second shows the top changes; a corrupt third shows an actionable error', async () => {
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await gotoReportCard(window);
     await stubOpenFileDialog([BEFORE_SCN, AFTER_SCN, CORRUPT_SCN]);
 
     // AC: only one .scn dropped — a clear "nothing to compare yet" state, not
