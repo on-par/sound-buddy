@@ -19,7 +19,7 @@ or notarization yet.
 | `Contracts/` | Shared JSON contracts (`IdealCurve`, `CoachingEvent`): JSON Schemas and examples that both Mac and iOS can read. |
 | `project.yml` | XcodeGen spec. This is the source of truth for `SoundBuddy.xcodeproj`. |
 | `SoundBuddy.xcodeproj` | Generated from `project.yml` and checked in, so you can open it without installing XcodeGen. |
-| `scripts/` | `swift-test.sh`, the contract validator, and the spectrum parity fixture generator (plus their Python tests). |
+| `scripts/` | `swift-test.sh`, the contract validator, the spectrum parity fixture generator, and the icon generator (plus their Python tests). |
 
 ## Open in Xcode
 
@@ -47,8 +47,8 @@ Capabilities**. The project sets no team on purpose.
 
 1. Run the **SoundBuddy** scheme (⌘R) on an iPhone Simulator.
 2. The app starts listening by itself. It has no Start or Stop button. The
-   first time, iOS asks for microphone access. Allow it. "Listening" shows
-   under the title.
+   first time, iOS asks for microphone access. Allow it. The header shows the
+   Sound Buddy mark and name, with "Analyze · Listening" beneath.
 3. The Simulator uses your Mac's default input. Play music or speak near the
    Mac. The RTA bars move, and white peak ticks hold above them for a moment.
    Lows glow green to orange as they get hot; mids and highs are cyan to blue.
@@ -76,18 +76,23 @@ If Xcode is not usable (for example, the license is not accepted yet), the
 script falls back to the Command Line Tools. In Xcode, **Product › Test** on
 the SoundBuddy scheme runs the same tests.
 
-Contract and parity-fixture checks (Python 3; install `jsonschema`, `numpy`,
-and `soundfile`):
+Contract, parity-fixture, and icon checks (Python 3; install `jsonschema`,
+`numpy`, `soundfile`, and `Pillow`):
 
 ```bash
 python apps/ios/scripts/validate_contracts.py
-(cd apps/ios/scripts && python test_validate_contracts.py && python test_make_spectrum_parity_fixture.py)
+(cd apps/ios/scripts && python test_validate_contracts.py && python test_make_spectrum_parity_fixture.py && python test_make_ios_icons.py)
 ```
 
 If you change `packages/audio-engine/scripts/spectrum.py`, regenerate the
 parity fixture with `python apps/ios/scripts/make_spectrum_parity_fixture.py`.
 CI does not catch drift here. `test_make_spectrum_parity_fixture.py` catches
 it, but only when you run it locally.
+
+The app icon and the header's `BrandMark` are generated from the Mac icon
+(`app/build/icon.png`). If that icon changes, run
+`python apps/ios/scripts/make_ios_icons.py`. `test_make_ios_icons.py` catches
+drift, again only locally.
 
 ## CI: Swift does not compile on Linux
 
