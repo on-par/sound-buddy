@@ -329,7 +329,7 @@ describe('first-launch trial (#61)', () => {
     expect(getLicenseState(days(TRIAL_DAYS - 1)).status).toBe('trial');
     const after = getLicenseState(days(TRIAL_DAYS + 1));
     expect(after).toMatchObject({ tier: 'free', status: 'trial-expired' });
-    for (const f of ['saved-rigs', 'live-monitoring', 'virtual-soundcheck', 'ai-narrative']) {
+    for (const f of ['saved-rigs', 'live-monitoring', 'virtual-soundcheck', 'ai-narrative', 'custom-eq-curves']) {
       expect(isEntitled(f, days(TRIAL_DAYS + 1))).toBe(false);
     }
     expect(isEntitled('report-card', days(TRIAL_DAYS + 1))).toBe(true);
@@ -378,7 +378,7 @@ describe('first-launch trial (#61)', () => {
 });
 
 describe('isEntitled', () => {
-  const PRO = ['saved-rigs', 'live-monitoring', 'virtual-soundcheck', 'ai-narrative'];
+  const PRO = ['saved-rigs', 'live-monitoring', 'virtual-soundcheck', 'ai-narrative', 'custom-eq-curves'];
 
   it('free tier: pro features locked, everything else (report card) free', () => {
     for (const f of PRO) expect(isEntitled(f, NOW)).toBe(false);
@@ -393,5 +393,17 @@ describe('isEntitled', () => {
     activateLicense(makeKey({ kind: 'subscription', expiresAt }), NOW);
     for (const f of PRO) expect(isEntitled(f, NOW)).toBe(true); // in grace
     for (const f of PRO) expect(isEntitled(f, new Date(NOW.getTime() + 30 * DAY_MS))).toBe(false);
+  });
+});
+
+describe('custom-eq-curves entitlement (#1523)', () => {
+  it('is locked on free, unlocked during an active trial, and unlocked with a valid Pro key', () => {
+    expect(isEntitled('custom-eq-curves', NOW)).toBe(false);
+
+    ensureTrialStarted(NOW);
+    expect(isEntitled('custom-eq-curves', NOW)).toBe(true);
+
+    activateLicense(makeKey({ kind: 'lifetime' }), NOW);
+    expect(isEntitled('custom-eq-curves', NOW)).toBe(true);
   });
 });
