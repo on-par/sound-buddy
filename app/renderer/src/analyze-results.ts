@@ -3,10 +3,12 @@
 
 // Pure view fold for the Analyze results rail (#1487) — the grade, pills, and
 // recommendations that fold into Analyze chrome once a file- or live-derived
-// analysis produces a result. Reuses getReportCardSource's exact
+// analysis produces a result, or a stored History summary (#1521) when
+// neither is present. Reuses getReportCardSource's exact
 // currentAnalysis-then-liveSource priority (report-card-chrome.ts) rather
 // than re-deriving it, so this never becomes a second, divergent source of
-// "what's the current result" from ReportCardIsland's. The grading API is
+// "what's the current result" from ReportCardIsland's; historySummary sits
+// behind both, matching ReportCardIsland's own priority. The grading API is
 // injected (constitution: side effects injected, not imported globally) —
 // AnalyzeResultsPanel.tsx supplies the real window.grading, tests supply a
 // fake.
@@ -14,6 +16,7 @@
 import { getReportCardSource } from './report-card-chrome';
 import type { ReportCardSource, RecordingType } from './report-card';
 import type { AnalysisPayload } from '@sound-buddy/shared';
+import type { AnalysisSummary } from '../../electron/ipc/api';
 
 export interface AnalyzeResultsGradingApi {
   computeGrade(src: ReportCardSource): string;
@@ -37,16 +40,21 @@ export interface AnalyzeResultsGrade {
 // boolean so the panel's copy can name each one honestly.
 export type AnalyzeResultsView =
   | { kind: 'empty'; state: 'listening' | 'idle' }
-  | { kind: 'result'; source: ReportCardSource; grade: AnalyzeResultsGrade };
+  | { kind: 'result'; source: ReportCardSource; grade: AnalyzeResultsGrade }
+  | { kind: 'history'; summary: AnalysisSummary };
 
 export function analyzeResultsView(
   currentAnalysis: AnalysisPayload | null,
   liveSource: ReportCardSource | null,
+  historySummary: AnalysisSummary | null,
   listening: boolean,
   grading: AnalyzeResultsGradingApi,
 ): AnalyzeResultsView {
   const source = getReportCardSource(currentAnalysis, liveSource);
-  if (!source) return { kind: 'empty', state: listening ? 'listening' : 'idle' };
+  if (!source) {
+    if (historySummary) return { kind: 'history', summary: historySummary };
+    return { kind: 'empty', state: listening ? 'listening' : 'idle' };
+  }
   return {
     kind: 'result',
     source,
