@@ -79,6 +79,10 @@ describe('Simple-mode Report Card redirect (#1510)', () => {
     expect(clampBootMode('reportcard', settings())).toBe('analyze');
   });
 
+  it('a fresh liveCaptureStore lands on analyze (#1510)', () => {
+    expect(useLiveCaptureStore.getInitialState().appMode).toBe('analyze');
+  });
+
   describe('switchMode redirect', () => {
     function makeClassList(classes: Set<string>) {
       return {

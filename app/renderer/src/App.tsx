@@ -335,7 +335,7 @@ export default function App() {
     // trigger the second render that portals ReportCardIsland/SpectrumPanel
     // onto them (TD-001 slice 4, #422).
     const initialMode = useLiveCaptureStore.getState().appMode;
-    if (modeSwitch.isWorkspaceMode(initialMode)) modeSwitch.switchMode(initialMode, { boot: true });
+    modeSwitch.applyInitialMode(initialMode);
     // #1405: restore the last-active mode (persisted by non-boot switchMode
     // calls) once settings + device/rig hydration have both settled —
     // window.rendererHydration is installed by inline-app.js's Init IIFE,

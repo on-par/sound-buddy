@@ -538,7 +538,9 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
     boardShapeVersion: 0,
     lastError: null,
 
-    appMode: 'reportcard',
+    // #1510: the Analyze stage is the default landing screen — mode-switch.ts's
+    // applyInitialMode() is what actually paints it on App.tsx's boot call.
+    appMode: 'analyze',
 
     ringout: { stepIndex: 0, cut: null },
 
