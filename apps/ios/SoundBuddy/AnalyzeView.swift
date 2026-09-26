@@ -11,22 +11,22 @@ import UIKit
 /// Pure rendering — every decision lives in AnalyzeModel (SoundBuddyKit),
 /// which is where the tests are.
 ///
+/// portrait: header + RTA + coaching; landscape: RTA-first with a coaching
+/// peek (#1548). AnalyzeLayout (SoundBuddyKit) decides portrait vs landscape
+/// and the peek state; this view only renders.
+///
 /// TODO(ipad): the layout is single-column; switch the RTA and coaching
 /// stack side by side on a regular horizontal size class.
 struct AnalyzeView: View {
     let model: AnalyzeModel
     @Environment(\.scenePhase) private var scenePhase
+    @State private var coachingPeekOpen = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
-            header
-            VStack(alignment: .leading, spacing: Layout.legendSpacing) {
-                RTAView(model: model)
-                TargetLegend(text: model.targetLegendText)
-            }
-            CoachingStackView(model: model)
-            Spacer(minLength: 0)
-            StatusMessageView(model: model)
+        GeometryReader { proxy in
+            let layout = AnalyzeLayout(width: proxy.size.width, height: proxy.size.height)
+            content(for: layout, proxy: proxy)
+                .onChange(of: layout) { _, _ in coachingPeekOpen = false }
         }
         .padding(Layout.screenPadding)
         .background(Palette.background.ignoresSafeArea())
@@ -51,6 +51,56 @@ struct AnalyzeView: View {
         #endif
     }
 
+    @ViewBuilder
+    private func content(for layout: AnalyzeLayout, proxy: GeometryProxy) -> some View {
+        switch layout {
+        case .portrait: portraitBody
+        case .landscape: landscapeBody(proxy: proxy)
+        }
+    }
+
+    private var portraitBody: some View {
+        VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
+            header
+            VStack(alignment: .leading, spacing: Layout.legendSpacing) {
+                RTAView(model: model)
+                TargetLegend(text: model.targetLegendText)
+            }
+            CoachingStackView(model: model)
+            Spacer(minLength: 0)
+            StatusMessageView(model: model)
+        }
+    }
+
+    private func landscapeBody(proxy: GeometryProxy) -> some View {
+        VStack(spacing: Layout.landscapeSpacing) {
+            landscapeStrip
+            RTAView(model: model, fillsHeight: true)
+            StatusMessageView(model: model)
+            CoachingPeekHandle(model: model, isOpen: $coachingPeekOpen)
+        }
+        .overlay(alignment: .bottom) {
+            if coachingPeekOpen {
+                CoachingPeekPanel(
+                    model: model,
+                    isOpen: $coachingPeekOpen,
+                    maxHeight: proxy.size.height * Layout.peekMaxHeightFraction
+                )
+            }
+        }
+    }
+
+    private var landscapeStrip: some View {
+        HStack(spacing: Layout.landscapeStripSpacing) {
+            ListeningIndicator(state: model.state)
+            TargetLegend(text: model.targetLegendText)
+            Spacer()
+            OverallLevelReadout(model: model, font: .headline.monospacedDigit())
+            HonestyBadge()
+        }
+        .lineLimit(1)
+    }
+
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: Layout.headerSpacing) {
@@ -60,21 +110,97 @@ struct AnalyzeView: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: Layout.headerSpacing) {
-                Text(model.overallLevelText)
-                    .font(.title2.weight(.bold).monospacedDigit())
-                    .foregroundStyle(model.overallDb == nil ? Palette.secondaryText : Color.primary)
-                    .lineLimit(1)
-                    .transaction { $0.animation = nil }
-                    .accessibilityLabel("Overall level \(model.overallLevelText), phone mic estimate")
-                Label(AnalyzeModel.honestyCue, systemImage: "iphone.gen3")
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, Layout.badgePaddingH)
-                    .padding(.vertical, Layout.badgePaddingV)
-                    .background(Palette.surface, in: Capsule())
-                    .foregroundStyle(Palette.secondaryText)
-                    .accessibilityLabel("\(AnalyzeModel.honestyCue): readings are relative, not calibrated")
+                OverallLevelReadout(model: model, font: .title2.weight(.bold).monospacedDigit())
+                HonestyBadge()
             }
         }
+    }
+}
+
+/// The overall dBFS readout. Shared by the portrait header and the landscape
+/// status strip so the accessibility label stays identical in both.
+private struct OverallLevelReadout: View {
+    let model: AnalyzeModel
+    let font: Font
+
+    var body: some View {
+        Text(model.overallLevelText)
+            .font(font)
+            .foregroundStyle(model.overallDb == nil ? Palette.secondaryText : Color.primary)
+            .lineLimit(1)
+            .transaction { $0.animation = nil }
+            .accessibilityLabel("Overall level \(model.overallLevelText), phone mic estimate")
+    }
+}
+
+/// The "Phone mic estimate" honesty cue. Shared by the portrait header and
+/// the landscape status strip so the accessibility label stays identical.
+private struct HonestyBadge: View {
+    var body: some View {
+        Label(AnalyzeModel.honestyCue, systemImage: "iphone.gen3")
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, Layout.badgePaddingH)
+            .padding(.vertical, Layout.badgePaddingV)
+            .background(Palette.surface, in: Capsule())
+            .foregroundStyle(Palette.secondaryText)
+            .accessibilityLabel("\(AnalyzeModel.honestyCue): readings are relative, not calibrated")
+    }
+}
+
+// MARK: - Coaching peek (landscape)
+
+/// The thin bottom bar that opens/closes the landscape coaching peek: tap or
+/// swipe up to open, tap or swipe down to close.
+private struct CoachingPeekHandle: View {
+    let model: AnalyzeModel
+    @Binding var isOpen: Bool
+
+    var body: some View {
+        HStack(spacing: Layout.landscapeStripSpacing) {
+            Text(AnalyzeLayout.coachingPeekLabel(count: model.coaching.count))
+                .font(.footnote.weight(.semibold))
+            Image(systemName: isOpen ? "chevron.down" : "chevron.up")
+                .font(.footnote.weight(.semibold))
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: Layout.peekHandleHeight)
+        .background(Palette.surface, in: Capsule())
+        .foregroundStyle(Palette.secondaryText)
+        .contentShape(Rectangle())
+        .onTapGesture { withAnimation(.snappy) { isOpen.toggle() } }
+        .gesture(
+            DragGesture(minimumDistance: Layout.peekDragMinDistance)
+                .onEnded { value in
+                    withAnimation(.snappy) {
+                        isOpen = AnalyzeLayout.peekOpen(afterDrag: value.translation.height, wasOpen: isOpen)
+                    }
+                }
+        )
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel("Coaching")
+        .accessibilityValue("\(model.coaching.count) hints")
+        .accessibilityHint(isOpen ? "Hides the coaching cards" : "Shows the coaching cards")
+    }
+}
+
+/// The landscape coaching overlay: the same CoachingStackView cards as
+/// portrait, scrollable so they fit on a short landscape phone, closed by
+/// the same handle repeated at the panel's bottom.
+private struct CoachingPeekPanel: View {
+    let model: AnalyzeModel
+    @Binding var isOpen: Bool
+    let maxHeight: CGFloat
+
+    var body: some View {
+        VStack(spacing: Layout.landscapeSpacing) {
+            ScrollView {
+                CoachingStackView(model: model)
+            }
+            .frame(maxHeight: maxHeight)
+            CoachingPeekHandle(model: model, isOpen: $isOpen)
+        }
+        .padding(Layout.cardPadding)
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: Layout.cornerRadius))
     }
 }
 
@@ -256,6 +382,11 @@ private enum Layout {
     static let legendSwatchSize = CGSize(width: 18, height: 8)
     static let legendSwatchLineWidth: CGFloat = 1.5
     static let legendSwatchDash: [CGFloat] = [3, 2]
+    static let landscapeSpacing: CGFloat = 8
+    static let peekHandleHeight: CGFloat = 28
+    static let peekDragMinDistance: CGFloat = 8
+    static let peekMaxHeightFraction: CGFloat = 0.6
+    static let landscapeStripSpacing: CGFloat = 12
 }
 
 /// Mirrors the Mac renderer's design tokens (app/renderer :root) — dark
