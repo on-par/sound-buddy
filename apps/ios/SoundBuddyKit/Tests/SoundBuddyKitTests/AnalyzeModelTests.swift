@@ -347,6 +347,30 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         #expect(model(target: curve, targetIsAuto: false).targetLegendText == "Target · Worship service")
     }
 
+    // MARK: Coaching follows the active curve
+
+    @Test func coachUsesTheInjectedTargetNotAHiddenFlat() throws {
+        let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        #expect(model(target: worship).coachingCurve == worship)
+        #expect(model().coachingCurve == .flat)
+    }
+
+    @Test func coachingFollowsTheActiveCurve() async throws {
+        let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        let flatModel = model()
+        let worshipModel = model(target: worship)
+
+        await flatModel.appear()
+        try deliver(reading(levels(base: -30)))
+        #expect(flatModel.coaching.isEmpty)
+        #expect(flatModel.coachingPlaceholder.contains("Balance looks close"))
+
+        await worshipModel.appear()
+        try deliver(reading(levels(base: -30)))
+        #expect(worshipModel.coaching.count == BandDeviationCoach.maxEvents)
+        #expect(worshipModel.coaching.first?.message.contains("gentle cut") == true)
+    }
+
     // MARK: Copy
 
     @Test func coachingPlaceholderNeverAsksForATap() async {
