@@ -15,7 +15,7 @@ or notarization yet.
 | Path | What it is |
 | --- | --- |
 | `SoundBuddy/` | App target: SwiftUI views (`AnalyzeView`), the AVAudioEngine mic adapter (`MicCapture`), `Info.plist` (mic usage text), assets. |
-| `SoundBuddyKit/` | Local SwiftPM package with all testable logic: band table, `SampleRingBuffer`, Accelerate `SpectrumAnalyzer`, `BandDeviationCoach`, `AnalyzeModel`, Codable contract models. |
+| `SoundBuddyKit/` | Local SwiftPM package with all testable logic: band table, `SampleRingBuffer`, Accelerate `SpectrumAnalyzer`, `BandDeviationCoach`, `AnalyzeModel`, Codable contract models, and the bundled ideal-EQ curves (`IdealCurveLibrary`, `Resources/IdealCurves/*.json`). |
 | `Contracts/` | Shared JSON contracts (`IdealCurve`, `CoachingEvent`): JSON Schemas and examples that both Mac and iOS can read. |
 | `project.yml` | XcodeGen spec. This is the source of truth for `SoundBuddy.xcodeproj`. |
 | `SoundBuddy.xcodeproj` | Generated from `project.yml` and checked in, so you can open it without installing XcodeGen. |
@@ -52,6 +52,9 @@ Capabilities**. The project sets no team on purpose.
 3. The Simulator uses your Mac's default input. Play music or speak near the
    Mac. The RTA bars move, and white peak ticks hold above them for a moment.
    Lows glow green to orange as they get hot; mids and highs are cyan to blue.
+   A dashed white target line rides on top of the bars, tracks the material's
+   level, and keeps its shape as the level changes. Under the RTA,
+   "Target · Worship service (auto)" shows with a matching dashed swatch.
 4. Play something tonally lopsided, such as a bass-heavy track. Within a
    second, up to three coaching cards appear. An example: "Bass is 6.2 dB over
    the target. Try a gentle cut around 60-250 Hz." The cards update in place

@@ -75,6 +75,16 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         AnalyzeModel(permission: permission, source: source, now: { [clock] in clock.now })
     }
 
+    func model(target: IdealCurve, targetIsAuto: Bool = true) -> AnalyzeModel {
+        AnalyzeModel(
+            permission: FakePermission(granted: true),
+            source: source,
+            target: target,
+            targetIsAuto: targetIsAuto,
+            now: { [clock] in clock.now }
+        )
+    }
+
     func deliver(_ r: SpectrumReading) throws {
         let send = try #require(source.onReading, "source is not running")
         send(r)
@@ -282,6 +292,61 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         #expect(m.overallLevelText == "—")
     }
 
+    // MARK: RTA target overlay
+
+    @Test func rtaTargetDbIsNilBeforeListeningAndAfterDisappear() async throws {
+        let curve = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        let m = model(target: curve)
+        #expect(m.rtaTargetDb == nil)
+        await m.appear()
+        try deliver(reading(.silent, rta: Array(repeating: -40, count: RTALayout.standard.bands.count)))
+        #expect(m.rtaTargetDb != nil)
+        m.disappear()
+        #expect(m.rtaTargetDb == nil)
+    }
+
+    @Test func rtaTargetDbTracksTheMeasuredMeanAndShiftsWithGain() async throws {
+        let curve = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        let m = model(target: curve)
+        await m.appear()
+        let count = RTALayout.standard.bands.count
+        let measured = (0..<count).map { -60.0 + Double($0 % 20) }
+        try deliver(reading(.silent, rta: measured))
+        let target = try #require(m.rtaTargetDb)
+        #expect(target.count == count)
+        let measuredMean = measured.reduce(0, +) / Double(count)
+        let targetMean = target.reduce(0, +) / Double(count)
+        #expect(abs(targetMean - measuredMean) < 1e-6)
+
+        // Levels rise instantly (no release lag), so a uniform +10 dB gain
+        // shows up on the very next reading.
+        let shifted = measured.map { $0 + 10 }
+        try deliver(reading(.silent, rta: shifted))
+        let shiftedTarget = try #require(m.rtaTargetDb)
+        for (before, after) in zip(target, shiftedTarget) {
+            #expect(abs(after - (before + 10)) < 1e-6)
+        }
+    }
+
+    @Test func defaultFlatTargetIsAConstantLineAtTheMeasuredMean() async throws {
+        let m = model()
+        await m.appear()
+        let count = RTALayout.standard.bands.count
+        let measured = (0..<count).map { -50.0 + Double($0 % 15) }
+        try deliver(reading(.silent, rta: measured))
+        let target = try #require(m.rtaTargetDb)
+        let mean = measured.reduce(0, +) / Double(count)
+        for value in target {
+            #expect(abs(value - mean) < 1e-6)
+        }
+    }
+
+    @Test func targetLegendTextUsesTheModelsTargetLabelAndAutoFlag() throws {
+        let curve = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        #expect(model(target: curve, targetIsAuto: true).targetLegendText == "Target · Worship service (auto)")
+        #expect(model(target: curve, targetIsAuto: false).targetLegendText == "Target · Worship service")
+    }
+
     // MARK: Copy
 
     @Test func coachingPlaceholderNeverAsksForATap() async {
@@ -317,5 +382,16 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         for db in [nil, -18.4, 0.0, 3.0] as [Double?] {
             #expect(!AnalyzeModel.formatOverallLevel(db).contains("SPL"))
         }
+    }
+}
+
+@MainActor
+@Suite struct FormatTargetLegendTests {
+    @Test func autoSuffixIsAppendedWhenAuto() {
+        #expect(AnalyzeModel.formatTargetLegend(label: "Worship service", isAuto: true) == "Target · Worship service (auto)")
+    }
+
+    @Test func noSuffixWhenNotAuto() {
+        #expect(AnalyzeModel.formatTargetLegend(label: "Worship service", isAuto: false) == "Target · Worship service")
     }
 }

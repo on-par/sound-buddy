@@ -54,6 +54,8 @@ public final class AnalyzeModel {
     /// Half of the one-decimal display step, so the "-0.0 dBFS" check uses an
     /// epsilon rather than float equality.
     static let halfDisplayStep = 0.05
+    static let targetLegendPrefix = "Target · "
+    static let targetAutoSuffix = " (auto)"
 
     public private(set) var state: State = .idle
     public private(set) var bandLevels: BandLevels = .silent
@@ -64,11 +66,20 @@ public final class AnalyzeModel {
     public private(set) var coaching: [CoachingEvent] = []
     public let rtaLayout = RTALayout.standard
     public let measurementSource: CoachingEvent.Source = .phoneMicEstimate
+    /// The ideal-EQ curve drawn as the RTA's dashed target line.
+    public let target: IdealCurve
+    /// Whether `target` was picked automatically (vs. a future user choice) —
+    /// only affects the legend copy.
+    public let targetIsAuto: Bool
 
     private let permission: MicPermission
     private let source: LiveAudioSource
+    // Coaches against flat until the curve-driven coaching child issue points
+    // this at the same curve as `target`.
     private let coach: BandDeviationCoach
     private let now: () -> Date
+    /// `target` resampled onto `rtaLayout`'s band centers, computed once.
+    private let rtaTargetOffsets: [Double]
     private var sessionStart: Date?
     private var lastReadingAt: Date?
     private var lastCoachingAt: Date?
@@ -79,11 +90,16 @@ public final class AnalyzeModel {
         permission: MicPermission,
         source: LiveAudioSource,
         coach: BandDeviationCoach = BandDeviationCoach(ideal: .flat),
+        target: IdealCurve = .flat,
+        targetIsAuto: Bool = true,
         now: @escaping () -> Date = Date.init
     ) {
         self.permission = permission
         self.source = source
         self.coach = coach
+        self.target = target
+        self.targetIsAuto = targetIsAuto
+        self.rtaTargetOffsets = RTATarget.resample(target, onto: RTALayout.standard)
         self.now = now
     }
 
@@ -97,6 +113,26 @@ public final class AnalyzeModel {
 
     /// The Analyze header's readout, rendered next to the honesty capsule.
     public var overallLevelText: String { Self.formatOverallLevel(overallDb) }
+
+    /// `target` level-matched to the live meter's dB mean, one value per
+    /// `rtaLayout` band — the RTA's dashed target line. `nil` when not live
+    /// or the meter hasn't reported a full-width reading yet. Read only by
+    /// RTAView (it already observes `rta`/`state`), so the coaching stack
+    /// never re-renders at the meter rate.
+    public var rtaTargetDb: [Double]? {
+        guard state == .live else { return nil }
+        return RTATarget.levelMatched(offsets: rtaTargetOffsets, measured: rta.levels)
+    }
+
+    /// "Target · <label>", with " (auto)" appended when the target was picked
+    /// automatically rather than chosen by the user.
+    public static func formatTargetLegend(label: String, isAuto: Bool) -> String {
+        targetLegendPrefix + label + (isAuto ? targetAutoSuffix : "")
+    }
+
+    /// The legend row shown under the RTA. Depends only on `let`s, so it never
+    /// changes at the meter rate.
+    public var targetLegendText: String { Self.formatTargetLegend(label: target.label, isAuto: targetIsAuto) }
 
     /// Placeholder for an empty coaching stack. Never points at a button:
     /// listening is automatic.

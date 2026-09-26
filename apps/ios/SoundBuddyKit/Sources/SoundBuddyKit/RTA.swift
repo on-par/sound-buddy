@@ -82,6 +82,41 @@ public struct RTAScale: Equatable, Sendable {
     }
 }
 
+/// Resamples an IdealCurve onto a display grid and level-matches it to a
+/// measured curve. The curve's own 48-point grid and a display grid (RTA
+/// bands, coaching bands, …) can differ in length and spacing, so this never
+/// pairs dbOffsets[i] with grid index i — see ADR for #1542.
+public enum RTATarget {
+    /// One offset per `layout` band, each the curve's log-frequency
+    /// interpolated value at that band's center.
+    public static func resample(_ curve: IdealCurve, onto layout: RTALayout) -> [Double] {
+        layout.bands.map { curve.offset(atHz: $0.centerHz) }
+    }
+
+    /// Swift mirror of `levelMatchedTarget` in
+    /// app/renderer/src/spectrum-display.ts: shifts `offsets` by the
+    /// difference between the measured and target dB means, so the target
+    /// tracks the measured curve's level while keeping its shape. `offsets`
+    /// must already be resampled onto `measured`'s own grid. `nil` when the
+    /// grids don't match or neither has a finite mean.
+    public static func levelMatched(offsets: [Double], measured: [Double]) -> [Double]? {
+        guard !offsets.isEmpty, offsets.count == measured.count else { return nil }
+        guard let measuredMean = finiteMean(measured), let targetMean = finiteMean(offsets) else { return nil }
+        let shift = measuredMean - targetMean
+        return offsets.map { $0 + shift }
+    }
+
+    private static func finiteMean(_ xs: [Double]) -> Double? {
+        var sum = 0.0
+        var count = 0
+        for x in xs where x.isFinite {
+            sum += x
+            count += 1
+        }
+        return count > 0 ? sum / Double(count) : nil
+    }
+}
+
 /// RTA ballistics: bars jump up instantly and fall at a fixed release rate;
 /// peak ticks hold, then fall. Pure value type, aged by the caller's clock.
 public struct RTAMeter: Equatable, Sendable {
