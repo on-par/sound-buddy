@@ -4,11 +4,12 @@ import SwiftUI
 import UIKit
 #endif
 
-/// The P0 Analyze screen: a console-style RTA, the short coaching stack, the
-/// overall dBFS readout, and the phone-mic honesty cue. Always listening
-/// while on screen in the foreground — no Start/Stop control; lifecycle
-/// events go to the model. Pure rendering — every decision lives in
-/// AnalyzeModel (SoundBuddyKit), which is where the tests are.
+/// The P0 Analyze screen: a console-style RTA (with its dashed ideal-EQ
+/// target and legend), the short coaching stack, the overall dBFS readout,
+/// and the phone-mic honesty cue. Always listening while on screen in the
+/// foreground — no Start/Stop control; lifecycle events go to the model.
+/// Pure rendering — every decision lives in AnalyzeModel (SoundBuddyKit),
+/// which is where the tests are.
 ///
 /// TODO(ipad): the layout is single-column; switch the RTA and coaching
 /// stack side by side on a regular horizontal size class.
@@ -19,7 +20,10 @@ struct AnalyzeView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
             header
-            RTAView(model: model)
+            VStack(alignment: .leading, spacing: Layout.legendSpacing) {
+                RTAView(model: model)
+                TargetLegend(text: model.targetLegendText)
+            }
             CoachingStackView(model: model)
             Spacer(minLength: 0)
             StatusMessageView(model: model)
@@ -98,6 +102,29 @@ private struct ListeningIndicator: View {
         case .micDenied: "Microphone off"
         case .failed: "Microphone unavailable"
         }
+    }
+}
+
+// MARK: - Target legend
+
+/// A short dashed swatch plus "Target · <label> (auto)", under the RTA.
+private struct TargetLegend: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: Layout.legendSwatchGap) {
+            Path { path in
+                let midY = Layout.legendSwatchSize.height / 2
+                path.move(to: CGPoint(x: 0, y: midY))
+                path.addLine(to: CGPoint(x: Layout.legendSwatchSize.width, y: midY))
+            }
+            .stroke(Palette.target, style: StrokeStyle(lineWidth: Layout.legendSwatchLineWidth, dash: Layout.legendSwatchDash))
+            .frame(width: Layout.legendSwatchSize.width, height: Layout.legendSwatchSize.height)
+            Text(text)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Palette.secondaryText)
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -224,6 +251,11 @@ private enum Layout {
     /// Fits a two-line coaching hint with padding, so cards keep one height.
     static let coachingSlotMinHeight: CGFloat = 64
     static let coachingMaxLines = 3
+    static let legendSpacing: CGFloat = 6
+    static let legendSwatchGap: CGFloat = 6
+    static let legendSwatchSize = CGSize(width: 18, height: 8)
+    static let legendSwatchLineWidth: CGFloat = 1.5
+    static let legendSwatchDash: [CGFloat] = [3, 2]
 }
 
 /// Mirrors the Mac renderer's design tokens (app/renderer :root) — dark
@@ -235,6 +267,9 @@ private enum Palette {
     static let live = hex(0x3FB950)
     static let error = hex(0xE5534B)
     static let secondaryText = hex(0xA2AAB6) // --neutral-300 (--text-secondary)
+    /// Mirrors RTAPalette.target in RTAView, so the legend swatch matches the
+    /// dashed line drawn on the RTA itself.
+    static let target = Color.white.opacity(0.85)
 
     private static func hex(_ rgb: UInt32) -> Color {
         Color(
