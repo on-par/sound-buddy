@@ -159,7 +159,7 @@ private enum RTAMetrics {
     static let targetDash: [CGFloat] = [5, 4]
 }
 
-private enum RTAPalette {
+enum RTAPalette {
     static let plotBackground = Color(red: 0.03, green: 0.035, blue: 0.045)
     static let grid = Color.white.opacity(0.12)
     static let label = Color.white.opacity(0.55)

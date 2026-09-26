@@ -267,9 +267,9 @@ private enum Palette {
     static let live = hex(0x3FB950)
     static let error = hex(0xE5534B)
     static let secondaryText = hex(0xA2AAB6) // --neutral-300 (--text-secondary)
-    /// Mirrors RTAPalette.target in RTAView, so the legend swatch matches the
-    /// dashed line drawn on the RTA itself.
-    static let target = Color.white.opacity(0.85)
+    /// Shares RTAPalette.target so the legend swatch matches the dashed line
+    /// drawn on the RTA itself.
+    static let target = RTAPalette.target
 
     private static func hex(_ rgb: UInt32) -> Color {
         Color(
