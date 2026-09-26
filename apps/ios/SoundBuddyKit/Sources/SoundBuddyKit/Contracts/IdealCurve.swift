@@ -94,6 +94,23 @@ public struct IdealCurve: Codable, Equatable, Sendable {
         dbOffsets: Array(repeating: 0, count: gridPoints)
     )
 
+    /// Linear interpolation of the curve's dB shape in log-frequency, clamped
+    /// to the grid's end values outside 20 Hz-20 kHz. Mirror of the Mac's
+    /// `profileDbAt` (packages/audio-engine/src/profiles/index.ts). An empty
+    /// curve is neutral (0 dB) — this can't come from the decoder (freqs and
+    /// dbOffsets are always non-empty and equal length) but `init` is public.
+    public func offset(atHz hz: Double) -> Double {
+        guard let first = freqs.first, let last = freqs.last else { return 0 }
+        if hz <= first { return dbOffsets[0] }
+        if hz >= last { return dbOffsets[dbOffsets.count - 1] }
+        var i = 1
+        while i < freqs.count - 1 && freqs[i] < hz { i += 1 }
+        let a = dbOffsets[i - 1]
+        let b = dbOffsets[i]
+        let t = (log2(hz) - log2(freqs[i - 1])) / (log2(freqs[i]) - log2(freqs[i - 1]))
+        return a + (b - a) * t
+    }
+
     /// Mean target offset per band over the grid points inside it; bands
     /// with no grid points get a neutral 0 dB target.
     public var bandTargets: [Band: Double] {
