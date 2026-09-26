@@ -64,6 +64,9 @@ public final class AnalyzeModel {
     /// or below overallLevelFloorDb (never a fake 0).
     public private(set) var overallDb: Double?
     public private(set) var coaching: [CoachingEvent] = []
+    /// Same bands as `coaching` (both come from the coach on the same refresh);
+    /// drawn as text-free pulses on the portrait RTA.
+    public private(set) var problemMarkers: [ProblemMarkerDescriptor] = []
     public let rtaLayout = RTALayout.standard
     public let measurementSource: CoachingEvent.Source = .phoneMicEstimate
     /// The ideal-EQ curve drawn as the RTA's dashed target line.
@@ -220,6 +223,7 @@ public final class AnalyzeModel {
         bandLevels = .silent
         rta.reset()
         coaching = []
+        problemMarkers = []
         overallDb = nil
         state = .idle
     }
@@ -236,5 +240,6 @@ public final class AnalyzeModel {
         lastCoachingAt = time
         let elapsed = sessionStart.map { time.timeIntervalSince($0) } ?? 0
         coaching = coach.events(for: reading.bands, sessionTime: elapsed)
+        problemMarkers = coach.problemMarkers(for: reading.bands)
     }
 }

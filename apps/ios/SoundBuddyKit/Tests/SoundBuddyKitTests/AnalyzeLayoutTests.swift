@@ -31,6 +31,17 @@ struct AnalyzeLayoutTests {
     }
 
     @Test(
+        "showsProblemMarkers",
+        arguments: [
+            (AnalyzeLayout.portrait, true),
+            (AnalyzeLayout.landscape, false),
+        ]
+    )
+    func showsProblemMarkers(layout: AnalyzeLayout, expected: Bool) {
+        #expect(layout.showsProblemMarkers == expected)
+    }
+
+    @Test(
         "coachingPeekLabel",
         arguments: [
             (0, "Coaching"),
