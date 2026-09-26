@@ -10,6 +10,7 @@ import SwiftUI
 struct RTAView: View {
     let model: AnalyzeModel
     var scale: RTAScale = .standard
+    var fillsHeight: Bool = false
 
     var body: some View {
         let meter = model.rta
@@ -28,7 +29,10 @@ struct RTAView: View {
                 drawTarget(in: &context, plot: plot, layout: layout, target: target)
             }
         }
-        .frame(height: RTAMetrics.height)
+        .frame(
+            minHeight: fillsHeight ? RTAMetrics.minFillHeight : RTAMetrics.height,
+            maxHeight: fillsHeight ? .infinity : RTAMetrics.height
+        )
         .background(RTAPalette.plotBackground, in: RoundedRectangle(cornerRadius: RTAMetrics.cornerRadius))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Real-time analyzer, 20 hertz to 20 kilohertz")
@@ -142,6 +146,8 @@ struct RTAView: View {
 
 private enum RTAMetrics {
     static let height: CGFloat = 300
+    /// Landscape's fillsHeight floor, so the grid stays readable on an SE in landscape.
+    static let minFillHeight: CGFloat = 120
     static let cornerRadius: CGFloat = 12
     static let dbLabelWidth: CGFloat = 34
     static let trailingInset: CGFloat = 10
