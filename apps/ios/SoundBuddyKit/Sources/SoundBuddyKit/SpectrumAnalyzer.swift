@@ -14,7 +14,8 @@ import Foundation
 /// Port both, with fixtures from make_spectrum_parity_fixture.py, before any
 /// grade or match score is computed on the phone.
 /// `analyze` also reduces the same power spectrum to the display-only RTA grid
-/// (RTALayout) in dBFS; coaching keeps using the 7 bands.
+/// (RTALayout) in dBFS, and to a single broadband overall level; coaching
+/// keeps using the 7 bands.
 ///
 /// TODO(calibration): phone-mic dB is uncalibrated — levels are relative, so
 /// the UI must keep the "phone mic estimate" cue.
@@ -131,10 +132,23 @@ public final class SpectrumAnalyzer {
     }
 
     /// One FFT, both reductions: 7-band levels for the coach and the RTA grid
-    /// for the display.
+    /// for the display, plus the broadband overall level.
     public func analyze(_ frame: [Float]) throws -> SpectrumReading {
         let power = try powerSpectrum(frame)
-        return SpectrumReading(bands: bandLevels(power: power), rtaDb: rtaLevels(power: power))
+        return SpectrumReading(
+            bands: bandLevels(power: power),
+            rtaDb: rtaLevels(power: power),
+            overallDb: overallLevel(power: power)
+        )
+    }
+
+    /// Broadband level in dBFS: summed one-sided power of bins 1...fftSize/2
+    /// (DC excluded, so a mic offset never reads as level) over a full-scale
+    /// sine's summed power — the RTA's convention, so a full-scale tone reads
+    /// 0 dBFS here and in its RTA band.
+    func overallLevel(power: [Float]) -> Double {
+        let total = power[1...].reduce(0.0) { $0 + Double($1) }
+        return Self.powerToDb(total / fullScaleSinePower)
     }
 
     /// Per-RTA-band level in dBFS: summed power of the bins inside the band.
@@ -188,14 +202,18 @@ public final class SpectrumAnalyzer {
     }
 }
 
-/// One analysis frame's output: the 7 coaching bands plus the display RTA.
+/// One analysis frame's output: the 7 coaching bands, the display RTA, and
+/// the broadband overall level.
 public struct SpectrumReading: Equatable, Sendable {
     public var bands: BandLevels
     /// dBFS per RTALayout band, low to high.
     public var rtaDb: [Double]
+    /// Broadband level of the frame in dBFS (see SpectrumAnalyzer.overallLevel).
+    public var overallDb: Double
 
-    public init(bands: BandLevels, rtaDb: [Double]) {
+    public init(bands: BandLevels, rtaDb: [Double], overallDb: Double = SpectrumAnalyzer.silenceFloorDb) {
         self.bands = bands
         self.rtaDb = rtaDb
+        self.overallDb = overallDb
     }
 }

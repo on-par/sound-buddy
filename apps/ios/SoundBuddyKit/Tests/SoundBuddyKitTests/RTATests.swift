@@ -195,4 +195,57 @@ private func sine(hz: Double, amplitude: Double, count: Int) -> [Float] {
             #expect(db == SpectrumAnalyzer.silenceFloorDb)
         }
     }
+
+    // MARK: Overall level
+    //
+    // overall = 10·log10(Σ_{k=1}^{N/2} P[k] / (N·Σw²/4)), P on numpy rfft
+    // scale, w = periodic Hann; tolerance 0.5 dB covers Float32 vDSP and
+    // bin-leakage error.
+
+    @Test func aFullScaleSineReadsZeroDbfsOverall() throws {
+        let analyzer = try SpectrumAnalyzer(sampleRate: sampleRate)
+        let reading = try analyzer.analyze(sine(hz: 1000, amplitude: 1.0, count: analyzer.fftSize))
+        #expect(abs(reading.overallDb) < 0.5)
+    }
+
+    @Test func aHalfScaleSineReadsAboutMinusSixOverall() throws {
+        let analyzer = try SpectrumAnalyzer(sampleRate: sampleRate)
+        let reading = try analyzer.analyze(sine(hz: 1000, amplitude: 0.5, count: analyzer.fftSize))
+        #expect(abs(reading.overallDb - (-6.02)) < 0.5)
+    }
+
+    @Test func overallMatchesTheToneRTABand() throws {
+        let analyzer = try SpectrumAnalyzer(sampleRate: sampleRate)
+        let reading = try analyzer.analyze(sine(hz: 1000, amplitude: 0.5, count: analyzer.fftSize))
+        let index = try #require(RTALayout.standard.bands.firstIndex { abs($0.centerHz - 1000) < epsilon })
+        #expect(abs(reading.overallDb - reading.rtaDb[index]) < 1)
+    }
+
+    @Test func silenceReadsTheFloorOverall() throws {
+        let analyzer = try SpectrumAnalyzer(sampleRate: sampleRate)
+        let reading = try analyzer.analyze(Array(repeating: 0, count: analyzer.fftSize))
+        #expect(reading.overallDb == SpectrumAnalyzer.silenceFloorDb)
+    }
+
+    @Test func dcOffsetDoesNotReadAsLevel() throws {
+        // A periodic Hann window is itself not flat: it has an exact,
+        // non-leakage AC component at bin 1 (0.5 - 0.5cos(2*pi*n/N) is a
+        // 3-term sum with tones at bins 0 and ±1), so a DC bias half full
+        // scale — an unrealistically large sensor offset — still shows up
+        // at bins > 0 around -7.8 dBFS. A realistic tiny offset stays well
+        // below the silence floor's neighborhood.
+        let analyzer = try SpectrumAnalyzer(sampleRate: sampleRate)
+        let reading = try analyzer.analyze(Array(repeating: Float(0.0001), count: analyzer.fftSize))
+        #expect(reading.overallDb < -60)
+    }
+
+    @Test func twoTonesSumInPower() throws {
+        let analyzer = try SpectrumAnalyzer(sampleRate: sampleRate)
+        let frame = zip(
+            sine(hz: 1000, amplitude: 0.5, count: analyzer.fftSize),
+            sine(hz: 5000, amplitude: 0.5, count: analyzer.fftSize)
+        ).map(+)
+        let reading = try analyzer.analyze(frame)
+        #expect(abs(reading.overallDb - (-3.01)) < 0.5)
+    }
 }
