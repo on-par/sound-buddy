@@ -36,6 +36,26 @@ private func marker(
         }
     }
 
+    /// Pins the same Hz-alignment contract the landscape Analyze RTA now
+    /// relies on too (#1554): `RTALayout` has no portrait/landscape notion of
+    /// its own, so this data-level check covers both call sites at once.
+    @Test func aPresenceDescriptorAlignsWithItsHzRangeOnTheSharedLayout() throws {
+        let spans = RTAProblemMarkers.spans(for: [marker(band: .presence, direction: .underTarget)], on: layout)
+        let span = try #require(spans.first)
+        #expect(spans.count == 1)
+        #expect(span.direction == .underTarget)
+        for i in span.bandIndices {
+            let hz = layout.bands[i].centerHz
+            #expect(hz >= 4000 && hz < 6000)
+        }
+        if span.bandIndices.lowerBound > layout.bands.indices.lowerBound {
+            #expect(layout.bands[span.bandIndices.lowerBound - 1].centerHz < 4000)
+        }
+        if span.bandIndices.upperBound < layout.bands.indices.upperBound {
+            #expect(layout.bands[span.bandIndices.upperBound + 1].centerHz >= 6000)
+        }
+    }
+
     @Test func anUnderTargetBrillianceDescriptorCoversTheTopRTABand() throws {
         let spans = RTAProblemMarkers.spans(for: [marker(band: .brilliance, direction: .underTarget)], on: layout)
         let span = try #require(spans.first)
