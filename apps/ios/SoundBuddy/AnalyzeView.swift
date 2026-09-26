@@ -13,7 +13,8 @@ import UIKit
 ///
 /// portrait: header + RTA + coaching; landscape: RTA-first with a coaching
 /// peek (#1548). AnalyzeLayout (SoundBuddyKit) decides portrait vs landscape
-/// and the peek state; this view only renders.
+/// and the peek state; this view only renders. Problem markers pulse on the
+/// RTA in both layouts (#1554).
 ///
 /// TODO(ipad): the layout is single-column; switch the RTA and coaching
 /// stack side by side on a regular horizontal size class.
@@ -75,7 +76,7 @@ struct AnalyzeView: View {
     private func landscapeBody(proxy: GeometryProxy) -> some View {
         VStack(spacing: Layout.landscapeSpacing) {
             landscapeStrip
-            RTAView(model: model, fillsHeight: true)
+            RTAView(model: model, fillsHeight: true, showsProblemMarkers: AnalyzeLayout.landscape.showsProblemMarkers)
             StatusMessageView(model: model)
             CoachingPeekHandle(model: model, isOpen: $coachingPeekOpen)
         }

@@ -4,8 +4,9 @@ import SwiftUI
 /// Console-style real-time analyzer: ~60 log-spaced 1/6-octave bars from
 /// 20 Hz to 20 kHz on a dBFS grid, with peak-hold ticks, plus a dashed
 /// level-matched target line for the active ideal-EQ curve. Warm lows, cool
-/// mids/highs (RTAColor). In portrait, pulsing amber/cyan regions hug the
-/// target line over each coaching problem band (#1553), text-free. Drawn in
+/// mids/highs (RTAColor). When showsProblemMarkers is on (both Analyze
+/// layouts), pulsing amber/cyan regions hug the target line over each
+/// coaching problem band (#1553), text-free. Drawn in
 /// one Canvas pass — it redraws at the 20 Hz meter rate, and only this view
 /// reads the meter, so the rest of the screen does not re-render with it.
 struct RTAView: View {
