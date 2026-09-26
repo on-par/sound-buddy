@@ -22,6 +22,9 @@ public enum AnalyzeLayout: Equatable, Sendable {
     /// Portrait stacks the coaching cards under the RTA; landscape keeps them behind the peek.
     public var showsCoachingInline: Bool { self == .portrait }
 
+    /// Portrait draws the text-free problem pulses on the RTA; landscape visibility is a later slice.
+    public var showsProblemMarkers: Bool { self == .portrait }
+
     /// Label on the landscape peek handle: "Coaching · 2", or just "Coaching" when there are none.
     public static func coachingPeekLabel(count: Int) -> String {
         count > 0 ? coachingPeekTitle + coachingPeekSeparator + String(count) : coachingPeekTitle

@@ -63,7 +63,7 @@ struct AnalyzeView: View {
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
             header
             VStack(alignment: .leading, spacing: Layout.legendSpacing) {
-                RTAView(model: model)
+                RTAView(model: model, showsProblemMarkers: AnalyzeLayout.portrait.showsProblemMarkers)
                 TargetLegend(text: model.targetLegendText)
             }
             CoachingStackView(model: model)

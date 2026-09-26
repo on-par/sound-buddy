@@ -96,6 +96,7 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         #expect(m.bandLevels == .silent)
         #expect(m.rta.levels.isEmpty)
         #expect(m.coaching.isEmpty)
+        #expect(m.problemMarkers.isEmpty)
         #expect(m.measurementSource == .phoneMicEstimate)
         #expect(AnalyzeModel.honestyCue == "Phone mic estimate")
         #expect(source.startCount == 0, "nothing listens until the screen appears")
@@ -160,6 +161,7 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         #expect(m.bandLevels == .silent)
         #expect(m.rta.levels.isEmpty)
         #expect(m.coaching.isEmpty)
+        #expect(m.problemMarkers.isEmpty)
         #expect(m.overallDb == nil)
     }
 
@@ -369,6 +371,56 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         try deliver(reading(levels(base: -30)))
         #expect(worshipModel.coaching.count == BandDeviationCoach.maxEvents)
         #expect(worshipModel.coaching.first?.message.contains("gentle cut") == true)
+    }
+
+    // MARK: Problem markers
+
+    @Test func problemMarkersMatchTheCoachOnTheSameReading() async throws {
+        let m = model()
+        await m.appear()
+        let bands = levels([.lowMid: -22])
+        try deliver(reading(bands))
+        let expected = BandDeviationCoach(ideal: m.coachingCurve).problemMarkers(for: bands)
+        #expect(m.problemMarkers == expected)
+        #expect(m.problemMarkers.map(\.band) == m.coaching.compactMap(\.band))
+    }
+
+    @Test func aSilentReadingGivesNoProblemMarkers() async throws {
+        let m = model()
+        await m.appear()
+        try deliver(reading(.silent))
+        #expect(m.problemMarkers.isEmpty)
+    }
+
+    @Test func problemMarkersDoNotChangeWithinTheCoachingGate() async throws {
+        let m = model()
+        await m.appear()
+        try deliver(reading(levels([.lowMid: -22])))
+        let first = m.problemMarkers
+        clock.advance(AnalyzeModel.coachingRefreshSeconds / 2)
+        try deliver(reading(levels([.presence: -38])))
+        #expect(m.problemMarkers == first, "too soon — keep the current markers")
+        clock.advance(AnalyzeModel.coachingRefreshSeconds)
+        try deliver(reading(levels([.presence: -38])))
+        #expect(m.problemMarkers.map(\.band) == [.presence])
+    }
+
+    @Test func disappearingClearsProblemMarkers() async throws {
+        let m = model()
+        await m.appear()
+        try deliver(reading(levels([.lowMid: -22])))
+        #expect(!m.problemMarkers.isEmpty)
+        m.disappear()
+        #expect(m.problemMarkers.isEmpty)
+    }
+
+    @Test func backgroundingClearsProblemMarkers() async throws {
+        let m = model()
+        await m.appear()
+        try deliver(reading(levels([.lowMid: -22])))
+        #expect(!m.problemMarkers.isEmpty)
+        m.enterBackground()
+        #expect(m.problemMarkers.isEmpty)
     }
 
     // MARK: Copy
