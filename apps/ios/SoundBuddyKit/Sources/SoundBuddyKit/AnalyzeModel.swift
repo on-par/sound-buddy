@@ -44,10 +44,23 @@ public final class AnalyzeModel {
     /// A gap longer than this between readings (e.g. a stalled engine) ages
     /// the RTA meter by this much at most.
     static let maxMeterStepSeconds = 0.5
+    /// Uncalibrated phone mic: full scale, never SPL.
+    public static let overallLevelUnit = "dBFS"
+    /// Readings at or below this are treated as silence and show "—". Sits
+    /// above the analyzer's -120 floor and well below any real room.
+    public static let overallLevelFloorDb = -100.0
+    /// Shown when there is no level to report.
+    public static let noLevelText = "—"
+    /// Half of the one-decimal display step, so the "-0.0 dBFS" check uses an
+    /// epsilon rather than float equality.
+    static let halfDisplayStep = 0.05
 
     public private(set) var state: State = .idle
     public private(set) var bandLevels: BandLevels = .silent
     public private(set) var rta = RTAMeter()
+    /// Broadband level of the latest reading in dBFS; nil when not live or at
+    /// or below overallLevelFloorDb (never a fake 0).
+    public private(set) var overallDb: Double?
     public private(set) var coaching: [CoachingEvent] = []
     public let rtaLayout = RTALayout.standard
     public let measurementSource: CoachingEvent.Source = .phoneMicEstimate
@@ -73,6 +86,17 @@ public final class AnalyzeModel {
         self.coach = coach
         self.now = now
     }
+
+    /// "-18.4 dBFS", or "—" when there is nothing to report — never a fake 0.
+    public static func formatOverallLevel(_ db: Double?) -> String {
+        guard let db, db.isFinite else { return noLevelText }
+        let rounded = (db * 10).rounded() / 10
+        let value = abs(rounded) < halfDisplayStep ? 0 : rounded
+        return String(format: "%.1f %@", value, overallLevelUnit)
+    }
+
+    /// The Analyze header's readout, rendered next to the honesty capsule.
+    public var overallLevelText: String { Self.formatOverallLevel(overallDb) }
 
     /// Placeholder for an empty coaching stack. Never points at a button:
     /// listening is automatic.
@@ -157,6 +181,7 @@ public final class AnalyzeModel {
         bandLevels = .silent
         rta.reset()
         coaching = []
+        overallDb = nil
         state = .idle
     }
 
@@ -165,6 +190,7 @@ public final class AnalyzeModel {
         let step = lastReadingAt.map { min(Self.maxMeterStepSeconds, time.timeIntervalSince($0)) } ?? 0
         lastReadingAt = time
         bandLevels = reading.bands
+        overallDb = reading.overallDb > Self.overallLevelFloorDb ? reading.overallDb : nil
         rta.ingest(reading.rtaDb, dt: step)
 
         if let last = lastCoachingAt, time.timeIntervalSince(last) < Self.coachingRefreshSeconds { return }
