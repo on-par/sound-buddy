@@ -4,11 +4,11 @@ import SwiftUI
 import UIKit
 #endif
 
-/// The P0 Analyze screen: a console-style RTA, the short coaching stack, and
-/// the phone-mic honesty cue. Always listening while on screen in the
-/// foreground — no Start/Stop control; lifecycle events go to the model.
-/// Pure rendering — every decision lives in AnalyzeModel (SoundBuddyKit),
-/// which is where the tests are.
+/// The P0 Analyze screen: a console-style RTA, the short coaching stack, the
+/// overall dBFS readout, and the phone-mic honesty cue. Always listening
+/// while on screen in the foreground — no Start/Stop control; lifecycle
+/// events go to the model. Pure rendering — every decision lives in
+/// AnalyzeModel (SoundBuddyKit), which is where the tests are.
 ///
 /// TODO(ipad): the layout is single-column; switch the RTA and coaching
 /// stack side by side on a regular horizontal size class.
@@ -55,13 +55,21 @@ struct AnalyzeView: View {
                 ListeningIndicator(state: model.state)
             }
             Spacer()
-            Label(AnalyzeModel.honestyCue, systemImage: "iphone.gen3")
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, Layout.badgePaddingH)
-                .padding(.vertical, Layout.badgePaddingV)
-                .background(Palette.surface, in: Capsule())
-                .foregroundStyle(Palette.secondaryText)
-                .accessibilityLabel("\(AnalyzeModel.honestyCue): readings are relative, not calibrated")
+            VStack(alignment: .trailing, spacing: Layout.headerSpacing) {
+                Text(model.overallLevelText)
+                    .font(.title2.weight(.bold).monospacedDigit())
+                    .foregroundStyle(model.overallDb == nil ? Palette.secondaryText : Color.primary)
+                    .lineLimit(1)
+                    .transaction { $0.animation = nil }
+                    .accessibilityLabel("Overall level \(model.overallLevelText), phone mic estimate")
+                Label(AnalyzeModel.honestyCue, systemImage: "iphone.gen3")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, Layout.badgePaddingH)
+                    .padding(.vertical, Layout.badgePaddingV)
+                    .background(Palette.surface, in: Capsule())
+                    .foregroundStyle(Palette.secondaryText)
+                    .accessibilityLabel("\(AnalyzeModel.honestyCue): readings are relative, not calibrated")
+            }
         }
     }
 }

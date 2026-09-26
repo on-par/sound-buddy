@@ -58,8 +58,8 @@ private func levels(base: Double = -30, _ overrides: [Band: Double] = [:]) -> Ba
     BandLevels(db: Dictionary(uniqueKeysWithValues: Band.allCases.map { ($0, overrides[$0] ?? base) }))
 }
 
-private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50]) -> SpectrumReading {
-    SpectrumReading(bands: bands, rtaDb: rta)
+private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb: Double = -18.43) -> SpectrumReading {
+    SpectrumReading(bands: bands, rtaDb: rta, overallDb: overallDb)
 }
 
 @MainActor
@@ -89,6 +89,8 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50]) -> Spectru
         #expect(m.measurementSource == .phoneMicEstimate)
         #expect(AnalyzeModel.honestyCue == "Phone mic estimate")
         #expect(source.startCount == 0, "nothing listens until the screen appears")
+        #expect(m.overallDb == nil)
+        #expect(m.overallLevelText == "—")
     }
 
     // MARK: Always listening
@@ -105,6 +107,7 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50]) -> Spectru
         await m.appear()
         #expect(m.state == .micDenied)
         #expect(source.startCount == 0)
+        #expect(m.overallLevelText == "—")
     }
 
     @Test func aSourceFailureIsReportedActionably() async {
@@ -147,6 +150,7 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50]) -> Spectru
         #expect(m.bandLevels == .silent)
         #expect(m.rta.levels.isEmpty)
         #expect(m.coaching.isEmpty)
+        #expect(m.overallDb == nil)
     }
 
     @Test func returningToTheForegroundResumesListening() async {
@@ -259,6 +263,25 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50]) -> Spectru
         #expect(abs(m.rta.levels[0] - (-20 - RTAMeter.releaseDbPerSecond * 0.1)) < 1e-4)
     }
 
+    @Test func readingsPublishTheOverallLevel() async throws {
+        let m = model()
+        await m.appear()
+        try deliver(SpectrumReading(bands: .silent, rtaDb: [-40], overallDb: -18.43))
+        #expect(m.overallDb == -18.43)
+        #expect(m.overallLevelText == "-18.4 dBFS")
+        clock.advance(AnalyzeModel.coachingRefreshSeconds / 2)
+        try deliver(SpectrumReading(bands: .silent, rtaDb: [-40], overallDb: -30.1))
+        #expect(m.overallDb == -30.1, "the meter updates every reading, not just at the coaching cadence")
+    }
+
+    @Test func aSilentReadingShowsADash() async throws {
+        let m = model()
+        await m.appear()
+        try deliver(SpectrumReading(bands: .silent, rtaDb: [-40], overallDb: AnalyzeModel.overallLevelFloorDb))
+        #expect(m.overallDb == nil)
+        #expect(m.overallLevelText == "—")
+    }
+
     // MARK: Copy
 
     @Test func coachingPlaceholderNeverAsksForATap() async {
@@ -271,6 +294,28 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50]) -> Spectru
         #expect(denied.coachingPlaceholder.contains("microphone"))
         for text in [m.coachingPlaceholder, denied.coachingPlaceholder] {
             #expect(!text.contains("Tap Start"))
+        }
+    }
+}
+
+@MainActor
+@Suite struct FormatOverallLevelTests {
+    @Test(arguments: [
+        (nil, "—"),
+        (-18.44, "-18.4 dBFS"),
+        (-18.46, "-18.5 dBFS"),
+        (-0.02, "0.0 dBFS"),
+        (3.0, "3.0 dBFS"),
+        (Double.nan, "—"),
+        (-Double.infinity, "—"),
+    ] as [(Double?, String)])
+    func formatsAsExpected(db: Double?, expected: String) {
+        #expect(AnalyzeModel.formatOverallLevel(db) == expected)
+    }
+
+    @Test func neverClaimsSpl() {
+        for db in [nil, -18.4, 0.0, 3.0] as [Double?] {
+            #expect(!AnalyzeModel.formatOverallLevel(db).contains("SPL"))
         }
     }
 }
