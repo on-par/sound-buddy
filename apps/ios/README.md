@@ -62,7 +62,12 @@ Capabilities**. The project sets no team on purpose.
 5. Check that the **Phone mic estimate** badge is always visible.
 6. Go to the Home Screen. The app releases the mic (P0 has no background
    audio). Open the app again: it resumes listening by itself.
-7. To test the denied path, run `xcrun simctl privacy booted revoke microphone
+7. Rotate the Simulator (⌘→). The RTA fills the screen, and the Listening
+   indicator, dBFS, Phone mic estimate and Target legend stay visible. A
+   "Coaching" handle sits at the bottom, and tapping it or swiping it up
+   shows the same cards. Rotating back (⌘←) restores the portrait layout,
+   and "Listening" never flickers to "Starting microphone…".
+8. To test the denied path, run `xcrun simctl privacy booted revoke microphone
    com.soundbuddy.ios` and relaunch. The screen tells you to turn access on in
    Settings and shows an **Open Settings** button. After you allow access and
    return, listening starts.
