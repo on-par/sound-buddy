@@ -4,9 +4,10 @@ import Foundation
 /// curve's per-band targets, level-matched (mean deviation subtracted, like
 /// the Mac's profile comparison) so overall gain never triggers a hint.
 ///
-/// TODO(shared-copy): message text is inline here. Move it to the shared
-/// ADR 0028 template registry (exported as JSON) so Mac and iOS speak the same
-/// coaching dialect; `data` already carries the {name} placeholder values.
+/// TODO(shared-copy): message text comes from BandCoachingCopy, a local table.
+/// Swap it for the shared ADR 0028 template registry (exported as JSON) once
+/// that registry gains a per-band "band vs ideal curve" template, so Mac and
+/// iOS speak the same coaching dialect from one source.
 /// TODO(parity): the Mac compares on the 48-point curve (ProfileComparison in
 /// packages/audio-engine/src/profiles), not band-mean power. Switch once
 /// SpectrumAnalyzer produces that curve.
@@ -43,10 +44,7 @@ public struct BandDeviationCoach: Sendable {
     private func event(band: Band, deviation: Double, sessionTime: Double) -> CoachingEvent {
         let rounded = (abs(deviation) * Self.reportedDecimals).rounded() / Self.reportedDecimals
         let over = deviation > 0
-        let amount = String(format: "%.1f", rounded)
-        let message = over
-            ? "\(band.label) is \(amount) dB over the target. Try a gentle cut around \(band.rangeLabel)."
-            : "\(band.label) is \(amount) dB under the target. Try a gentle boost around \(band.rangeLabel)."
+        let message = BandCoachingCopy.message(band: band, amountDb: rounded, over: over)
         return CoachingEvent(
             id: "\(CoachingEvent.RuleType.bandDeviation.rawValue)-\(band.rawValue)",
             ruleType: .bandDeviation,
@@ -56,7 +54,7 @@ public struct BandDeviationCoach: Sendable {
             data: [
                 "band": .string(band.label),
                 "deviationDb": .number(over ? rounded : -rounded),
-                "range": .string(band.rangeLabel),
+                "range": .string(BandCoachingCopy.rangeLabel(lowHz: band.lowHz, highHz: band.highHz)),
             ],
             source: .phoneMicEstimate,
             sessionTime: sessionTime
