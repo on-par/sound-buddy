@@ -74,8 +74,8 @@ public final class AnalyzeModel {
 
     private let permission: MicPermission
     private let source: LiveAudioSource
-    // Coaches against flat until the curve-driven coaching child issue points
-    // this at the same curve as `target`.
+    // Coaches against `target`, the same curve drawn as the RTA target, so the
+    // overlay and the hints never disagree.
     private let coach: BandDeviationCoach
     private let now: () -> Date
     /// `target` resampled onto `rtaLayout`'s band centers, computed once.
@@ -89,19 +89,22 @@ public final class AnalyzeModel {
     public init(
         permission: MicPermission,
         source: LiveAudioSource,
-        coach: BandDeviationCoach = BandDeviationCoach(ideal: .flat),
         target: IdealCurve = .flat,
         targetIsAuto: Bool = true,
         now: @escaping () -> Date = Date.init
     ) {
         self.permission = permission
         self.source = source
-        self.coach = coach
+        self.coach = BandDeviationCoach(ideal: target)
         self.target = target
         self.targetIsAuto = targetIsAuto
         self.rtaTargetOffsets = RTATarget.resample(target, onto: RTALayout.standard)
         self.now = now
     }
+
+    /// The curve the coach judges the room against — always `target`, so
+    /// tests can assert the overlay and the hints never diverge.
+    public var coachingCurve: IdealCurve { coach.ideal }
 
     /// "-18.4 dBFS", or "—" when there is nothing to report — never a fake 0.
     public static func formatOverallLevel(_ db: Double?) -> String {
