@@ -30,10 +30,6 @@ public enum KeepAwakePolicy {
     public static func accessibilityValue(keepAwake: Bool) -> String {
         keepAwake ? "On" : "Off"
     }
-
-    public static func symbolName(keepAwake: Bool) -> String {
-        keepAwake ? "sun.max.fill" : "moon.zzz"
-    }
 }
 
 /// Applies KeepAwakePolicy to an injected idle timer.

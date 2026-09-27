@@ -89,9 +89,4 @@ struct KeepAwakeTests {
         #expect(KeepAwakePolicy.accessibilityValue(keepAwake: false) == "Off")
         #expect(KeepAwakePolicy.accessibilityLabel == "Keep screen awake while analyzing")
     }
-
-    @Test("toggle icon reflects the preference")
-    func symbol() {
-        #expect(KeepAwakePolicy.symbolName(keepAwake: true) != KeepAwakePolicy.symbolName(keepAwake: false))
-    }
 }
