@@ -1,6 +1,6 @@
 # 'analyze' is a landed appMode, and Simple-mode Report Card requests redirect to the Analyze stage inside switchMode
 
-- Status: Accepted (amended 2026-09-27, #1576, #1587 and #1602 — see Amendments)
+- Status: Accepted (amended 2026-09-27, #1576 (also tracked as #1617), #1587 and #1602 — see Amendments)
 - Date: 2026-09-24
 
 ## Context
@@ -93,8 +93,12 @@ binds everything outside this exception: any new path that lands on Analyze with
 uses `showAnalyzeStage()` and never starts audio capture by itself. Session's `LiveEqPane`
 isolation (ADR-0141) is not affected.
 
+#1617 (decomposed from #1574 by the factory size gate) asked for this same narrow exception
+and is satisfied by this amendment as written. It adds no new permission.
+
 - [Issue #1576](https://github.com/on-par/sound-buddy/issues/1576)
 - [Issue #1574](https://github.com/on-par/sound-buddy/issues/1574)
+- [Issue #1617](https://github.com/on-par/sound-buddy/issues/1617)
 
 ## Amendment (2026-09-27, #1587)
 
