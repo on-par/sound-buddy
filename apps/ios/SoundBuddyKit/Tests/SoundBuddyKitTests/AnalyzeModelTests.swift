@@ -455,7 +455,7 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         m.beginTargetEdit()
         m.updateTargetDraft(worship)
         #expect(m.target == worship)
-        #expect(m.coachingCurve == worship)
+        #expect(m.coachingCurve == .flat)
         m.cancelTargetEdit()
         #expect(!m.isEditingTarget)
         #expect(m.target == .flat)
@@ -494,6 +494,94 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         #expect(m.target == .flat)
         #expect(m.targetIsAuto)
         #expect(!m.isEditingTarget)
+    }
+
+    // MARK: Coaching freeze during edits (#1561)
+
+    @Test func coachingFreezesOnEditEntry() async throws {
+        let m = model()
+        await m.appear()
+        try deliver(reading(levels([.lowMid: -22])))
+        let coachingBefore = m.coaching
+        let markersBefore = m.problemMarkers
+        m.beginTargetEdit()
+        #expect(m.isCoachingFrozen)
+        clock.advance(AnalyzeModel.coachingRefreshSeconds * 2)
+        try deliver(reading(levels([.presence: -20])))
+        #expect(m.coaching == coachingBefore)
+        #expect(m.problemMarkers == markersBefore)
+    }
+
+    @Test func draftUpdatesNeverReachTheCoach() async throws {
+        let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        let m = model(target: .flat, targetIsAuto: true)
+        m.beginTargetEdit()
+        m.updateTargetDraft(worship)
+        #expect(m.target == worship)
+        #expect(m.coachingCurve == .flat)
+
+        let live = try await liveModelWithFullReading(target: .flat)
+        live.beginTargetEdit()
+        live.beginTargetHandleDrag(3)
+        live.dragTargetHandle(translationFraction: 0.1)
+        #expect(live.coachingCurve == .flat)
+    }
+
+    @Test func doneResumesCoachingAgainstTheEditedCurve() async throws {
+        let m = try await liveModelWithFullReading(target: .flat)
+        m.beginTargetEdit()
+        m.beginTargetHandleDrag(3)
+        m.dragTargetHandle(translationFraction: 0.1)
+        m.commitTargetEdit()
+        #expect(!m.isCoachingFrozen)
+        #expect(m.coachingCurve == m.target)
+        #expect(m.target.id == TargetCurveHandles.customId)
+
+        let bands = levels([.presence: -18])
+        try deliver(reading(bands))
+        let expectedCoach = BandDeviationCoach(ideal: m.target)
+        #expect(m.coaching == expectedCoach.events(for: bands, sessionTime: 0))
+        #expect(m.problemMarkers == expectedCoach.problemMarkers(for: bands))
+    }
+
+    @Test func cancelResumesCoachingAgainstTheOriginalCurve() async throws {
+        let m = try await liveModelWithFullReading(target: .flat)
+        m.beginTargetEdit()
+        m.beginTargetHandleDrag(3)
+        m.dragTargetHandle(translationFraction: 0.1)
+        m.cancelTargetEdit()
+        #expect(!m.isCoachingFrozen)
+        #expect(m.coachingCurve == .flat)
+
+        let bands = levels([.presence: -18])
+        try deliver(reading(bands))
+        let expectedCoach = BandDeviationCoach(ideal: .flat)
+        #expect(m.coaching == expectedCoach.events(for: bands, sessionTime: 0))
+    }
+
+    @Test func doneRecordsTheSessionCustomTarget() async throws {
+        let m = try await liveModelWithFullReading(target: .flat)
+        #expect(m.sessionCustomTarget == nil)
+        m.beginTargetEdit()
+        m.beginTargetHandleDrag(3)
+        m.dragTargetHandle(translationFraction: 0.1)
+        m.commitTargetEdit()
+        let custom = try #require(m.sessionCustomTarget)
+        #expect(custom == m.target)
+
+        m.beginTargetEdit()
+        #expect(m.selectTargetPreset(.flat) == true)
+        m.commitTargetEdit()
+        #expect(m.sessionCustomTarget == custom)
+    }
+
+    @Test func cancelNeverRecordsASessionCustomTarget() async throws {
+        let m = try await liveModelWithFullReading(target: .flat)
+        m.beginTargetEdit()
+        m.beginTargetHandleDrag(3)
+        m.dragTargetHandle(translationFraction: 0.1)
+        m.cancelTargetEdit()
+        #expect(m.sessionCustomTarget == nil)
     }
 
     @Test func draftFollowsIntoTheLiveRTATarget() async throws {
@@ -706,11 +794,13 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         #expect(m.target.label == TargetCurveHandles.customLabel)
     }
 
-    @Test func coachingCurveFollowsTheDraftAfterADrag() async throws {
+    @Test func coachingCurveHoldsThePreEditCurveDuringADrag() async throws {
         let m = try await liveModelWithFullReading(target: .flat)
         m.beginTargetEdit()
         m.beginTargetHandleDrag(3)
         m.dragTargetHandle(translationFraction: 0.1)
+        #expect(m.coachingCurve == .flat)
+        m.commitTargetEdit()
         #expect(m.coachingCurve == m.target)
     }
 
@@ -727,7 +817,7 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
 
         let expected = try IdealCurveLibrary.builtIn(id: preset.id)
         #expect(m.target == expected)
-        #expect(m.coachingCurve == m.target)
+        #expect(m.coachingCurve == .flat)
         #expect(m.activeTargetPresetId == preset.id)
     }
 

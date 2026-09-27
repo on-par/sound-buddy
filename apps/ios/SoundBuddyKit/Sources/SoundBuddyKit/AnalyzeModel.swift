@@ -80,10 +80,17 @@ public final class AnalyzeModel {
     /// while editing) — only affects the legend copy.
     public private(set) var targetIsAuto: Bool
 
+    /// The last Custom curve committed with Done this session (#1561). On-device
+    /// and in memory only — never persisted or synced.
+    public private(set) var sessionCustomTarget: IdealCurve?
+
     private let permission: MicPermission
     private let source: LiveAudioSource
-    // Coaches against `target`, the same curve drawn as the RTA target, so the
-    // overlay and the hints never disagree.
+    // Coaches against the last *committed* target, not the live draft (#1561):
+    // rebuilt only by `apply()`, at init and when an edit is resolved (Done or
+    // Cancel). While editing, `target` is the draft and the coach still holds
+    // the pre-edit curve, so the overlay and the hints intentionally disagree
+    // until the edit resolves.
     private var coach: BandDeviationCoach
     private let now: () -> Date
     /// `target` resampled onto `rtaLayout`'s band centers, recomputed whenever
@@ -122,18 +129,26 @@ public final class AnalyzeModel {
         self.now = now
     }
 
-    /// Sets `target`/`targetIsAuto` and recomputes everything derived from the
-    /// curve (the coach, the resampled RTA offsets) together, so the drawn
-    /// line and the coaching hints never disagree.
-    private func apply(target: IdealCurve, isAuto: Bool) {
+    /// Sets `target`/`targetIsAuto` and the derived RTA offsets — the drawn
+    /// line only, never the coach. Shared by `apply()` (which also rebuilds
+    /// the coach) and `updateTargetDraft` (which must not).
+    private func applyDrawn(target: IdealCurve, isAuto: Bool) {
         self.target = target
         self.targetIsAuto = isAuto
-        coach = BandDeviationCoach(ideal: target)
         rtaTargetOffsets = RTATarget.resample(target, onto: rtaLayout)
     }
 
-    /// The curve the coach judges the room against — always `target`, so
-    /// tests can assert the overlay and the hints never diverge.
+    /// Sets the drawn target and rebuilds the coach from it together, so the
+    /// two never disagree outside of edit mode. Only called at init and when
+    /// an edit resolves (Done or Cancel) — never from the live draft (#1561).
+    private func apply(target: IdealCurve, isAuto: Bool) {
+        applyDrawn(target: target, isAuto: isAuto)
+        coach = BandDeviationCoach(ideal: target)
+    }
+
+    /// The curve the coach judges the room against — `target` outside of edit
+    /// mode, but the pre-edit curve while editing, since drafts never reach
+    /// the coach (#1561).
     public var coachingCurve: IdealCurve { coach.ideal }
 
     /// "-18.4 dBFS", or "—" when there is nothing to report — never a fake 0.
@@ -194,32 +209,49 @@ public final class AnalyzeModel {
     /// the Target legend for the "Editing target" chip while this is true.
     public var isEditingTarget: Bool { targetEditor.isEditing }
 
+    /// True while the target is being edited: `coaching` and `problemMarkers`
+    /// hold their last value until the edit resolves with Done or Cancel
+    /// (#1561).
+    public var isCoachingFrozen: Bool { isEditingTarget }
+
     /// Enters edit mode, snapshotting the active curve and its auto flag so
     /// Cancel can restore them exactly. No-op while already editing.
     public func beginTargetEdit() {
         targetEditor.begin(active: target, isAuto: targetIsAuto)
     }
 
-    /// Applies `curve` as the draft, so the RTA line and the coach follow it
-    /// immediately. No-op when not editing.
+    /// Applies `curve` as the draft: the RTA line follows it immediately, but
+    /// the coach does not (#1561) — it keeps judging the pre-edit curve until
+    /// the edit resolves. No-op when not editing.
     public func updateTargetDraft(_ curve: IdealCurve) {
         guard targetEditor.updateDraft(curve) else { return }
-        apply(target: curve, isAuto: false)
+        applyDrawn(target: curve, isAuto: false)
     }
 
     /// Exits edit mode and restores the curve and auto flag that were active
-    /// before editing began. No-op when not editing.
+    /// before editing began, then rebuilds the coach from that curve and
+    /// clears `lastCoachingAt` so the very next reading refreshes coaching
+    /// against it immediately (#1561). No-op when not editing.
     public func cancelTargetEdit() {
         guard let resolution = targetEditor.cancel() else { return }
         handleDrag = nil
         apply(target: resolution.curve, isAuto: resolution.isAuto)
+        lastCoachingAt = nil
     }
 
-    /// Exits edit mode and keeps the current draft. No-op when not editing.
+    /// Exits edit mode, keeps the current draft, and rebuilds the coach from
+    /// it, clearing `lastCoachingAt` so the next reading refreshes coaching
+    /// immediately (#1561). When the committed curve is a drag (its id is
+    /// `TargetCurveHandles.customId`), records it as `sessionCustomTarget`.
+    /// No-op when not editing.
     public func commitTargetEdit() {
         guard let resolution = targetEditor.done() else { return }
         handleDrag = nil
         apply(target: resolution.curve, isAuto: resolution.isAuto)
+        lastCoachingAt = nil
+        if resolution.curve.id == TargetCurveHandles.customId {
+            sessionCustomTarget = resolution.curve
+        }
     }
 
     // MARK: Target curve handle drags (#1559)
@@ -376,6 +408,7 @@ public final class AnalyzeModel {
         overallDb = reading.overallDb > Self.overallLevelFloorDb ? reading.overallDb : nil
         rta.ingest(reading.rtaDb, dt: step)
 
+        if isCoachingFrozen { return }
         if let last = lastCoachingAt, time.timeIntervalSince(last) < Self.coachingRefreshSeconds { return }
         lastCoachingAt = time
         let elapsed = sessionStart.map { time.timeIntervalSince($0) } ?? 0
