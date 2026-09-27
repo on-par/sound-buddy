@@ -19,7 +19,9 @@ import UIKit
 /// Cancel/Done takes the legend's place in the band under the RTA, and the RTA
 /// stays on screen — no pushed view (#1558). The header / landscape strip
 /// always keeps the listening indicator and the band keeps one height, so the
-/// RTA never moves when editing starts or ends (#1565).
+/// RTA never moves when editing starts or ends (#1565). While editing, a row
+/// of preset pills (Flat / Music fullrange / Worship service) sits under the
+/// legend band; tapping one seeds the draft from that bundled curve (#1560).
 ///
 /// TODO(ipad): the layout is single-column; switch the RTA and coaching
 /// stack side by side on a regular horizontal size class.
@@ -249,21 +251,28 @@ private struct ListeningIndicator: View {
 // MARK: - Target legend
 
 /// The band directly under the RTA: the Target legend when idle, the
-/// "Editing target" chip while `model.isEditingTarget`. Both stay laid out
-/// (only the inactive one is hidden), so the band is always as tall as the
-/// taller of the two and nothing around it shifts on toggle (#1565).
+/// "Editing target" chip while `model.isEditingTarget`, plus a row of preset
+/// pills (#1560) that only that chip row needs. Every row stays laid out
+/// (only the inactive ones are hidden), so the band is always the same total
+/// height and nothing around it shifts on toggle (#1565).
 private struct TargetControlsBand: View {
     let model: AnalyzeModel
     let onEdit: () -> Void
 
     var body: some View {
         let editing = model.isEditingTarget
-        ZStack(alignment: .leading) {
-            TargetLegend(text: model.targetLegendText, onEdit: onEdit)
-                .opacity(editing ? 0 : 1)
-                .allowsHitTesting(!editing)
-                .accessibilityHidden(editing)
-            TargetEditChip(model: model)
+        VStack(alignment: .leading, spacing: Layout.legendSpacing) {
+            ZStack(alignment: .leading) {
+                TargetLegend(text: model.targetLegendText, onEdit: onEdit)
+                    .opacity(editing ? 0 : 1)
+                    .allowsHitTesting(!editing)
+                    .accessibilityHidden(editing)
+                TargetEditChip(model: model)
+                    .opacity(editing ? 1 : 0)
+                    .allowsHitTesting(editing)
+                    .accessibilityHidden(!editing)
+            }
+            TargetPresetStrip(model: model)
                 .opacity(editing ? 1 : 0)
                 .allowsHitTesting(editing)
                 .accessibilityHidden(!editing)
@@ -330,6 +339,44 @@ private struct TargetEditChip: View {
         .padding(.vertical, Layout.editChipPaddingV)
         .background(Palette.surface, in: Capsule())
         .accessibilityIdentifier("analyze.targetEditChip")
+    }
+}
+
+/// One-tap starting points for the target-curve draft while editing
+/// (#1560): tapping a pill replaces the draft with that bundled curve,
+/// discarding unsaved handle drags.
+private struct TargetPresetStrip: View {
+    let model: AnalyzeModel
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Layout.presetPillSpacing) {
+                ForEach(TargetCurvePreset.all) { preset in
+                    TargetPresetPill(preset: preset, model: model)
+                }
+            }
+        }
+        .accessibilityIdentifier("analyze.targetPresets")
+    }
+}
+
+private struct TargetPresetPill: View {
+    let preset: TargetCurvePreset
+    let model: AnalyzeModel
+
+    var body: some View {
+        let selected = model.activeTargetPresetId == preset.id
+        Button(preset.title) {
+            withAnimation(.snappy) { _ = model.selectTargetPreset(preset) }
+        }
+        .font(.caption.weight(.semibold))
+        .lineLimit(1)
+        .padding(.horizontal, Layout.presetPillPaddingH)
+        .padding(.vertical, Layout.presetPillPaddingV)
+        .foregroundStyle(selected ? Palette.background : Palette.secondaryText)
+        .background(selected ? Palette.accent : Palette.surface, in: Capsule())
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier("analyze.targetPreset.\(preset.id)")
     }
 }
 
@@ -464,6 +511,9 @@ private enum Layout {
     static let editChipSpacing: CGFloat = 10
     static let editChipPaddingH: CGFloat = 10
     static let editChipPaddingV: CGFloat = 5
+    static let presetPillSpacing: CGFloat = 8
+    static let presetPillPaddingH: CGFloat = 10
+    static let presetPillPaddingV: CGFloat = 5
     static let landscapeSpacing: CGFloat = 8
     static let peekHandleHeight: CGFloat = 28
     static let peekDragMinDistance: CGFloat = 8
