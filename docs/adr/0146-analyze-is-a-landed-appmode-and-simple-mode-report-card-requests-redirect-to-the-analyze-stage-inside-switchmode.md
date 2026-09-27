@@ -1,6 +1,6 @@
 # 'analyze' is a landed appMode, and Simple-mode Report Card requests redirect to the Analyze stage inside switchMode
 
-- Status: Accepted
+- Status: Accepted (amended 2026-09-27, #1576 — see Amendment)
 - Date: 2026-09-24
 
 ## Context
@@ -63,3 +63,32 @@ the next navigation. Left as a follow-up (candidate: hook `installSimpleModeBody
 
 - [Issue #1510](https://github.com/on-par/sound-buddy/issues/1510)
 - [ADR-0145 — Analyze's results rail is an analyzeStage-owned second column](./0145-analyzes-results-rail-is-an-analyzestage-owned-second-column-with-its-own-arc-id-namespace.md)
+
+## Amendment (2026-09-27, #1576)
+
+Dogfood of #1574 showed that cold Analyze home, the default landing screen since #1510, paints a
+File-mode stage with no live RTA, even for users who have a room mic configured. This amendment
+authorizes exactly one exception to the Context's rejection of `enterAnalyze()`-style auto-listen:
+
+- **Permitted:** automatically starting the room-mic listen (the same listen-live path the Analyze
+  tab's configured-device fork uses) **only when both** of these hold:
+  1. hydration has settled (`restoreBootMode`'s post-`deps.hydration` step, never
+     App.tsx's synchronous boot paint / `applyInitialMode`) **and** the app is still on the landed
+     Analyze home (`appMode === 'analyze'`, unchanged since boot paint, which is the same
+     `getCurrentMode() !== bootMode` guard #1507 added); and
+  2. a secondary measurement device is configured (`secondaryMeasurement.deviceName !== ''`).
+- The auto-start must never open `AnalyzeEntryDialog`. With no secondary device configured, cold
+  Analyze home keeps today's non-modal File-mode stage and starts no mic capture at all.
+- Full `enterAnalyze()` is still not the seam for this. Its no-device fork opens the entry dialog.
+  The exception must call only the listen-start path, behind the two conditions above.
+
+**Unchanged:** `showAnalyzeStage()` stays silent. It never starts a listen and never opens the
+entry dialog. Every redirect that goes through it also stays silent: History (`loadHistoryEntry`),
+Report Card (`switchMode('reportcard')`'s Simple-mode redirect, `openReportCard`), onboarding
+(`runFirstAnalysis`), File > Open, and the boot paint itself. The Decision's closing rule still
+binds everything outside this exception: any new path that lands on Analyze without a user click
+uses `showAnalyzeStage()` and never starts audio capture by itself. Session's `LiveEqPane`
+isolation (ADR-0141) is not affected.
+
+- [Issue #1576](https://github.com/on-par/sound-buddy/issues/1576)
+- [Issue #1574](https://github.com/on-par/sound-buddy/issues/1574)
