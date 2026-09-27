@@ -42,6 +42,17 @@ struct AnalyzeLayoutTests {
     }
 
     @Test(
+        "target controls sit under the RTA in both layouts (#1565)",
+        arguments: [
+            (AnalyzeLayout.portrait, true),
+            (AnalyzeLayout.landscape, true),
+        ]
+    )
+    func targetControlsUnderRTA(layout: AnalyzeLayout, expected: Bool) {
+        #expect(layout.targetControlsUnderRTA == expected)
+    }
+
+    @Test(
         "coachingPeekLabel",
         arguments: [
             (0, "Coaching"),
