@@ -24,7 +24,7 @@ import { decideLiveAutoStart } from './live-auto-start';
 import { startLiveCapture, runtime } from './LiveControls';
 import { captureOptsFromCadence } from './measurement-device-state';
 import { clampBootMode, isModeFlagEnabled, isSimpleMode } from './simple-mode';
-import { decideAnalyzeHomeAutoListen } from './analyze-entry';
+import { decideAnalyzeHomeAutoListen, effectiveSecondaryDeviceName } from './analyze-entry';
 import type { AppSettings } from '../../electron/ipc/api';
 
 export type WorkspaceMode = 'dir' | 'live' | 'console' | 'recent' | 'guide' | 'ringout' | 'reportcard';
@@ -157,12 +157,16 @@ export function maybeAutoStartLive(): void {
 // (which would route to openSettingsAudio, seizing a Settings dialog) and
 // not enterAnalyze() (which would open AnalyzeEntryDialog). The File-mode
 // stage that showAnalyzeStage already painted is left exactly as-is.
+// #1620: "configured" is #1604's effective name (in-memory OR persisted), matching listenLive(), so a not-yet-seeded persisted room mic still auto-listens.
 export function maybeAutoListenAnalyzeHome(): void {
   const live = useLiveCaptureStore.getState();
   const entry = useAnalyzeEntryStore.getState();
   const decision = decideAnalyzeHomeAutoListen({
     currentMode: live.appMode,
-    deviceName: live.secondaryMeasurement.deviceName,
+    deviceName: effectiveSecondaryDeviceName(
+      live.secondaryMeasurement.deviceName,
+      useSettingsStore.getState().settings?.measurementDeviceName,
+    ),
     listening: entry.listening,
   });
   console.log('analyze-auto-listen', { decision });
