@@ -16,8 +16,10 @@ import UIKit
 /// and the peek state; this view only renders. Problem markers pulse on the
 /// RTA in both layouts (#1554). Tapping the Target legend (or its pencil)
 /// enters an in-place target-edit mode: an "Editing target" chip with
-/// Cancel/Done replaces the listening indicator or legend, and the RTA stays
-/// on screen — no pushed view (#1558).
+/// Cancel/Done takes the legend's place in the band under the RTA, and the RTA
+/// stays on screen — no pushed view (#1558). The header / landscape strip
+/// always keeps the listening indicator and the band keeps one height, so the
+/// RTA never moves when editing starts or ends (#1565).
 ///
 /// TODO(ipad): the layout is single-column; switch the RTA and coaching
 /// stack side by side on a regular horizontal size class.
@@ -68,10 +70,9 @@ struct AnalyzeView: View {
             header
             VStack(alignment: .leading, spacing: Layout.legendSpacing) {
                 RTAView(model: model, showsProblemMarkers: AnalyzeLayout.portrait.showsProblemMarkers)
-                TargetLegend(text: model.targetLegendText, onEdit: beginTargetEdit)
-                    .opacity(model.isEditingTarget ? 0 : 1)
-                    .allowsHitTesting(!model.isEditingTarget)
-                    .accessibilityHidden(model.isEditingTarget)
+                if AnalyzeLayout.portrait.targetControlsUnderRTA {
+                    TargetControlsBand(model: model, onEdit: beginTargetEdit)
+                }
             }
             CoachingStackView(model: model)
             Spacer(minLength: 0)
@@ -87,6 +88,10 @@ struct AnalyzeView: View {
         VStack(spacing: Layout.landscapeSpacing) {
             landscapeStrip
             RTAView(model: model, fillsHeight: true, showsProblemMarkers: AnalyzeLayout.landscape.showsProblemMarkers)
+            if AnalyzeLayout.landscape.targetControlsUnderRTA {
+                TargetControlsBand(model: model, onEdit: beginTargetEdit)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             StatusMessageView(model: model)
             CoachingPeekHandle(model: model, isOpen: $coachingPeekOpen)
         }
@@ -103,12 +108,7 @@ struct AnalyzeView: View {
 
     private var landscapeStrip: some View {
         HStack(spacing: Layout.landscapeStripSpacing) {
-            if model.isEditingTarget {
-                TargetEditChip(model: model)
-            } else {
-                ListeningIndicator(state: model.state)
-                TargetLegend(text: model.targetLegendText, onEdit: beginTargetEdit)
-            }
+            ListeningIndicator(state: model.state)
             Spacer()
             OverallLevelReadout(model: model, font: .headline.monospacedDigit())
             HonestyBadge()
@@ -121,11 +121,7 @@ struct AnalyzeView: View {
             VStack(alignment: .leading, spacing: Layout.headerSpacing) {
                 Text("Analyze")
                     .font(.largeTitle.weight(.bold))
-                if model.isEditingTarget {
-                    TargetEditChip(model: model)
-                } else {
-                    ListeningIndicator(state: model.state)
-                }
+                ListeningIndicator(state: model.state)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: Layout.headerSpacing) {
@@ -252,6 +248,29 @@ private struct ListeningIndicator: View {
 
 // MARK: - Target legend
 
+/// The band directly under the RTA: the Target legend when idle, the
+/// "Editing target" chip while `model.isEditingTarget`. Both stay laid out
+/// (only the inactive one is hidden), so the band is always as tall as the
+/// taller of the two and nothing around it shifts on toggle (#1565).
+private struct TargetControlsBand: View {
+    let model: AnalyzeModel
+    let onEdit: () -> Void
+
+    var body: some View {
+        let editing = model.isEditingTarget
+        ZStack(alignment: .leading) {
+            TargetLegend(text: model.targetLegendText, onEdit: onEdit)
+                .opacity(editing ? 0 : 1)
+                .allowsHitTesting(!editing)
+                .accessibilityHidden(editing)
+            TargetEditChip(model: model)
+                .opacity(editing ? 1 : 0)
+                .allowsHitTesting(editing)
+                .accessibilityHidden(!editing)
+        }
+    }
+}
+
 /// A short dashed swatch plus "Target · <label> (auto)", under the RTA.
 /// Tapping the row (or its pencil) enters in-place target-edit mode (#1558).
 private struct TargetLegend: View {
@@ -284,8 +303,8 @@ private struct TargetLegend: View {
     }
 }
 
-/// The "Editing target" chip (Cancel / Done) shown in place of the legend or
-/// listening indicator while `model.isEditingTarget` (#1558).
+/// The "Editing target" chip (Cancel / Done) shown in place of the legend,
+/// under the RTA, while `model.isEditingTarget` (#1558, #1565).
 private struct TargetEditChip: View {
     let model: AnalyzeModel
 

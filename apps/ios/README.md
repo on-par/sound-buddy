@@ -72,8 +72,9 @@ Capabilities**. The project sets no team on purpose.
    Settings and shows an **Open Settings** button. After you allow access and
    return, listening starts.
 9. Tap the Target legend (or the pencil). An **Editing target** chip with
-   Cancel and Done appears in the header, and the RTA stays on screen with no
-   new screen pushed. Cancel or Done returns the header to normal.
+   Cancel and Done takes the legend's place under the RTA. The RTA does not
+   move and no new screen is pushed; the header still shows the listening
+   indicator. Cancel or Done puts the legend back.
 
 ## Tests
 

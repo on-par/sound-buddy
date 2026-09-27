@@ -27,6 +27,12 @@ public enum AnalyzeLayout: Equatable, Sendable {
     /// (#1554). Deliberately independent of peek state.
     public var showsProblemMarkers: Bool { true }
 
+    /// Both layouts put the target legend and the "Editing target" chip in one
+    /// fixed-height band directly under the RTA, and the header / landscape
+    /// strip always keeps the listening indicator — so entering or leaving
+    /// target-edit mode never moves the RTA (#1565).
+    public var targetControlsUnderRTA: Bool { true }
+
     /// Label on the landscape peek handle: "Coaching · 2", or just "Coaching" when there are none.
     public static func coachingPeekLabel(count: Int) -> String {
         count > 0 ? coachingPeekTitle + coachingPeekSeparator + String(count) : coachingPeekTitle
