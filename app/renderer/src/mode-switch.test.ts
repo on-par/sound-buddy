@@ -779,6 +779,96 @@ describe('enterAnalyzeFromTab (#1588)', () => {
   });
 });
 
+// #1606: pins ADR-0141's structural isolation (Session's docked LiveEqPane
+// vs. Analyze's live-EQ island) through the real switchMode/enterAnalyzeFromTab
+// composition, guarding against a future mode-switch change silently showing
+// both surfaces or leaving appMode wrong on return to Session.
+describe('ADR-0141 isolation across Session <-> Analyze (#1606)', () => {
+  beforeEach(() => {
+    vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement').mockResolvedValue(undefined);
+  });
+
+  // Mirrors LiveEqPane.tsx:269's `pane.style.display = s.appMode === 'live'
+  // ? 'flex' : 'none'` (sessionPane) and AnalyzeLiveEqPanel's use of
+  // analyzeLiveEqView (analyzeIsland) — the same two visibility rules the
+  // real DOM renders from.
+  function surfaces(): { sessionPane: boolean; analyzeIsland: boolean } {
+    const live = useLiveCaptureStore.getState();
+    const entry = useAnalyzeEntryStore.getState();
+    return {
+      sessionPane: live.appMode === 'live',
+      analyzeIsland: analyzeLiveEqView({
+        listening: entry.listening, analyzeStage: entry.analyzeStage, appMode: live.appMode,
+        secondary: live.secondaryMeasurement, override: null,
+      }).kind !== 'hidden',
+    };
+  }
+
+  it('Session -> Analyze -> Session -> Analyze never shows both surfaces at once', async () => {
+    useLiveCaptureStore.setState({ secondaryMeasurement: { status: 'off', deviceName: 'UMIK-1' } });
+    const snapshots: { sessionPane: boolean; analyzeIsland: boolean }[] = [];
+
+    switchMode('live');
+    snapshots.push(surfaces());
+    expect(surfaces()).toEqual({ sessionPane: true, analyzeIsland: false });
+
+    await enterAnalyzeFromTab();
+    snapshots.push(surfaces());
+    expect(surfaces()).toEqual({ sessionPane: false, analyzeIsland: true });
+    expect(useAnalyzeEntryStore.getState().listening).toBe(true);
+
+    switchMode('live');
+    snapshots.push(surfaces());
+    expect(surfaces()).toEqual({ sessionPane: true, analyzeIsland: false });
+
+    await enterAnalyzeFromTab();
+    snapshots.push(surfaces());
+    expect(surfaces()).toEqual({ sessionPane: false, analyzeIsland: true });
+
+    expect(snapshots.every((s) => !(s.sessionPane && s.analyzeIsland))).toBe(true);
+  });
+
+  it('returning to Session after an Analyze listen restores appMode live and hides the island', async () => {
+    useLiveCaptureStore.setState({
+      appMode: 'live',
+      secondaryMeasurement: { status: 'off', deviceName: 'UMIK-1' },
+    });
+
+    await enterAnalyzeFromTab();
+    expect(useAnalyzeEntryStore.getState().listening).toBe(true);
+
+    switchMode('live');
+
+    expect(useLiveCaptureStore.getState().appMode).toBe('live');
+    expect(bodyClassList.contains('live-active')).toBe(true);
+    expect(elements['tab-live'].classList.contains('active')).toBe(true);
+    expect(useAnalyzeEntryStore.getState().analyzeStage).toBe(false);
+    // ADR-0145: switchMode never touches `listening` — the appMode gate
+    // alone is what keeps the island hidden here.
+    expect(useAnalyzeEntryStore.getState().listening).toBe(true);
+    expect(surfaces()).toEqual({ sessionPane: true, analyzeIsland: false });
+  });
+
+  it('the entry-dialog fork (no room mic) also leaves Session with the pane and no island', async () => {
+    useLiveCaptureStore.setState({
+      appMode: 'live',
+      secondaryMeasurement: { status: 'off', deviceName: '' },
+    });
+
+    switchMode('live');
+    await enterAnalyzeFromTab();
+
+    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(true);
+    // analyzeStage true + !listening -> analyzeLiveEqView's { kind: 'file' }
+    // branch, so the island itself is visible even before a device is set.
+    expect(surfaces()).toEqual({ sessionPane: false, analyzeIsland: true });
+
+    switchMode('live');
+
+    expect(surfaces()).toEqual({ sessionPane: true, analyzeIsland: false });
+  });
+});
+
 describe('applyInitialMode (#1510)', () => {
   it("'analyze' shows the stage and never writes settings", () => {
     const settingsSpy = vi.spyOn(mock.api, 'updateSettings');
