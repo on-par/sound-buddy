@@ -84,6 +84,58 @@ async function openFileDialogCallCount(electronApp: ElectronApplication): Promis
   );
 }
 
+// #1606: pins the two ADR-0141 surface nodes on globalThis so a later check
+// can prove the exact same DOM objects are still in place (never re-parented
+// or re-created) after a Session <-> Analyze round trip.
+async function captureSurfaceNodes(window: Page): Promise<void> {
+  await window.evaluate(() => {
+    const g = globalThis as unknown as Record<string, unknown>;
+    const pane = document.getElementById('live-eq-pane');
+    const island = document.getElementById('analyze-live-island');
+    g.__sbSessionPane = pane;
+    g.__sbSessionPaneParent = pane?.parentElement ?? null;
+    g.__sbAnalyzeIsland = island;
+    g.__sbAnalyzeIslandParent = island?.parentElement ?? null;
+  });
+}
+
+interface SurfaceIsolation {
+  paneSameNode: boolean; paneSameParent: boolean;
+  islandSameNode: boolean; islandSameParent: boolean;
+  islandParentId: string | null;
+  paneCount: number; islandCount: number;
+  paneContainsIsland: boolean; islandContainsPane: boolean;
+  islandHasSessionMarkup: boolean;
+}
+
+async function surfaceIsolation(window: Page): Promise<SurfaceIsolation> {
+  return window.evaluate(() => {
+    const g = globalThis as unknown as Record<string, Element | null>;
+    const pane = document.getElementById('live-eq-pane');
+    const island = document.getElementById('analyze-live-island');
+    return {
+      paneSameNode: pane !== null && pane === g.__sbSessionPane,
+      paneSameParent: pane?.parentElement === g.__sbSessionPaneParent,
+      islandSameNode: island !== null && island === g.__sbAnalyzeIsland,
+      islandSameParent: island?.parentElement === g.__sbAnalyzeIslandParent,
+      islandParentId: island?.parentElement?.id ?? null,
+      paneCount: document.querySelectorAll('#live-eq-pane').length,
+      islandCount: document.querySelectorAll('#analyze-live-island').length,
+      paneContainsIsland: !!(pane && island && pane.contains(island)),
+      islandContainsPane: !!(pane && island && island.contains(pane)),
+      islandHasSessionMarkup: !!island?.querySelector('#live-eq-pane-body, .eq-pane-inspector'),
+    };
+  });
+}
+
+// `.eq-pane-inspector` is the Session-pane-only class already used by
+// AnalyzeLiveEqPanel.test.ts:117.
+const ISOLATED: SurfaceIsolation = {
+  paneSameNode: true, paneSameParent: true, islandSameNode: true, islandSameParent: true,
+  islandParentId: 'spectrum-body', paneCount: 1, islandCount: 1,
+  paneContainsIsland: false, islandContainsPane: false, islandHasSessionMarkup: false,
+};
+
 test.describe('Analyze tab entry point (#1485), Advanced features on', () => {
   let electronApp: ElectronApplication;
   let window: Page;
@@ -266,6 +318,10 @@ test.describe('Analyze tab entry point (#1485), Advanced features on', () => {
 // shown only under body.analyze-listening) must never be on screen together
 // (ADR-0141). `listening` is read through DOM that renders strictly from it:
 // #analyze-mode-live's aria-pressed (analyzeModeOf) and #analyze-live-eq-stop.
+// #1606 adds node-identity/no-re-parenting assertions (surfaceIsolation) and
+// an appMode proxy (ModeTabs' `.mode-tab[data-mode="live"]` .active class,
+// which renders strictly from appMode — ModeTabs.tsx:83 — plus
+// body.live-active) at every step of this round trip.
 test.describe('Session → Analyze → Live round trip (#1590)', () => {
   let electronApp: ElectronApplication;
   let window: Page;
@@ -283,6 +339,7 @@ test.describe('Session → Analyze → Live round trip (#1590)', () => {
     await expect(window.locator('#tab-live')).toHaveClass(/active/);
     await expect(window.locator('#live-eq-pane')).toBeVisible();
     await expect(window.locator('#analyze-live-island')).toBeHidden();
+    await captureSurfaceNodes(window);
 
     // Analyze: no room mic yet → entry dialog with Listen live.
     await window.locator('#nav-analyze').click();
@@ -302,11 +359,17 @@ test.describe('Session → Analyze → Live round trip (#1590)', () => {
     await expect(window.locator('#analyze-live-eq-stop')).toBeVisible();
     await expect(window.locator('#live-eq-pane')).toBeHidden();
     expect(await openFileDialogCallCount(electronApp)).toBe(0);
+
+    await expect(async () => {
+      expect(await surfaceIsolation(window)).toEqual(ISOLATED);
+    }).toPass();
   });
 
   test('AC: returning to Session re-hides the Analyze island and restores the docked LiveEqPane', async () => {
     await window.locator('.mode-tab[data-mode="live"]').click();
     await expect(window.locator('#tab-live')).toHaveClass(/active/);
+    await expect(window.locator('.mode-tab[data-mode="live"]')).toHaveClass(/\bactive\b/);
+    await expect(window.locator('body')).toHaveClass(/live-active/);
     await expect(window.locator('body')).not.toHaveClass(/analyze-listening/);
     await expect(window.locator('#analyze-live-island')).toBeHidden();
     await expect(window.locator('#analyze-live-eq-stop')).toBeHidden();
@@ -315,6 +378,9 @@ test.describe('Session → Analyze → Live round trip (#1590)', () => {
     const box = await pane.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.width).toBeGreaterThanOrEqual(EQ_PANE_MIN_WIDTH_PX);
+    await expect(async () => {
+      expect(await surfaceIsolation(window)).toEqual(ISOLATED);
+    }).toPass();
 
     // Repeat: device is configured now, so the Analyze tab goes straight to
     // the live RTA, and Session still takes the screen back afterwards.
@@ -326,6 +392,101 @@ test.describe('Session → Analyze → Live round trip (#1590)', () => {
     await window.locator('.mode-tab[data-mode="live"]').click();
     await expect(window.locator('#analyze-live-island')).toBeHidden();
     await expect(pane).toBeVisible();
+    await expect(window.locator('.mode-tab[data-mode="live"]')).toHaveClass(/\bactive\b/);
+    await expect(window.locator('body')).toHaveClass(/live-active/);
+    await expect(async () => {
+      expect(await surfaceIsolation(window)).toEqual(ISOLATED);
+    }).toPass();
+  });
+});
+
+// #1606: the #1590 describe above starts every journey on Session. This
+// covers the Analyze-first journey instead — boot's default appMode is
+// 'analyze' (#1510) — round-tripping Analyze → Session → Analyze → Live and
+// back, so the ADR-0141 isolation guard is proven from both starting points.
+test.describe('Analyze → Session → Analyze → Live journey (#1606)', () => {
+  let electronApp: ElectronApplication;
+  let window: Page;
+
+  test.beforeAll(async () => {
+    ({ electronApp, window } = await launchApp());
+    await stubMeasurementIpc(electronApp);
+    await stubOpenFileDialogTracked(electronApp, null);
+  });
+  test.afterAll(async () => { await electronApp.close(); });
+
+  test('AC: Analyze-first journey never shows both surfaces and keeps node identity across every step', async () => {
+    // 1. Boot lands on Analyze (default appMode). No room mic yet.
+    await expect(window.locator('#nav-analyze')).toBeVisible();
+    await captureSurfaceNodes(window);
+
+    await window.locator('#nav-analyze').click();
+    await expect(window.locator('#analyze-entry-dialog')).toBeVisible();
+    await expect(window.locator('#live-eq-pane')).toBeHidden();
+
+    await window.keyboard.press('Escape');
+    await expect(window.locator('#analyze-entry-dialog')).toBeHidden();
+
+    // 2. Session: the docked pane shows, the island stays hidden.
+    await window.locator('.mode-tab[data-mode="live"]').click();
+    await expect(window.locator('#tab-live')).toHaveClass(/active/);
+    await expect(window.locator('#live-eq-pane')).toBeVisible();
+    await expect(window.locator('#analyze-live-island')).toBeHidden();
+    await expect(window.locator('body')).toHaveClass(/live-active/);
+    await expect(async () => {
+      expect(await surfaceIsolation(window)).toEqual(ISOLATED);
+    }).toPass();
+
+    // 3. Analyze → Live (the File-or-live choice): configure a device via
+    // the entry dialog's Listen live bounce to Settings > Audio.
+    await window.locator('#nav-analyze').click();
+    await expect(window.locator('#analyze-entry-dialog')).toBeVisible();
+    await expect(window.locator('#live-eq-pane')).toBeHidden();
+
+    await window.locator('#analyze-entry-listen-live').click();
+    await expect(window.locator('#settings-pane-audio')).toBeVisible();
+    await window.locator('#secondary-measurement-device').selectOption('0');
+    await window.locator('#settings-dialog-done').click();
+    await expect(window.locator('#settings-dialog')).toBeHidden();
+
+    // 4. Live RTA with listening true.
+    await expect(window.locator('body')).toHaveClass(/analyze-listening/);
+    await expect(window.locator('#analyze-live-island')).toBeVisible();
+    await expect(window.locator('#analyze-mode-live')).toHaveAttribute('aria-pressed', 'true');
+    await expect(window.locator('#analyze-live-eq-stop')).toBeVisible();
+    await expect(window.locator('#live-eq-pane')).toBeHidden();
+    await expect(window.locator('body')).not.toHaveClass(/live-active/);
+    expect(await openFileDialogCallCount(electronApp)).toBe(0);
+    await expect(async () => {
+      expect(await surfaceIsolation(window)).toEqual(ISOLATED);
+    }).toPass();
+
+    // 5. Return to Session.
+    await window.locator('.mode-tab[data-mode="live"]').click();
+    await expect(window.locator('.mode-tab[data-mode="live"]')).toHaveClass(/\bactive\b/);
+    await expect(window.locator('body')).toHaveClass(/live-active/);
+    await expect(window.locator('body')).not.toHaveClass(/analyze-listening/);
+    await expect(window.locator('#analyze-live-island')).toBeHidden();
+    await expect(window.locator('#analyze-live-eq-stop')).toBeHidden();
+    const pane = window.locator('#live-eq-pane');
+    await expect(pane).toBeVisible();
+    const box = await pane.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeGreaterThanOrEqual(EQ_PANE_MIN_WIDTH_PX);
+    await expect(async () => {
+      expect(await surfaceIsolation(window)).toEqual(ISOLATED);
+    }).toPass();
+
+    // 6. Session → Analyze with the now pre-configured device: straight to
+    // the live RTA, no dialog.
+    await window.locator('#nav-analyze').click();
+    await expect(window.locator('#analyze-entry-dialog')).toBeHidden();
+    await expect(window.locator('#analyze-live-island')).toBeVisible();
+    await expect(window.locator('#analyze-mode-live')).toHaveAttribute('aria-pressed', 'true');
+    await expect(pane).toBeHidden();
+    await expect(async () => {
+      expect(await surfaceIsolation(window)).toEqual(ISOLATED);
+    }).toPass();
   });
 });
 
