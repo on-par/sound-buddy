@@ -66,6 +66,24 @@ private func sine(hz: Double, amplitude: Double, count: Int) -> [Float] {
         #expect(scale.dbTicks.last == scale.floorDb)
         #expect(scale.dbTicks == scale.dbTicks.sorted(by: >))
     }
+
+    @Test func dbAtFractionIsTheInverseOfFraction() {
+        #expect(abs(scale.db(atFraction: 0) - scale.floorDb) < epsilon)
+        #expect(abs(scale.db(atFraction: 1) - scale.ceilingDb) < epsilon)
+        #expect(abs(scale.db(atFraction: 0.5) - (scale.floorDb + scale.ceilingDb) / 2) < epsilon)
+        for f in [0.0, 0.2, 0.5, 0.9, 1.0] {
+            #expect(abs(scale.fraction(db: scale.db(atFraction: f)) - f) < epsilon)
+        }
+    }
+
+    @Test func dbAtFractionClampsOutsideZeroToOne() {
+        #expect(scale.db(atFraction: -1) == scale.floorDb)
+        #expect(scale.db(atFraction: 2) == scale.ceilingDb)
+    }
+
+    @Test func spanDbIsCeilingMinusFloor() {
+        #expect(scale.spanDb == scale.ceilingDb - scale.floorDb)
+    }
 }
 
 @Suite struct RTAMeterTests {

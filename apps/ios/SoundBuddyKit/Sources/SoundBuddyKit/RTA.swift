@@ -76,6 +76,15 @@ public struct RTAScale: Equatable, Sendable {
         min(1, max(0, (db - floorDb) / (ceilingDb - floorDb)))
     }
 
+    /// The window's height in dB.
+    public var spanDb: Double { ceilingDb - floorDb }
+
+    /// The inverse of `fraction(db:)`: the dB value at `fraction` of the way
+    /// up the window, clamped to [floorDb, ceilingDb].
+    public func db(atFraction fraction: Double) -> Double {
+        floorDb + min(1, max(0, fraction)) * spanDb
+    }
+
     /// Grid lines from the ceiling down to the floor.
     public var dbTicks: [Double] {
         Array(stride(from: ceilingDb, through: floorDb, by: -tickStepDb))
@@ -93,17 +102,22 @@ public enum RTATarget {
         layout.bands.map { curve.offset(atHz: $0.centerHz) }
     }
 
-    /// Swift mirror of `levelMatchedTarget` in
-    /// app/renderer/src/spectrum-display.ts: shifts `offsets` by the
-    /// difference between the measured and target dB means, so the target
-    /// tracks the measured curve's level while keeping its shape. `offsets`
-    /// must already be resampled onto `measured`'s own grid. `nil` when the
-    /// grids don't match or neither has a finite mean.
-    public static func levelMatched(offsets: [Double], measured: [Double]) -> [Double]? {
+    /// The difference between the measured and target dB means — the shift
+    /// `levelMatched` applies to every offset so the target tracks the
+    /// measured curve's level while keeping its shape. `offsets` must already
+    /// be resampled onto `measured`'s own grid. `nil` when the grids don't
+    /// match or neither has a finite mean.
+    public static func levelShift(offsets: [Double], measured: [Double]) -> Double? {
         guard !offsets.isEmpty, offsets.count == measured.count else { return nil }
         guard let measuredMean = finiteMean(measured), let targetMean = finiteMean(offsets) else { return nil }
-        let shift = measuredMean - targetMean
-        return offsets.map { $0 + shift }
+        return measuredMean - targetMean
+    }
+
+    /// Swift mirror of `levelMatchedTarget` in
+    /// app/renderer/src/spectrum-display.ts: shifts every offset by
+    /// `levelShift`. `nil` when `levelShift` is nil.
+    public static func levelMatched(offsets: [Double], measured: [Double]) -> [Double]? {
+        levelShift(offsets: offsets, measured: measured).map { shift in offsets.map { $0 + shift } }
     }
 
     private static func finiteMean(_ xs: [Double]) -> Double? {

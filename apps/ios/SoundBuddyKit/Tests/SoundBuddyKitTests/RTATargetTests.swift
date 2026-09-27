@@ -120,3 +120,35 @@ private let epsilon = 1e-9
         #expect(RTATarget.levelMatched(offsets: [0, 0], measured: [.nan, .infinity]) == nil)
     }
 }
+
+@Suite struct RTATargetLevelShiftTests {
+    @Test func returnsTheMeasuredMinusTargetMean() {
+        let offsets = [0.0, 10.0, -10.0]
+        let measured = [-40.0, -30.0, -50.0]
+        let shift = RTATarget.levelShift(offsets: offsets, measured: measured)
+        let measuredMean = measured.reduce(0, +) / Double(measured.count)
+        #expect(abs(shift! - measuredMean) < epsilon)
+    }
+
+    @Test func matchesTheShiftLevelMatchedApplies() throws {
+        let offsets = [0.0, 5.0, -5.0]
+        let measured = [-40.0, -30.0, -50.0]
+        let shift = try #require(RTATarget.levelShift(offsets: offsets, measured: measured))
+        let matched = try #require(RTATarget.levelMatched(offsets: offsets, measured: measured))
+        for (o, m) in zip(offsets, matched) {
+            #expect(abs(m - (o + shift)) < epsilon)
+        }
+    }
+
+    @Test func countMismatchIsNil() {
+        #expect(RTATarget.levelShift(offsets: [0, 0], measured: [0, 0, 0]) == nil)
+    }
+
+    @Test func emptyIsNil() {
+        #expect(RTATarget.levelShift(offsets: [], measured: []) == nil)
+    }
+
+    @Test func allNonFiniteMeasuredIsNil() {
+        #expect(RTATarget.levelShift(offsets: [0, 0], measured: [.nan, .infinity]) == nil)
+    }
+}
