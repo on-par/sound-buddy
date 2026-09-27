@@ -88,10 +88,10 @@ export default function AnalyzeLiveEqPanel(): JSX.Element | null {
       <div className="analyze-live-eq" aria-label="Room-mic EQ">
         {/* #1522: Live and File are equal-footing modes of one Analyze tab.
             The Live button only starts a listen when not already listening —
-            listenLive() itself routes to Settings > Audio when no device is
-            configured. The File button never opens the native picker; it
-            only switches mode, matching the dropzone/Load-file… buttons
-            below. */}
+            listenLive() itself routes to Settings > Audio only when no device
+            is configured in memory or in settings (#1604). The File button
+            never opens the native picker; it only switches mode, matching
+            the dropzone/Load-file… buttons below. */}
         <div className="analyze-mode-toggle" role="group" aria-label="Analyze mode">
           <button
             type="button"

@@ -12,10 +12,17 @@
 // room-mic-only; see the plan for #1468). Factory pattern with injected deps
 // (constitution: side effects injected, not imported globally), mirroring
 // consoleNetworkConsentStore.ts's shape.
+//
+// #1604: "a configured secondary measurement device" means the effective
+// name — the in-memory liveCaptureStore name, falling back to the persisted
+// settings.measurementDeviceName — not just the in-memory one. bridge.ts only
+// seeds the in-memory name from settings while idle, so a user with a
+// configured room mic could otherwise still get bounced to the dialog/Settings
+// before that seed lands.
 
 import { create } from 'zustand';
 import type { StoreApi, UseBoundStore } from 'zustand';
-import { resolveAnalyzeEntry, resolveListenLiveChoice } from '../analyze-entry';
+import { resolveAnalyzeEntry, resolveListenLiveChoice, effectiveSecondaryDeviceName } from '../analyze-entry';
 import { captureOptsFromCadence, deviceInputCount, type StartCaptureOpts } from '../measurement-device-state';
 import { chooseAndAnalyzeFile } from '../report-card-chrome';
 import { useLiveCaptureStore } from './liveCaptureStore';
@@ -37,6 +44,15 @@ export interface AnalyzeEntryDeps {
   // valid index. Production wiring reads liveCaptureStore.devices +
   // secondaryMeasurement.deviceName through deviceInputCount().
   getSecondaryInputCount(): number;
+  // #1604: the persisted settings.measurementDeviceName ('' if unset or
+  // settings not yet loaded) — read alongside getSecondaryDeviceName() so
+  // "no device configured" means neither in-memory nor persisted, not just
+  // "not yet seeded into liveCaptureStore" (bridge.ts only seeds it while idle).
+  getPersistedSecondaryDeviceName(): string;
+  // #1604: puts a persisted-only name into liveCaptureStore before a listen
+  // starts, so startSecondaryMeasurement resolves a real device index instead
+  // of landing on 'disconnected' with an empty in-memory name.
+  adoptSecondaryDeviceName(name: string): void;
 }
 
 export interface AnalyzeEntryState {
@@ -103,6 +119,12 @@ export interface AnalyzeEntryState {
 export function createAnalyzeEntryStore(
   deps: AnalyzeEntryDeps
 ): UseBoundStore<StoreApi<AnalyzeEntryState>> {
+  // #1604: "no device configured" means neither the in-memory liveCaptureStore
+  // name nor the persisted settings.measurementDeviceName — never just the
+  // former, which bridge.ts only seeds while idle.
+  const resolveDeviceName = (): string =>
+    effectiveSecondaryDeviceName(deps.getSecondaryDeviceName(), deps.getPersistedSecondaryDeviceName());
+
   return create<AnalyzeEntryState>()((set, get) => ({
     dialogOpen: false,
     listening: false,
@@ -138,7 +160,7 @@ export function createAnalyzeEntryStore(
     async enterAnalyze() {
       set({ analyzeStage: true });
       if (get().listening) return;
-      if (resolveAnalyzeEntry(deps.getSecondaryDeviceName()) === 'openDialog') {
+      if (resolveAnalyzeEntry(resolveDeviceName()) === 'openDialog') {
         set({ dialogOpen: true });
         return;
       }
@@ -161,13 +183,19 @@ export function createAnalyzeEntryStore(
     },
 
     async listenLive() {
-      const choice = resolveListenLiveChoice(deps.getSecondaryDeviceName());
+      const live = deps.getSecondaryDeviceName();
+      const name = effectiveSecondaryDeviceName(live, deps.getPersistedSecondaryDeviceName());
+      const choice = resolveListenLiveChoice(name);
       set({ dialogOpen: false, analyzeStage: true });
       if (choice === 'needsSecondarySource') {
         set({ pendingListenAfterSettings: true });
         deps.openSettingsAudio();
         return;
       }
+      // #1604: the live name is empty but a persisted one resolved — adopt it
+      // into liveCaptureStore before starting, so startSecondaryMeasurement
+      // resolves a real device index instead of an empty name.
+      if (live === '') deps.adoptSecondaryDeviceName(name);
       // #1524: clamp a stale listenChannel (e.g. carried over from a wider
       // device) into range for the device actually being listened to.
       const channel = Math.max(0, Math.min(get().listenChannel, deps.getSecondaryInputCount() - 1));
@@ -245,4 +273,6 @@ export const useAnalyzeEntryStore = createAnalyzeEntryStore({
     const s = useLiveCaptureStore.getState();
     return deviceInputCount(s.devices, s.secondaryMeasurement.deviceName);
   },
+  getPersistedSecondaryDeviceName: () => useSettingsStore.getState().settings?.measurementDeviceName ?? '',
+  adoptSecondaryDeviceName: (name) => useLiveCaptureStore.getState().setSecondaryDeviceName(name),
 });

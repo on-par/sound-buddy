@@ -13,6 +13,8 @@ function createFakeDeps(overrides: Partial<AnalyzeEntryDeps> = {}) {
   const openSettingsAudio = vi.fn();
   const analyzeFilePath = vi.fn(async () => {});
   const getSecondaryInputCount = vi.fn(() => 1);
+  const getPersistedSecondaryDeviceName = vi.fn(() => '');
+  const adoptSecondaryDeviceName = vi.fn();
   const deps: AnalyzeEntryDeps = {
     chooseAndAnalyzeFile,
     getSecondaryDeviceName,
@@ -22,12 +24,14 @@ function createFakeDeps(overrides: Partial<AnalyzeEntryDeps> = {}) {
     openSettingsAudio,
     analyzeFilePath,
     getSecondaryInputCount,
+    getPersistedSecondaryDeviceName,
+    adoptSecondaryDeviceName,
     ...overrides,
   };
   return {
     deps, chooseAndAnalyzeFile, getSecondaryDeviceName, getCadence,
     startSecondaryMeasurement, stopSecondaryMeasurement, openSettingsAudio, analyzeFilePath,
-    getSecondaryInputCount,
+    getSecondaryInputCount, getPersistedSecondaryDeviceName, adoptSecondaryDeviceName,
   };
 }
 
@@ -590,6 +594,80 @@ describe('createAnalyzeEntryStore (#1468)', () => {
       it('stopListening() clears the pending flag', async () => {
         await pendResume((store) => store.getState().stopListening());
       });
+    });
+  });
+
+  describe('effective secondary device name (#1604)', () => {
+    it('listenLive() with live empty and a persisted name: adopts it before starting, never opens Settings', async () => {
+      const { deps, openSettingsAudio, adoptSecondaryDeviceName, startSecondaryMeasurement } = createFakeDeps({
+        getSecondaryDeviceName: () => '',
+        getPersistedSecondaryDeviceName: () => 'MOTU M2',
+      });
+      const store = createAnalyzeEntryStore(deps);
+
+      await store.getState().listenLive();
+
+      expect(openSettingsAudio).not.toHaveBeenCalled();
+      expect(adoptSecondaryDeviceName).toHaveBeenCalledWith('MOTU M2');
+      expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
+      const adoptOrder = adoptSecondaryDeviceName.mock.invocationCallOrder[0];
+      const startOrder = startSecondaryMeasurement.mock.invocationCallOrder[0];
+      expect(adoptOrder).toBeLessThan(startOrder);
+      expect(store.getState().listening).toBe(true);
+      expect(store.getState().pendingListenAfterSettings).toBe(false);
+    });
+
+    it('listenLive() with a live name already set: never adopts, even if a different name is persisted', async () => {
+      const { deps, adoptSecondaryDeviceName } = createFakeDeps({
+        getSecondaryDeviceName: () => 'MOTU M2',
+        getPersistedSecondaryDeviceName: () => 'Some Other Mic',
+      });
+      const store = createAnalyzeEntryStore(deps);
+
+      await store.getState().listenLive();
+
+      expect(adoptSecondaryDeviceName).not.toHaveBeenCalled();
+    });
+
+    it('listenLive() with both live and persisted empty: opens Settings once, adopts and starts nothing', async () => {
+      const { deps, openSettingsAudio, adoptSecondaryDeviceName, startSecondaryMeasurement } = createFakeDeps({
+        getSecondaryDeviceName: () => '',
+        getPersistedSecondaryDeviceName: () => '',
+      });
+      const store = createAnalyzeEntryStore(deps);
+
+      await store.getState().listenLive();
+
+      expect(openSettingsAudio).toHaveBeenCalledTimes(1);
+      expect(adoptSecondaryDeviceName).not.toHaveBeenCalled();
+      expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+      expect(store.getState().pendingListenAfterSettings).toBe(true);
+    });
+
+    it('enterAnalyze() with live empty and a persisted name: starts listening directly, dialog stays closed', async () => {
+      const { deps } = createFakeDeps({
+        getSecondaryDeviceName: () => '',
+        getPersistedSecondaryDeviceName: () => 'MOTU M2',
+      });
+      const store = createAnalyzeEntryStore(deps);
+
+      await store.getState().enterAnalyze();
+
+      expect(store.getState().dialogOpen).toBe(false);
+      expect(store.getState().listening).toBe(true);
+    });
+
+    it('enterAnalyze() with both live and persisted empty: opens the dialog', async () => {
+      const { deps } = createFakeDeps({
+        getSecondaryDeviceName: () => '',
+        getPersistedSecondaryDeviceName: () => '',
+      });
+      const store = createAnalyzeEntryStore(deps);
+
+      await store.getState().enterAnalyze();
+
+      expect(store.getState().dialogOpen).toBe(true);
+      expect(store.getState().listening).toBe(false);
     });
   });
 

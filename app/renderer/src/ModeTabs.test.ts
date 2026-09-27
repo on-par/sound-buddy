@@ -260,6 +260,8 @@ describe('ModeTabs Listen live wiring (#1485)', () => {
       openSettingsAudio,
       analyzeFilePath: vi.fn(async () => {}),
       getSecondaryInputCount: () => 1,
+      getPersistedSecondaryDeviceName: () => '',
+      adoptSecondaryDeviceName: vi.fn(),
     };
     const store = createAnalyzeEntryStore(deps);
     await store.getState().enterAnalyze();
