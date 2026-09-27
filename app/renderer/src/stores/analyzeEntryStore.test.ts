@@ -671,6 +671,52 @@ describe('createAnalyzeEntryStore (#1468)', () => {
     });
   });
 
+  // #1620: pins listenLive()'s existing contract under the name mode-switch.ts's
+  // maybeAutoListenAnalyzeHome() relies on as the cold-boot auto-listen seam —
+  // it starts the measurement and never opens the entry dialog or Settings.
+  describe('listenLive() as the cold-boot auto-listen seam (#1620)', () => {
+    it('auto-listen: a configured in-memory device starts the measurement without opening the dialog or Settings', async () => {
+      const { deps, startSecondaryMeasurement, openSettingsAudio, adoptSecondaryDeviceName } = createFakeDeps({
+        getSecondaryDeviceName: () => 'UMIK-1',
+      });
+      const store = createAnalyzeEntryStore(deps);
+
+      await store.getState().listenLive();
+
+      expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
+      expect(store.getState().listening).toBe(true);
+      expect(store.getState().analyzeStage).toBe(true);
+      expect(store.getState().dialogOpen).toBe(false);
+      expect(openSettingsAudio).not.toHaveBeenCalled();
+      expect(adoptSecondaryDeviceName).not.toHaveBeenCalled();
+    });
+
+    it('auto-listen: a persisted-only device adopts the name and starts the measurement without opening Settings', async () => {
+      const { deps, startSecondaryMeasurement, openSettingsAudio, adoptSecondaryDeviceName } = createFakeDeps({
+        getSecondaryDeviceName: () => '',
+        getPersistedSecondaryDeviceName: () => 'UMIK-1',
+      });
+      const store = createAnalyzeEntryStore(deps);
+
+      await store.getState().listenLive();
+
+      expect(adoptSecondaryDeviceName).toHaveBeenCalledWith('UMIK-1');
+      expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
+      expect(store.getState().dialogOpen).toBe(false);
+      expect(openSettingsAudio).not.toHaveBeenCalled();
+    });
+
+    it('auto-listen: never flips dialogOpen to true for a configured device', async () => {
+      const { deps } = createFakeDeps({ getSecondaryDeviceName: () => 'UMIK-1' });
+      const store = createAnalyzeEntryStore(deps);
+      expect(store.getState().dialogOpen).toBe(false);
+
+      await store.getState().listenLive();
+
+      expect(store.getState().dialogOpen).toBe(false);
+    });
+  });
+
   describe('analyzeDroppedFile() (#1522)', () => {
     it('while listening: stops the measurement before analyzing the dropped path, in order', async () => {
       const { deps, stopSecondaryMeasurement, analyzeFilePath } = createFakeDeps({

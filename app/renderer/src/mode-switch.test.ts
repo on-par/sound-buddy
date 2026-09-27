@@ -39,10 +39,19 @@ import { loadHistoryEntry } from './RecentServicesPanel';
 import { createOnboardingStore, type OnboardingApi } from './stores/onboardingStore';
 import type { AppSettings, AnalysisSummary } from '../../electron/ipc/api';
 import { ALL_FEATURE_FLAGS_OFF, resolveFeatureFlags } from '../../electron/feature-flags';
+import type { EqPaneRoomOverride, LiveMeterChannel } from './live-capture-panel';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const ALL_FEATURE_FLAGS_ON = resolveFeatureFlags({ SOUND_BUDDY_FEATURES: 'all' });
+
+// #1620: mirrors analyze-live-eq.test.ts's OVERRIDE fixture, for the
+// cold-boot auto-listen test that asserts a 'room' view once active.
+const OVERRIDE_CHANNEL: LiveMeterChannel = {
+  name: 'Room', rms: -30, peak: -12, clipping: false, centroid: 1000,
+  bands: { sub_bass: -40, bass: -34, low_mid: -28, mid: -24, high_mid: -32, presence: -44, brilliance: -60 },
+};
+const OVERRIDE: EqPaneRoomOverride = { ch: OVERRIDE_CHANNEL, label: 'UMIK-1' };
 
 // #1619: loadHistoryEntry's clear path calls resetLapCoaching (store-owned
 // coaching state, TD-001 slice 6g #710) — the classic script it reads off
@@ -1598,5 +1607,104 @@ describe('cold Analyze home with no secondary device (#1618)', () => {
     expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
     expect(analyzeModeOf(useAnalyzeEntryStore.getState().listening)).toBe('file');
     expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'noDevice' });
+  });
+});
+
+// #1620: mirrors #1618's real two-phase cold boot, but with a configured
+// secondary device — in-memory, persisted-only, or both — closing the gap
+// where maybeAutoListenAnalyzeHome only read the in-memory name and missed a
+// persisted-only device (#1604's "configured" is in-memory OR persisted).
+// Every `it` title contains "auto-listen".
+describe('cold Analyze home auto-listen with a configured device (#1620)', () => {
+  let enterAnalyze: ReturnType<typeof vi.fn>;
+  let open: ReturnType<typeof vi.fn>;
+  let listenLive: ReturnType<typeof vi.fn>;
+  let startSecondaryMeasurement: ReturnType<typeof vi.fn>;
+  let openDialog: ReturnType<typeof vi.fn>;
+  let logSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    enterAnalyze = vi.spyOn(useAnalyzeEntryStore.getState(), 'enterAnalyze');
+    open = vi.spyOn(useAnalyzeEntryStore.getState(), 'open');
+    listenLive = vi.spyOn(useAnalyzeEntryStore.getState(), 'listenLive');
+    startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
+      .mockResolvedValue(undefined);
+    openDialog = vi.spyOn(useSettingsStore.getState(), 'openDialog');
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  async function coldBoot(
+    lastAppMode: AppSettings['lastAppMode'] | undefined,
+    inMemoryName: string,
+    persistedName: string,
+  ) {
+    useSettingsStore.setState({ settings: settings({ lastAppMode, measurementDeviceName: persistedName }) });
+    useLiveCaptureStore.setState({ secondaryMeasurement: { status: 'off', deviceName: inMemoryName } });
+    applyInitialMode('analyze');
+    await restoreBootMode({
+      hydration: Promise.resolve(),
+      getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+      getCurrentMode: () => useLiveCaptureStore.getState().appMode,
+      getSettings: () => useSettingsStore.getState().settings,
+    });
+  }
+
+  it('auto-listen: cold boot with a configured in-memory device starts listening without the entry dialog', async () => {
+    await coldBoot('analyze', 'UMIK-1', 'UMIK-1');
+
+    expect(listenLive).toHaveBeenCalledTimes(1);
+    expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
+    expect(enterAnalyze).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+    expect(openDialog).not.toHaveBeenCalled();
+    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
+    expect(useAnalyzeEntryStore.getState().listening).toBe(true);
+    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+    expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'startListening' });
+  });
+
+  it('auto-listen: cold boot with only a persisted device name still starts listening and adopts the name', async () => {
+    await coldBoot('analyze', '', 'UMIK-1');
+
+    expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
+    expect(useAnalyzeEntryStore.getState().listening).toBe(true);
+    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
+    expect(openDialog).not.toHaveBeenCalled();
+    expect(useLiveCaptureStore.getState().secondaryMeasurement.deviceName).toBe('UMIK-1');
+    expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'startListening' });
+  });
+
+  it('auto-listen: analyzeLiveEqView returns the live kind, not file, after a configured cold boot', async () => {
+    await coldBoot('analyze', 'UMIK-1', 'UMIK-1');
+
+    const entry = useAnalyzeEntryStore.getState();
+    const live = useLiveCaptureStore.getState();
+    const notice = analyzeLiveEqView({
+      listening: entry.listening,
+      analyzeStage: entry.analyzeStage,
+      appMode: live.appMode,
+      secondary: live.secondaryMeasurement,
+      override: null,
+    });
+    expect(notice.kind).not.toBe('file');
+    expect(notice.kind).not.toBe('hidden');
+    expect(notice.kind).toBe('notice');
+
+    useLiveCaptureStore.setState({ secondaryMeasurement: { status: 'active', deviceName: 'UMIK-1' } });
+    const room = analyzeLiveEqView({
+      listening: useAnalyzeEntryStore.getState().listening,
+      analyzeStage: useAnalyzeEntryStore.getState().analyzeStage,
+      appMode: useLiveCaptureStore.getState().appMode,
+      secondary: useLiveCaptureStore.getState().secondaryMeasurement,
+      override: OVERRIDE,
+    });
+    expect(room.kind).toBe('room');
+  });
+
+  it('auto-listen: fresh install (no lastAppMode) with a configured device starts listening', async () => {
+    await coldBoot(undefined, 'UMIK-1', 'UMIK-1');
+
+    expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
+    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
   });
 });
