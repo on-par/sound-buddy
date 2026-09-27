@@ -337,9 +337,9 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         await m.appear()
         try deliver(SpectrumReading(bands: .silent, rtaDb: [-40], overallDb: -18.43))
         #expect(m.overallDb == -18.43, "dBFS is unchanged")
-        #expect(abs(m.overallSplDb! - 96.57) < 1e-9)
-        #expect(m.overallLevelText == "96.6 dB")
-        #expect(m.overallLevelNumberText == "96.6")
+        #expect(abs(m.overallSplDb! - 84.57) < 1e-9)
+        #expect(m.overallLevelText == "84.6 dB")
+        #expect(m.overallLevelNumberText == "84.6")
         clock.advance(AnalyzeModel.coachingRefreshSeconds / 2)
         try deliver(SpectrumReading(bands: .silent, rtaDb: [-40], overallDb: -30.1))
         #expect(m.overallDb == -30.1, "the meter updates every reading, not just at the coaching cadence")
@@ -1058,11 +1058,11 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
 @MainActor
 @Suite struct EstimatedSplTests {
     @Test func offsetIsTheDocumentedConstant() {
-        #expect(AnalyzeModel.phoneMicSplOffsetDb == 115.0)
+        #expect(AnalyzeModel.phoneMicSplOffsetDb == 103.0)
     }
 
     @Test func addsTheOffsetToADbfsReading() {
-        #expect(abs(AnalyzeModel.estimatedSpl(fromDbfs: -25.4)! - 89.6) < 1e-9)
+        #expect(abs(AnalyzeModel.estimatedSpl(fromDbfs: -25.4)! - 77.6) < 1e-9)
     }
 
     @Test(arguments: [nil, Double.nan, -Double.infinity] as [Double?])
