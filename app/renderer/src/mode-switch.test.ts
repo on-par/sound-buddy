@@ -35,10 +35,19 @@ import { useAnalyzeEntryStore } from './stores/analyzeEntryStore';
 import { spectrumTransport } from './spectrum-transport';
 import { createMockSoundBuddy } from './mock-sound-buddy';
 import { ALL_TAB_MODES } from './simple-mode';
-import type { AppSettings } from '../../electron/ipc/api';
+import { loadHistoryEntry } from './RecentServicesPanel';
+import { createOnboardingStore, type OnboardingApi } from './stores/onboardingStore';
+import type { AppSettings, AnalysisSummary } from '../../electron/ipc/api';
 import { ALL_FEATURE_FLAGS_OFF, resolveFeatureFlags } from '../../electron/feature-flags';
+import * as fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const ALL_FEATURE_FLAGS_ON = resolveFeatureFlags({ SOUND_BUDDY_FEATURES: 'all' });
+
+// #1619: loadHistoryEntry's clear path calls resetLapCoaching (store-owned
+// coaching state, TD-001 slice 6g #710) — the classic script it reads off
+// window, same require as RecentServicesPanel.test.ts.
+const liveAdjustmentsState = require('../live-adjustments-state.js');
 
 function makeClassList() {
   const classes = new Set<string>();
@@ -76,6 +85,8 @@ const REAL_START_CAPTURE = useLiveCaptureStore.getState().startCapture;
 // Same zustand set-forwarding gotcha as REAL_START_CAPTURE above, for #1577's
 // secondary-measurement auto-listen tests.
 const REAL_START_SECONDARY_MEASUREMENT = useLiveCaptureStore.getState().startSecondaryMeasurement;
+// Same gotcha, for #1619's onboarding redirect tests, which stub startAnalysis.
+const REAL_START_ANALYSIS = useAnalysisStore.getState().startAnalysis;
 
 beforeEach(() => {
   elements = {
@@ -107,6 +118,9 @@ beforeEach(() => {
       onCaptureStarting: vi.fn(),
       onCaptureStarted: vi.fn(),
     },
+    // #1619: loadHistoryEntry's clear path calls resetLapCoaching, which
+    // reads this classic-script global (same require as RecentServicesPanel.test.ts).
+    liveAdjustmentsState,
   };
 });
 
@@ -121,7 +135,10 @@ afterEach(() => {
   });
   useRigStore.setState({ activeRigId: null });
   useSettingsStore.setState({ settings: null, settingsError: null, featureFlags: ALL_FEATURE_FLAGS_OFF });
-  useAnalysisStore.setState({ currentAnalysis: null });
+  useAnalysisStore.setState({
+    currentAnalysis: null, startAnalysis: REAL_START_ANALYSIS, historySummary: null,
+    selectedFilePath: null, prevSummary: null,
+  });
   useAnalyzeEntryStore.setState({ analyzeStage: false, listening: false, dialogOpen: false });
 });
 
@@ -960,6 +977,137 @@ describe('silent showAnalyzeStage redirects (#1579)', () => {
     openReportCard();
 
     expectSilent();
+  });
+
+  // #1619: the flag-off redirect's openReportCard() variant — the direct
+  // switchMode('reportcard') call above already pins the flag-off path, but
+  // openReportCard() is the other real caller (#1508) and had no dedicated
+  // flag-off case yet.
+  it('flag-off Report Card redirect via openReportCard() stays silent', () => {
+    useSettingsStore.setState({
+      settings: settings({ advancedFeaturesEnabled: true }),
+      featureFlags: ALL_FEATURE_FLAGS_OFF,
+    });
+    useLiveCaptureStore.setState({ appMode: 'recent', secondaryMeasurement: { status: 'off', deviceName: 'UMIK-1' } });
+
+    openReportCard();
+
+    expectSilent();
+  });
+
+  // #1619: the REAL History caller — #1579 above only exercises
+  // showAnalyzeStage() directly as a stand-in. RecentServicesPanel's row
+  // click calls loadHistoryEntry(), which does its own store writes before
+  // landing on showAnalyzeStage(); this proves that real route stays silent
+  // too, and that it actually ran (not just a vacuous pass) via the
+  // historySummary assertion.
+  it('History route: loadHistoryEntry() stays silent with a configured measurement device', () => {
+    const summary: AnalysisSummary = {
+      date: '2026-08-01T12:00:00Z', sourceFilename: 'sunday.wav', gradeLetter: 'A', score: 95,
+      recordingType: 'Full Mix', topFixes: [],
+    };
+
+    loadHistoryEntry(summary, null);
+
+    expectSilent();
+    expect(useAnalysisStore.getState().historySummary).toEqual(summary);
+  });
+
+  // #1619: the REAL onboarding caller — createOnboardingStore(getApi)'s
+  // runFirstAnalysis, exercised on both its demo and no-demo (file-picker
+  // fallback) branches. Neither branch may consult the auto-listen decision.
+  describe('onboarding redirect (runFirstAnalysis)', () => {
+    function onboardingApi(overrides: Partial<OnboardingApi> = {}): OnboardingApi {
+      return {
+        isOnboardingDisabled: vi.fn().mockResolvedValue(false),
+        getDemoAudio: vi.fn().mockResolvedValue('/demo/first-run.wav'),
+        openFileDialog: vi.fn().mockResolvedValue(null),
+        ...overrides,
+      };
+    }
+
+    it('runFirstAnalysis with the bundled demo stays silent', async () => {
+      useAnalysisStore.setState({ startAnalysis: vi.fn().mockResolvedValue(undefined) });
+      const store = createOnboardingStore(() => onboardingApi());
+
+      await store.getState().runFirstAnalysis();
+
+      expectSilent();
+      expect(useAnalysisStore.getState().selectedFilePath).toBe('/demo/first-run.wav');
+    });
+
+    it('runFirstAnalysis with no bundled demo (file-picker fallback) stays silent', async () => {
+      useAnalysisStore.setState({ startAnalysis: vi.fn().mockResolvedValue(undefined) });
+      const openFileDialog = vi.fn().mockResolvedValue(null);
+      const store = createOnboardingStore(() => onboardingApi({ getDemoAudio: vi.fn().mockResolvedValue(null), openFileDialog }));
+
+      await store.getState().runFirstAnalysis();
+
+      expectSilent();
+      expect(openFileDialog).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // #1619: static guard keeping the auto-listen call site (and the decision
+  // helper it consults) unique, so a future redirect can't silently re-wire
+  // itself onto the cold-boot auto-listen path without this suite going red.
+  it('redirect guard: maybeAutoListenAnalyzeHome is called only from restoreBootMode and decideAnalyzeHomeAutoListen only from mode-switch.ts', () => {
+    const srcDir = fileURLToPath(new URL('.', import.meta.url));
+
+    function listRendererSources(dir: string): string[] {
+      const out: string[] = [];
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === 'node_modules') continue;
+        const full = `${dir}/${entry.name}`;
+        if (entry.isDirectory()) {
+          out.push(...listRendererSources(full));
+        } else if (/\.(ts|tsx|js)$/.test(entry.name) && !/\.test\.(ts|tsx|js)$/.test(entry.name)) {
+          out.push(full);
+        }
+      }
+      return out;
+    }
+
+    const files = listRendererSources(srcDir);
+    const modeSwitchFile = files.find((f) => f.endsWith('/mode-switch.ts'));
+    if (!modeSwitchFile) throw new Error('mode-switch.ts not found under renderer src');
+    const modeSwitchSrc = fs.readFileSync(modeSwitchFile, 'utf8');
+
+    // Auto-listen call sites: exactly one, and it lives in mode-switch.ts.
+    let callSiteCount = 0;
+    let callSiteFile = '';
+    let callSiteIndexInModeSwitch = -1;
+    for (const file of files) {
+      const src = file === modeSwitchFile ? modeSwitchSrc : fs.readFileSync(file, 'utf8');
+      const matches = src.match(/\bmaybeAutoListenAnalyzeHome\(\)/g) ?? [];
+      // Exclude the function's own definition site.
+      const defMarker = 'function maybeAutoListenAnalyzeHome()';
+      const defIdx = src.indexOf(defMarker);
+      const callCount = defIdx === -1 ? matches.length : matches.length - 1;
+      if (callCount <= 0) continue;
+      callSiteCount += callCount;
+      callSiteFile = file;
+      if (file === modeSwitchFile) {
+        callSiteIndexInModeSwitch = src.indexOf('maybeAutoListenAnalyzeHome()', defIdx + defMarker.length);
+      }
+    }
+    expect(callSiteCount).toBe(1);
+    expect(callSiteFile).toBe(modeSwitchFile);
+
+    // The call must fall inside restoreBootMode, the last function in the file.
+    const restoreBootModeStart = modeSwitchSrc.indexOf('export async function restoreBootMode(');
+    expect(restoreBootModeStart).toBeGreaterThan(-1);
+    expect(callSiteIndexInModeSwitch).toBeGreaterThan(restoreBootModeStart);
+
+    // decideAnalyzeHomeAutoListen is referenced by no non-test renderer module
+    // other than analyze-entry.ts (its definition) and mode-switch.ts (its
+    // one consumer).
+    const referencingFiles = files.filter((file) => {
+      const src = file === modeSwitchFile ? modeSwitchSrc : fs.readFileSync(file, 'utf8');
+      return src.includes('decideAnalyzeHomeAutoListen');
+    });
+    const referencingBasenames = referencingFiles.map((f) => f.slice(f.lastIndexOf('/') + 1)).sort();
+    expect(referencingBasenames).toEqual(['analyze-entry.ts', 'mode-switch.ts']);
   });
 
   it("restoreBootMode's restored-analyze redirect stays silent", async () => {
