@@ -81,7 +81,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
   it('renders the room-mic EQ as the primary section once listening and connected', () => {
     useAnalyzeEntryStore.setState({ listening: true });
     useLiveCaptureStore.setState({
-      appMode: 'reportcard',
+      appMode: 'analyze',
       secondaryMeasurement: { status: 'active', deviceName: 'MacBook Pro Microphone' },
       lastMeasurementChannels: [ROOM_CH],
     });
@@ -110,7 +110,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
   it('never renders LiveEqPane\'s docked-pane markup (AC2 — no reuse of the Session pane)', () => {
     useAnalyzeEntryStore.setState({ listening: true });
     useLiveCaptureStore.setState({
-      appMode: 'reportcard',
+      appMode: 'analyze',
       secondaryMeasurement: { status: 'active', deviceName: 'MacBook Pro Microphone' },
       lastMeasurementChannels: [ROOM_CH],
     });
@@ -121,7 +121,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
   it('honestly reflects DISCONNECTED instead of freezing on the last reading (AC3)', () => {
     useAnalyzeEntryStore.setState({ listening: true });
     useLiveCaptureStore.setState({
-      appMode: 'reportcard',
+      appMode: 'analyze',
       secondaryMeasurement: { status: 'disconnected', deviceName: 'MacBook Pro Microphone' },
       lastMeasurementChannels: [ROOM_CH],
     });
@@ -135,7 +135,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
   it('still offers a Stop listening control while showing a notice', () => {
     useAnalyzeEntryStore.setState({ listening: true });
     useLiveCaptureStore.setState({
-      appMode: 'reportcard',
+      appMode: 'analyze',
       secondaryMeasurement: { status: 'starting', deviceName: 'MacBook Pro Microphone' },
     });
 
@@ -146,7 +146,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
     it('draws the overlay and a legend naming the active profile', () => {
       useAnalyzeEntryStore.setState({ listening: true });
       useLiveCaptureStore.setState({
-        appMode: 'reportcard',
+        appMode: 'analyze',
         secondaryMeasurement: { status: 'active', deviceName: 'MacBook Pro Microphone' },
         lastMeasurementChannels: [GRID_ROOM_CH],
       });
@@ -162,7 +162,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
     it('draws neither the overlay nor the legend when no profile is active', () => {
       useAnalyzeEntryStore.setState({ listening: true });
       useLiveCaptureStore.setState({
-        appMode: 'reportcard',
+        appMode: 'analyze',
         secondaryMeasurement: { status: 'active', deviceName: 'MacBook Pro Microphone' },
         lastMeasurementChannels: [GRID_ROOM_CH],
       });
@@ -177,7 +177,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
     it('re-renders a different overlay path when the selected profile changes (AC3)', () => {
       useAnalyzeEntryStore.setState({ listening: true });
       useLiveCaptureStore.setState({
-        appMode: 'reportcard',
+        appMode: 'analyze',
         secondaryMeasurement: { status: 'active', deviceName: 'MacBook Pro Microphone' },
         lastMeasurementChannels: [GRID_ROOM_CH],
       });
@@ -196,7 +196,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
     it('suffixes the legend with " (auto)" when the profile was auto-resolved', () => {
       useAnalyzeEntryStore.setState({ listening: true });
       useLiveCaptureStore.setState({
-        appMode: 'reportcard',
+        appMode: 'analyze',
         secondaryMeasurement: { status: 'active', deviceName: 'MacBook Pro Microphone' },
         lastMeasurementChannels: [GRID_ROOM_CH],
       });
@@ -208,7 +208,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
     it('still names the active profile in the legend when the channel only has the 7-band fallback curve', () => {
       useAnalyzeEntryStore.setState({ listening: true });
       useLiveCaptureStore.setState({
-        appMode: 'reportcard',
+        appMode: 'analyze',
         secondaryMeasurement: { status: 'active', deviceName: 'MacBook Pro Microphone' },
         lastMeasurementChannels: [ROOM_CH],
       });
@@ -227,7 +227,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
     it('renders the results rail alongside the room EQ while listening', () => {
       useAnalyzeEntryStore.setState({ listening: true });
       useLiveCaptureStore.setState({
-        appMode: 'reportcard',
+        appMode: 'analyze',
         secondaryMeasurement: { status: 'active', deviceName: 'MacBook Pro Microphone' },
         lastMeasurementChannels: [ROOM_CH],
       });
@@ -241,7 +241,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
     it('keeps the stage (and the rail) open once listening stops but the Analyze stage is still open', () => {
       useAnalyzeEntryStore.setState({ listening: false, analyzeStage: true });
       useLiveCaptureStore.setState({
-        appMode: 'reportcard',
+        appMode: 'analyze',
         secondaryMeasurement: { status: 'off', deviceName: '' },
         lastMeasurementChannels: null,
       });
@@ -256,7 +256,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
     it('drops the Stop listening control once listening has stopped, keeping Load file', () => {
       useAnalyzeEntryStore.setState({ listening: false, analyzeStage: true });
       useLiveCaptureStore.setState({
-        appMode: 'reportcard',
+        appMode: 'analyze',
         secondaryMeasurement: { status: 'off', deviceName: '' },
         lastMeasurementChannels: null,
       });
@@ -270,7 +270,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
     it('never duplicates a ReportCardIsland rc-* id — every rail id is arc-*', () => {
       useAnalyzeEntryStore.setState({ listening: false, analyzeStage: true });
       useLiveCaptureStore.setState({
-        appMode: 'reportcard',
+        appMode: 'analyze',
         secondaryMeasurement: { status: 'off', deviceName: '' },
         lastMeasurementChannels: null,
       });
@@ -284,7 +284,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
     it('while listening, the Live toggle is pressed and the dropzone is absent', () => {
       useAnalyzeEntryStore.setState({ listening: true, analyzeStage: true });
       useLiveCaptureStore.setState({
-        appMode: 'reportcard',
+        appMode: 'analyze',
         secondaryMeasurement: { status: 'active', deviceName: 'MacBook Pro Microphone' },
         lastMeasurementChannels: [ROOM_CH],
       });
@@ -299,7 +299,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
     it('while listening with 1 input, no channel picker is rendered', () => {
       useAnalyzeEntryStore.setState({ listening: true, analyzeStage: true, listenChannel: 0 });
       useLiveCaptureStore.setState({
-        appMode: 'reportcard',
+        appMode: 'analyze',
         secondaryMeasurement: { status: 'active', deviceName: 'MacBook Pro Microphone' },
         lastMeasurementChannels: [ROOM_CH],
         devices: [{ index: 0, name: 'MacBook Pro Microphone', channels: 1, default_sr: 48000 }],
@@ -313,7 +313,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
     it('with the stage open and not listening, the File toggle is pressed and the dropzone is present', () => {
       useAnalyzeEntryStore.setState({ listening: false, analyzeStage: true });
       useLiveCaptureStore.setState({
-        appMode: 'reportcard',
+        appMode: 'analyze',
         secondaryMeasurement: { status: 'off', deviceName: '' },
         lastMeasurementChannels: null,
       });
@@ -335,7 +335,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
     it('while listening with a multi-input device, renders a single <select> with one option per channel, no multiple', () => {
       useAnalyzeEntryStore.setState({ listening: true, analyzeStage: true, listenChannel: 0 });
       useLiveCaptureStore.setState({
-        appMode: 'reportcard',
+        appMode: 'analyze',
         secondaryMeasurement: { status: 'active', deviceName: 'Scarlett 18i20' },
         lastMeasurementChannels: [ROOM_CH],
         devices: [EIGHT_CH_DEVICE],
@@ -356,7 +356,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
     it('device with 1 channel: no picker even while listening', () => {
       useAnalyzeEntryStore.setState({ listening: true, analyzeStage: true, listenChannel: 0 });
       useLiveCaptureStore.setState({
-        appMode: 'reportcard',
+        appMode: 'analyze',
         secondaryMeasurement: { status: 'active', deviceName: 'MacBook Pro Microphone' },
         lastMeasurementChannels: [ROOM_CH],
         devices: [{ index: 0, name: 'MacBook Pro Microphone', channels: 1, default_sr: 48000 }],
@@ -368,7 +368,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
     it('not listening (file mode): no picker even with a multi-input device', () => {
       useAnalyzeEntryStore.setState({ listening: false, analyzeStage: true, listenChannel: 0 });
       useLiveCaptureStore.setState({
-        appMode: 'reportcard',
+        appMode: 'analyze',
         secondaryMeasurement: { status: 'off', deviceName: 'Scarlett 18i20' },
         lastMeasurementChannels: null,
         devices: [EIGHT_CH_DEVICE],
@@ -380,7 +380,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
     it('marks the option matching listenChannel as selected', () => {
       useAnalyzeEntryStore.setState({ listening: true, analyzeStage: true, listenChannel: 2 });
       useLiveCaptureStore.setState({
-        appMode: 'reportcard',
+        appMode: 'analyze',
         secondaryMeasurement: { status: 'active', deviceName: 'Scarlett 18i20' },
         lastMeasurementChannels: [ROOM_CH],
         devices: [EIGHT_CH_DEVICE],
