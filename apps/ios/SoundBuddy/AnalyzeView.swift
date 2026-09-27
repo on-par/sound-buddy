@@ -26,9 +26,11 @@ import UIKit
 /// While editing, problem markers hide and the landscape coaching peek stays
 /// closed, so neither overlay collides with the handles or the chip (#1562).
 ///
-/// A sun/moon chip beside the honesty badge toggles keep-awake (#1584): while
+/// A gear button beside the honesty badge (end of the landscape strip) opens
+/// the Settings sheet (#1591), whose one toggle is keep-awake (#1584): while
 /// on (the default, persisted) and the scene is active, auto-lock is off;
-/// leaving the foreground always restores it. KeepAwakePolicy decides.
+/// leaving the foreground always restores it. KeepAwakePolicy decides; this
+/// view owns the stored preference and applies it.
 ///
 /// TODO(ipad): the layout is single-column; switch the RTA and coaching
 /// stack side by side on a regular horizontal size class.
@@ -37,6 +39,7 @@ struct AnalyzeView: View {
     let keepAwake: KeepAwakeController
     @Environment(\.scenePhase) private var scenePhase
     @State private var coachingPeekOpen = false
+    @State private var settingsOpen = false
     @AppStorage(KeepAwakePolicy.defaultsKey) private var keepAwakeEnabled = KeepAwakePolicy.defaultValue
 
     var body: some View {
@@ -51,6 +54,9 @@ struct AnalyzeView: View {
         .padding(Layout.screenPadding)
         .background(Palette.background.ignoresSafeArea())
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $settingsOpen) {
+            SettingsView(keepAwakeEnabled: $keepAwakeEnabled)
+        }
         .task { await model.appear() }
         .onAppear { applyKeepAwake() }
         .onDisappear {
@@ -148,14 +154,14 @@ struct AnalyzeView: View {
             Spacer()
             OverallLevelReadout(model: model, font: .headline.monospacedDigit())
             HonestyBadge()
-            KeepAwakeToggle(isOn: $keepAwakeEnabled)
+            SettingsButton { settingsOpen = true }
         }
         .lineLimit(1)
     }
 
     /// Brand first: the Mac icon's mark and "Sound Buddy", with the Analyze
-    /// section label and listening status beneath; the level readout and the
-    /// honesty badge stay on the right.
+    /// section label and listening status beneath; the level readout, the
+    /// honesty badge, and the settings gear stay on the right.
     private var header: some View {
         HStack(alignment: .center, spacing: Layout.brandSpacing) {
             Image("BrandMark")
@@ -180,7 +186,7 @@ struct AnalyzeView: View {
                 OverallLevelReadout(model: model, font: .title2.weight(.bold).monospacedDigit())
                 HStack(spacing: Layout.indicatorSpacing) {
                     HonestyBadge()
-                    KeepAwakeToggle(isOn: $keepAwakeEnabled)
+                    SettingsButton { settingsOpen = true }
                 }
             }
         }
@@ -227,27 +233,60 @@ private struct HonestyBadge: View {
     }
 }
 
-/// Sun (keep awake, gold) / moon (normal auto-lock) chip beside the honesty
-/// badge (#1584). Tapping flips the persisted preference.
-private struct KeepAwakeToggle: View {
-    @Binding var isOn: Bool
+/// Gear chip beside the honesty badge that opens the Settings sheet (#1591).
+/// Shared by the portrait header and the landscape status strip.
+private struct SettingsButton: View {
+    let action: () -> Void
 
     var body: some View {
-        Button {
-            isOn.toggle()
-        } label: {
-            Image(systemName: KeepAwakePolicy.symbolName(keepAwake: isOn))
+        Button(action: action) {
+            Image(systemName: "gearshape")
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, Layout.badgePaddingH)
                 .padding(.vertical, Layout.badgePaddingV)
                 .background(Palette.surface, in: Capsule())
-                .foregroundStyle(isOn ? Palette.accent : Palette.secondaryText)
+                .foregroundStyle(Palette.secondaryText)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(KeepAwakePolicy.accessibilityLabel)
-        .accessibilityValue(KeepAwakePolicy.accessibilityValue(keepAwake: isOn))
-        .accessibilityHint("Stops the screen from locking while Analyze is open")
-        .accessibilityIdentifier("analyze.keepAwake")
+        .accessibilityLabel("Settings")
+        .accessibilityIdentifier("analyze.settings")
+    }
+}
+
+/// The Settings sheet (#1591): for now just the keep-awake preference
+/// (#1584). The binding is AnalyzeView's @AppStorage, so flipping it here
+/// re-applies keep-awake through AnalyzeView's onChange.
+private struct SettingsView: View {
+    @Binding var keepAwakeEnabled: Bool
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Toggle(KeepAwakePolicy.accessibilityLabel, isOn: $keepAwakeEnabled)
+                        .tint(Palette.accent)
+                        .accessibilityLabel(KeepAwakePolicy.accessibilityLabel)
+                        .accessibilityValue(KeepAwakePolicy.accessibilityValue(keepAwake: keepAwakeEnabled))
+                        .accessibilityIdentifier("settings.keepAwake")
+                } footer: {
+                    Text("Stops the screen from locking while Analyze is open. Auto-lock always returns when you leave the app.")
+                }
+                .listRowBackground(Palette.surface)
+            }
+            .scrollContentBackground(.hidden)
+            .background(Palette.background.ignoresSafeArea())
+            .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .foregroundStyle(Palette.accent)
+                        .accessibilityIdentifier("settings.done")
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
     }
 }
 
