@@ -29,6 +29,23 @@ export function resolveAnalyzeEntry(deviceName: string): AnalyzeEntryAction {
   return resolveListenLiveChoice(deviceName) === 'startListening' ? 'startListening' : 'openDialog';
 }
 
+// #1577: ADR-0146 amendment's one narrow auto-listen exception — post-hydration,
+// still on the unchanged boot-painted Analyze home, with a configured secondary
+// device. Deliberately narrower than resolveAnalyzeEntry: it never resolves to
+// 'openDialog' (a no-device cold boot must stay silent, not pop
+// AnalyzeEntryDialog), and it is a no-op once already listening.
+export interface AnalyzeHomeAutoListenInput {
+  currentMode: string;
+  deviceName: string;
+  listening: boolean;
+}
+
+export function decideAnalyzeHomeAutoListen(input: AnalyzeHomeAutoListenInput): boolean {
+  return input.currentMode === 'analyze'
+    && !input.listening
+    && resolveListenLiveChoice(input.deviceName) === 'startListening';
+}
+
 // #1522: the Analyze stage's mode is derived from listening, never a second
 // stored flag — a stored `analyzeMode` could disagree with `listening` (e.g.
 // after a Settings-side stop), which is exactly the Live/File corruption the

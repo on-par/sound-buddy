@@ -2,7 +2,13 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { describe, it, expect, vi } from 'vitest';
-import { resolveAnalyzeEntry, resolveListenLiveChoice, analyzeModeOf, droppedAudioPath } from './analyze-entry';
+import {
+  resolveAnalyzeEntry,
+  resolveListenLiveChoice,
+  analyzeModeOf,
+  droppedAudioPath,
+  decideAnalyzeHomeAutoListen,
+} from './analyze-entry';
 
 describe('resolveAnalyzeEntry (#1485)', () => {
   it('opens the dialog when no secondary measurement device is configured', () => {
@@ -38,6 +44,24 @@ describe('analyzeModeOf (#1522)', () => {
 
   it('is file while not listening', () => {
     expect(analyzeModeOf(false)).toBe('file');
+  });
+});
+
+describe('decideAnalyzeHomeAutoListen (#1577)', () => {
+  it('starts listening on the Analyze home with a configured device and not already listening', () => {
+    expect(decideAnalyzeHomeAutoListen({ currentMode: 'analyze', deviceName: 'UMIK-1', listening: false })).toBe(true);
+  });
+
+  it('does not start when no secondary device is configured', () => {
+    expect(decideAnalyzeHomeAutoListen({ currentMode: 'analyze', deviceName: '', listening: false })).toBe(false);
+  });
+
+  it('does not start when already listening', () => {
+    expect(decideAnalyzeHomeAutoListen({ currentMode: 'analyze', deviceName: 'UMIK-1', listening: true })).toBe(false);
+  });
+
+  it.each(['live', 'reportcard'])('does not start when the current mode is %s, not analyze', (currentMode) => {
+    expect(decideAnalyzeHomeAutoListen({ currentMode, deviceName: 'UMIK-1', listening: false })).toBe(false);
   });
 });
 

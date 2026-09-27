@@ -24,6 +24,7 @@ import { decideLiveAutoStart } from './live-auto-start';
 import { startLiveCapture, runtime } from './LiveControls';
 import { captureOptsFromCadence } from './measurement-device-state';
 import { clampBootMode, isModeFlagEnabled, isSimpleMode } from './simple-mode';
+import { decideAnalyzeHomeAutoListen } from './analyze-entry';
 import type { AppSettings } from '../../electron/ipc/api';
 
 export type WorkspaceMode = 'dir' | 'live' | 'console' | 'recent' | 'guide' | 'ringout' | 'reportcard';
@@ -143,6 +144,25 @@ export function maybeAutoStartLive(): void {
   if (live.liveMode !== 'monitor') useLiveCaptureStore.getState().setLiveMode('monitor');
   const opts = captureOptsFromCadence(live.windowSecs, live.meterIntervalMs);
   void startLiveCapture(runtime(), opts.windowSecs, opts.intervalSecs);
+}
+
+// #1577: the ADR-0146 amendment's one permitted auto-listen — invoked only
+// from restoreBootMode's tail, only while still on the boot-painted Analyze
+// home (never from showAnalyzeStage). Calls only listenLive() — never
+// enterAnalyze(), so a no-device cold boot never opens AnalyzeEntryDialog.
+// Always logs one 'analyze-auto-listen' line with the verdict, mirroring
+// maybeAutoStartLive's 'live-auto-start' diagnosability.
+export function maybeAutoListenAnalyzeHome(): void {
+  const live = useLiveCaptureStore.getState();
+  const entry = useAnalyzeEntryStore.getState();
+  const start = decideAnalyzeHomeAutoListen({
+    currentMode: live.appMode,
+    deviceName: live.secondaryMeasurement.deviceName,
+    listening: entry.listening,
+  });
+  console.log('analyze-auto-listen', { start });
+  if (!start) return;
+  void entry.listenLive();
 }
 
 // #1510: the non-interactive Analyze-stage opener used by boot's default
@@ -278,9 +298,11 @@ export interface RestoreBootModeDeps {
 // synchronous `applyInitialMode(initialMode)`. That first call paints the
 // hardcoded default (Analyze, #1510) immediately so first paint never blocks
 // on IPC; this restores the user's actual last-active mode (or, if it was
-// already Live, runs the auto-start decision) once hydration has settled —
-// never both, and never before hydration, so decideLiveAutoStart always sees
-// the real post-hydration rigStore/deviceHint state.
+// already Live, runs the auto-start decision; or, if it was already Analyze,
+// runs the #1577 auto-listen decision) once hydration has settled — never
+// more than one of these, and never before hydration, so decideLiveAutoStart
+// and decideAnalyzeHomeAutoListen always see the real post-hydration
+// rigStore/deviceHint/secondaryMeasurement state.
 export async function restoreBootMode(deps: RestoreBootModeDeps): Promise<void> {
   const bootMode = deps.getCurrentMode();
   await deps.hydration;
@@ -307,4 +329,5 @@ export async function restoreBootMode(deps: RestoreBootModeDeps): Promise<void> 
     return;
   }
   if (currentMode === 'live') maybeAutoStartLive();
+  else if (currentMode === 'analyze') maybeAutoListenAnalyzeHome();
 }

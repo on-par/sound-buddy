@@ -12,6 +12,7 @@ import {
   applySpectrumForMode,
   applySingleColumnSync,
   maybeAutoStartLive,
+  maybeAutoListenAnalyzeHome,
   restoreBootMode,
 } from './mode-switch';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
@@ -61,6 +62,9 @@ let mock: ReturnType<typeof createMockSoundBuddy>;
 // that snapshot. Force it back to the pristine action after every test
 // instead of relying on restoreAllMocks for this one store method.
 const REAL_START_CAPTURE = useLiveCaptureStore.getState().startCapture;
+// Same zustand set-forwarding gotcha as REAL_START_CAPTURE above, for #1577's
+// secondary-measurement auto-listen tests.
+const REAL_START_SECONDARY_MEASUREMENT = useLiveCaptureStore.getState().startSecondaryMeasurement;
 
 beforeEach(() => {
   elements = {
@@ -99,11 +103,15 @@ afterEach(() => {
   delete (globalThis as { document?: unknown }).document;
   delete (globalThis as { window?: unknown }).window;
   vi.restoreAllMocks();
-  useLiveCaptureStore.setState({ appMode: 'reportcard', isCapturing: false, liveMode: 'monitor', deviceHint: null, rigApplyNotice: null, startCapture: REAL_START_CAPTURE });
+  useLiveCaptureStore.setState({
+    appMode: 'reportcard', isCapturing: false, liveMode: 'monitor', deviceHint: null, rigApplyNotice: null,
+    startCapture: REAL_START_CAPTURE, startSecondaryMeasurement: REAL_START_SECONDARY_MEASUREMENT,
+    secondaryMeasurement: { status: 'off', deviceName: '' },
+  });
   useRigStore.setState({ activeRigId: null });
   useSettingsStore.setState({ settings: null, settingsError: null, featureFlags: ALL_FEATURE_FLAGS_OFF });
   useAnalysisStore.setState({ currentAnalysis: null });
-  useAnalyzeEntryStore.setState({ analyzeStage: false });
+  useAnalyzeEntryStore.setState({ analyzeStage: false, listening: false, dialogOpen: false });
 });
 
 function settings(overrides: Partial<AppSettings> = {}): AppSettings {
@@ -671,6 +679,57 @@ describe('maybeAutoStartLive', () => {
   });
 });
 
+describe('maybeAutoListenAnalyzeHome (#1577)', () => {
+  it('logs and starts listening when on the Analyze home with a configured device', () => {
+    useLiveCaptureStore.setState({ appMode: 'analyze', secondaryMeasurement: { status: 'off', deviceName: 'UMIK-1' } });
+    const startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
+      .mockResolvedValue(undefined);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    maybeAutoListenAnalyzeHome();
+
+    expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { start: true });
+    expect(useAnalyzeEntryStore.getState().listening).toBe(true);
+    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
+    expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs a skip and never opens the dialog when no device is configured', () => {
+    useLiveCaptureStore.setState({ appMode: 'analyze', secondaryMeasurement: { status: 'off', deviceName: '' } });
+    const startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
+      .mockResolvedValue(undefined);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    maybeAutoListenAnalyzeHome();
+
+    expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { start: false });
+    expect(useAnalyzeEntryStore.getState().listening).toBe(false);
+    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
+    expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+  });
+
+  it('does not start a second listen when already listening', () => {
+    useLiveCaptureStore.setState({ appMode: 'analyze', secondaryMeasurement: { status: 'active', deviceName: 'UMIK-1' } });
+    useAnalyzeEntryStore.setState({ listening: true });
+    const startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
+      .mockResolvedValue(undefined);
+
+    maybeAutoListenAnalyzeHome();
+
+    expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when the current mode is not analyze', () => {
+    useLiveCaptureStore.setState({ appMode: 'live', secondaryMeasurement: { status: 'off', deviceName: 'UMIK-1' } });
+    const startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
+      .mockResolvedValue(undefined);
+
+    maybeAutoListenAnalyzeHome();
+
+    expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+  });
+});
+
 describe('restoreBootMode', () => {
   it('awaits hydration before reading settings or rigStore state', async () => {
     let resolveHydration!: () => void;
@@ -857,5 +916,106 @@ describe('restoreBootMode', () => {
     });
 
     expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+  });
+
+  // #1577: ADR-0146 amendment's one permitted auto-listen — the tail branch
+  // runs only after the #1507 boot-mode-unchanged guard passes and only when
+  // no restore switch/redirect happened, landing squarely on the still-analyze
+  // boot home.
+  describe('configured-device auto-listen on the Analyze home (#1577)', () => {
+    it('starts listening when landed on analyze with a configured device', async () => {
+      useLiveCaptureStore.setState({ appMode: 'analyze', secondaryMeasurement: { status: 'off', deviceName: 'UMIK-1' } });
+      useSettingsStore.setState({ settings: settings({ lastAppMode: 'analyze' }) });
+      const startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
+        .mockResolvedValue(undefined);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await restoreBootMode({
+        hydration: Promise.resolve(),
+        getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+        getCurrentMode: () => useLiveCaptureStore.getState().appMode,
+        getSettings: () => useSettingsStore.getState().settings,
+      });
+
+      expect(useAnalyzeEntryStore.getState().listening).toBe(true);
+      expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
+      expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
+      expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { start: true });
+    });
+
+    it('does not start listening or open the dialog with no device configured', async () => {
+      useLiveCaptureStore.setState({ appMode: 'analyze', secondaryMeasurement: { status: 'off', deviceName: '' } });
+      useSettingsStore.setState({ settings: settings({ lastAppMode: 'analyze' }) });
+      const startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
+        .mockResolvedValue(undefined);
+      const openDialog = vi.spyOn(useSettingsStore.getState(), 'openDialog');
+
+      await restoreBootMode({
+        hydration: Promise.resolve(),
+        getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+        getCurrentMode: () => useLiveCaptureStore.getState().appMode,
+        getSettings: () => useSettingsStore.getState().settings,
+      });
+
+      expect(useAnalyzeEntryStore.getState().listening).toBe(false);
+      expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
+      expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+      expect(openDialog).not.toHaveBeenCalled();
+    });
+
+    it('does not start a second listen when Analyze is already listening', async () => {
+      useLiveCaptureStore.setState({ appMode: 'analyze', secondaryMeasurement: { status: 'active', deviceName: 'UMIK-1' } });
+      useAnalyzeEntryStore.setState({ listening: true });
+      useSettingsStore.setState({ settings: settings({ lastAppMode: 'analyze' }) });
+      const startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
+        .mockResolvedValue(undefined);
+
+      await restoreBootMode({
+        hydration: Promise.resolve(),
+        getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+        getCurrentMode: () => useLiveCaptureStore.getState().appMode,
+        getSettings: () => useSettingsStore.getState().settings,
+      });
+
+      expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+    });
+
+    it('does not auto-listen when the user navigated away before hydration settled (#1507)', async () => {
+      useLiveCaptureStore.setState({ appMode: 'analyze', secondaryMeasurement: { status: 'off', deviceName: 'UMIK-1' } });
+      useSettingsStore.setState({ settings: settings({ lastAppMode: 'analyze' }) });
+      const startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
+        .mockResolvedValue(undefined);
+      let resolveHydration!: () => void;
+      const hydration = new Promise<void>((resolve) => { resolveHydration = resolve; });
+
+      const done = restoreBootMode({
+        hydration,
+        getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+        getCurrentMode: () => useLiveCaptureStore.getState().appMode,
+        getSettings: () => useSettingsStore.getState().settings,
+      });
+      useLiveCaptureStore.setState({ appMode: 'live' });
+      resolveHydration();
+      await done;
+
+      expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+    });
+
+    it('does not auto-listen when restoreBootMode switches to another mode', async () => {
+      useLiveCaptureStore.setState({ appMode: 'analyze', secondaryMeasurement: { status: 'off', deviceName: 'UMIK-1' } });
+      useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: true, lastAppMode: 'live' }) });
+      const startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
+        .mockResolvedValue(undefined);
+
+      await restoreBootMode({
+        hydration: Promise.resolve(),
+        getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+        getCurrentMode: () => useLiveCaptureStore.getState().appMode,
+        getSettings: () => useSettingsStore.getState().settings,
+      });
+
+      expect(useLiveCaptureStore.getState().appMode).toBe('live');
+      expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+    });
   });
 });
