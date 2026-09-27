@@ -24,6 +24,17 @@ public struct MicInputOption: Equatable, Identifiable, Sendable {
     }
 }
 
+/// Why the audio route changed (#1601), reduced to what the picker cares
+/// about. The app maps AVAudioSession's route-change reason onto this.
+public enum MicRouteChange: Equatable, Sendable {
+    /// An input device went away (e.g. an external mic was unplugged).
+    case deviceRemoved
+    /// A new input device appeared.
+    case deviceAdded
+    /// Anything else: category, override, or our own re-route.
+    case other
+}
+
 /// The audio session behind the picker. The app's AVAudioSession adapter is
 /// the real one; tests inject a fake, so nothing here needs AVFoundation.
 @MainActor
@@ -58,6 +69,12 @@ public enum MicInputPolicy {
     public static func resolve(preferredID: String?, availableIDs: [String], systemDefaultID: String?) -> String? {
         if let preferredID, availableIDs.contains(preferredID) { return preferredID }
         return systemDefaultID
+    }
+
+    /// Only an input device coming or going re-routes capture (#1601); other
+    /// changes, including the ones capture itself causes, are left alone.
+    public static func shouldReroute(after change: MicRouteChange) -> Bool {
+        change != .other
     }
 
     public static func preferredID(in defaults: UserDefaults) -> String? {
@@ -158,5 +175,16 @@ public final class MicInputController {
             availableIDs: options.map(\.id),
             systemDefaultID: session.activeOptionID()
         )
+    }
+
+    /// An input device came or went (#1601). Re-routes the preference, or the
+    /// system default when the preferred device is gone (clearing the stored
+    /// id so Settings never shows a missing device), and returns true when
+    /// capture must restart on the new route rather than go silent.
+    @discardableResult
+    public func routeChanged(_ change: MicRouteChange) -> Bool {
+        guard MicInputPolicy.shouldReroute(after: change) else { return false }
+        applyPreferred()
+        return true
     }
 }
