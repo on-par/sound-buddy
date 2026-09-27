@@ -86,6 +86,14 @@ Capabilities**. The project sets no team on purpose.
     reshapes the curve from that new baseline and un-highlights the pill.
     Cancel restores the pre-edit target, and the RTA does not move when edit
     mode opens or closes.
+11. Play lopsided material until coaching cards and problem-marker pulses
+    appear, then tap the Target legend to enter edit mode. Drag a handle or
+    tap a preset pill: the coaching cards and pulses stop updating and hold
+    their last values, no matter how long you keep editing. Tap Done — the
+    cards refresh within about a second against the edited curve, and the
+    legend now reads "Target · Custom". Repeat and tap Cancel instead — the
+    cards refresh within about a second against the original curve, as if the
+    edit never happened.
 
 ## Tests
 
