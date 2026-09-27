@@ -80,6 +80,12 @@ Capabilities**. The project sets no team on purpose.
    Drag a handle past the top or bottom of the grid — it stops exactly at the
    ceiling or floor line rather than leaving the plot. Cancel or Done puts the
    legend back, returns the line to dashed, and hides the handles.
+10. While still in edit mode, a row of **Flat / Music fullrange / Worship
+    service** pills sits under the chip. Tapping one snaps the solid target
+    line to that curve and highlights the pill. Dragging a handle afterwards
+    reshapes the curve from that new baseline and un-highlights the pill.
+    Cancel restores the pre-edit target, and the RTA does not move when edit
+    mode opens or closes.
 
 ## Tests
 
