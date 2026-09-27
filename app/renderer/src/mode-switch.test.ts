@@ -25,7 +25,7 @@ import {
   restoreBootMode,
 } from './mode-switch';
 import { analyzeLiveEqView } from './analyze-live-eq';
-import { decideAnalyzeHomeAutoListen } from './analyze-entry';
+import { decideAnalyzeHomeAutoListen, analyzeModeOf } from './analyze-entry';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useRigStore } from './stores/rigStore';
 import { useSettingsStore } from './stores/settingsStore';
@@ -1378,5 +1378,77 @@ describe('restoreBootMode', () => {
       expect(useLiveCaptureStore.getState().appMode).toBe('live');
       expect(startSecondaryMeasurement).not.toHaveBeenCalled();
     });
+  });
+});
+
+// #1618: pins the real two-phase cold boot (applyInitialMode('analyze') then
+// restoreBootMode) with no secondary device configured — the exact path
+// #1577/#1578 already guard piecemeal, but nothing before this ran the two
+// calls together while spying on every dialog/listen entry point
+// (enterAnalyze, open, listenLive, startSecondaryMeasurement,
+// settingsStore.openDialog). Every `it` title contains "no secondary device"
+// to match the issue's own `-t "no secondary device"` verification filter.
+describe('cold Analyze home with no secondary device (#1618)', () => {
+  let enterAnalyze: ReturnType<typeof vi.fn>;
+  let open: ReturnType<typeof vi.fn>;
+  let listenLive: ReturnType<typeof vi.fn>;
+  let startSecondaryMeasurement: ReturnType<typeof vi.fn>;
+  let openDialog: ReturnType<typeof vi.fn>;
+  let logSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    enterAnalyze = vi.spyOn(useAnalyzeEntryStore.getState(), 'enterAnalyze');
+    open = vi.spyOn(useAnalyzeEntryStore.getState(), 'open');
+    listenLive = vi.spyOn(useAnalyzeEntryStore.getState(), 'listenLive');
+    startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
+      .mockResolvedValue(undefined);
+    openDialog = vi.spyOn(useSettingsStore.getState(), 'openDialog');
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  async function coldBoot(lastAppMode: AppSettings['lastAppMode'] | undefined) {
+    useSettingsStore.setState({ settings: settings({ lastAppMode, measurementDeviceName: '' }) });
+    useLiveCaptureStore.setState({ secondaryMeasurement: { status: 'off', deviceName: '' } });
+    applyInitialMode('analyze');
+    await restoreBootMode({
+      hydration: Promise.resolve(),
+      getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+      getCurrentMode: () => useLiveCaptureStore.getState().appMode,
+      getSettings: () => useSettingsStore.getState().settings,
+    });
+  }
+
+  function expectNoDialogAndNoListen() {
+    expect(enterAnalyze).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+    expect(listenLive).not.toHaveBeenCalled();
+    expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+    expect(openDialog).not.toHaveBeenCalled();
+    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
+    expect(useAnalyzeEntryStore.getState().listening).toBe(false);
+  }
+
+  it('fresh install (no lastAppMode) with no secondary device: cold boot opens no dialog and starts no listen', async () => {
+    await coldBoot(undefined);
+
+    expectNoDialogAndNoListen();
+    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+  });
+
+  it('persisted analyze lastAppMode with no secondary device: cold boot opens no dialog and starts no listen', async () => {
+    await coldBoot('analyze');
+
+    expectNoDialogAndNoListen();
+    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+  });
+
+  it('no secondary device: cold boot preserves the non-modal File-mode stage', async () => {
+    await coldBoot('analyze');
+
+    expect(useAnalyzeEntryStore.getState().analyzeStage).toBe(true);
+    expect(useAnalyzeEntryStore.getState().listening).toBe(false);
+    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+    expect(analyzeModeOf(useAnalyzeEntryStore.getState().listening)).toBe('file');
+    expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'noDevice' });
   });
 });
