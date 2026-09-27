@@ -71,6 +71,9 @@ Capabilities**. The project sets no team on purpose.
    com.soundbuddy.ios` and relaunch. The screen tells you to turn access on in
    Settings and shows an **Open Settings** button. After you allow access and
    return, listening starts.
+9. Tap the Target legend (or the pencil). An **Editing target** chip with
+   Cancel and Done appears in the header, and the RTA stays on screen with no
+   new screen pushed. Cancel or Done returns the header to normal.
 
 ## Tests
 

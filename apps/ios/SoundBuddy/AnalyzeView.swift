@@ -14,7 +14,10 @@ import UIKit
 /// portrait: header + RTA + coaching; landscape: RTA-first with a coaching
 /// peek (#1548). AnalyzeLayout (SoundBuddyKit) decides portrait vs landscape
 /// and the peek state; this view only renders. Problem markers pulse on the
-/// RTA in both layouts (#1554).
+/// RTA in both layouts (#1554). Tapping the Target legend (or its pencil)
+/// enters an in-place target-edit mode: an "Editing target" chip with
+/// Cancel/Done replaces the listening indicator or legend, and the RTA stays
+/// on screen — no pushed view (#1558).
 ///
 /// TODO(ipad): the layout is single-column; switch the RTA and coaching
 /// stack side by side on a regular horizontal size class.
@@ -65,12 +68,19 @@ struct AnalyzeView: View {
             header
             VStack(alignment: .leading, spacing: Layout.legendSpacing) {
                 RTAView(model: model, showsProblemMarkers: AnalyzeLayout.portrait.showsProblemMarkers)
-                TargetLegend(text: model.targetLegendText)
+                TargetLegend(text: model.targetLegendText, onEdit: beginTargetEdit)
+                    .opacity(model.isEditingTarget ? 0 : 1)
+                    .allowsHitTesting(!model.isEditingTarget)
+                    .accessibilityHidden(model.isEditingTarget)
             }
             CoachingStackView(model: model)
             Spacer(minLength: 0)
             StatusMessageView(model: model)
         }
+    }
+
+    private func beginTargetEdit() {
+        withAnimation(.snappy) { model.beginTargetEdit() }
     }
 
     private func landscapeBody(proxy: GeometryProxy) -> some View {
@@ -93,8 +103,12 @@ struct AnalyzeView: View {
 
     private var landscapeStrip: some View {
         HStack(spacing: Layout.landscapeStripSpacing) {
-            ListeningIndicator(state: model.state)
-            TargetLegend(text: model.targetLegendText)
+            if model.isEditingTarget {
+                TargetEditChip(model: model)
+            } else {
+                ListeningIndicator(state: model.state)
+                TargetLegend(text: model.targetLegendText, onEdit: beginTargetEdit)
+            }
             Spacer()
             OverallLevelReadout(model: model, font: .headline.monospacedDigit())
             HonestyBadge()
@@ -107,7 +121,11 @@ struct AnalyzeView: View {
             VStack(alignment: .leading, spacing: Layout.headerSpacing) {
                 Text("Analyze")
                     .font(.largeTitle.weight(.bold))
-                ListeningIndicator(state: model.state)
+                if model.isEditingTarget {
+                    TargetEditChip(model: model)
+                } else {
+                    ListeningIndicator(state: model.state)
+                }
             }
             Spacer()
             VStack(alignment: .trailing, spacing: Layout.headerSpacing) {
@@ -235,23 +253,64 @@ private struct ListeningIndicator: View {
 // MARK: - Target legend
 
 /// A short dashed swatch plus "Target · <label> (auto)", under the RTA.
+/// Tapping the row (or its pencil) enters in-place target-edit mode (#1558).
 private struct TargetLegend: View {
     let text: String
+    let onEdit: () -> Void
 
     var body: some View {
-        HStack(spacing: Layout.legendSwatchGap) {
-            Path { path in
-                let midY = Layout.legendSwatchSize.height / 2
-                path.move(to: CGPoint(x: 0, y: midY))
-                path.addLine(to: CGPoint(x: Layout.legendSwatchSize.width, y: midY))
+        Button(action: onEdit) {
+            HStack(spacing: Layout.legendSwatchGap) {
+                Path { path in
+                    let midY = Layout.legendSwatchSize.height / 2
+                    path.move(to: CGPoint(x: 0, y: midY))
+                    path.addLine(to: CGPoint(x: Layout.legendSwatchSize.width, y: midY))
+                }
+                .stroke(Palette.target, style: StrokeStyle(lineWidth: Layout.legendSwatchLineWidth, dash: Layout.legendSwatchDash))
+                .frame(width: Layout.legendSwatchSize.width, height: Layout.legendSwatchSize.height)
+                Text(text)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Palette.secondaryText)
+                Image(systemName: "pencil")
+                    .font(.caption)
+                    .foregroundStyle(Palette.secondaryText)
             }
-            .stroke(Palette.target, style: StrokeStyle(lineWidth: Layout.legendSwatchLineWidth, dash: Layout.legendSwatchDash))
-            .frame(width: Layout.legendSwatchSize.width, height: Layout.legendSwatchSize.height)
-            Text(text)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Palette.secondaryText)
         }
+        .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
+        .accessibilityLabel(text)
+        .accessibilityHint("Edits the target curve")
+        .accessibilityIdentifier("analyze.targetLegend")
+    }
+}
+
+/// The "Editing target" chip (Cancel / Done) shown in place of the legend or
+/// listening indicator while `model.isEditingTarget` (#1558).
+private struct TargetEditChip: View {
+    let model: AnalyzeModel
+
+    var body: some View {
+        HStack(spacing: Layout.editChipSpacing) {
+            Label(TargetCurveEditor.chipTitle, systemImage: "pencil")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Palette.target)
+            Button("Cancel") {
+                withAnimation(.snappy) { model.cancelTargetEdit() }
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Palette.secondaryText)
+            .accessibilityIdentifier("analyze.targetEditChip.cancel")
+            Button("Done") {
+                withAnimation(.snappy) { model.commitTargetEdit() }
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Palette.accent)
+            .accessibilityIdentifier("analyze.targetEditChip.done")
+        }
+        .padding(.horizontal, Layout.editChipPaddingH)
+        .padding(.vertical, Layout.editChipPaddingV)
+        .background(Palette.surface, in: Capsule())
+        .accessibilityIdentifier("analyze.targetEditChip")
     }
 }
 
@@ -383,6 +442,9 @@ private enum Layout {
     static let legendSwatchSize = CGSize(width: 18, height: 8)
     static let legendSwatchLineWidth: CGFloat = 1.5
     static let legendSwatchDash: [CGFloat] = [3, 2]
+    static let editChipSpacing: CGFloat = 10
+    static let editChipPaddingH: CGFloat = 10
+    static let editChipPaddingV: CGFloat = 5
     static let landscapeSpacing: CGFloat = 8
     static let peekHandleHeight: CGFloat = 28
     static let peekDragMinDistance: CGFloat = 8
