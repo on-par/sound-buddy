@@ -1,6 +1,6 @@
 # 'analyze' is a landed appMode, and Simple-mode Report Card requests redirect to the Analyze stage inside switchMode
 
-- Status: Accepted (amended 2026-09-27, #1576 — see Amendment)
+- Status: Accepted (amended 2026-09-27, #1576 and #1587 — see Amendments)
 - Date: 2026-09-24
 
 ## Context
@@ -42,7 +42,7 @@ workspace-mode one. App.tsx's boot paint calls a new `applyInitialMode(mode)`, w
 `'analyze'` to `showAnalyzeStage({ boot: true })` and any `WorkspaceMode` to `switchMode(mode, { boot: true })`
 — the old `if (isWorkspaceMode(initialMode)) switchMode(...)` guard would have silently no-op'd on
 the new `'analyze'` initial value. The Analyze tab's own click still goes through `enterAnalyze()`
-and does not change `appMode`.
+and does not change `appMode`. *(Superseded for the tab click by the 2026-09-27 #1587 amendment below.)*
 
 ## Consequences
 
@@ -92,3 +92,35 @@ isolation (ADR-0141) is not affected.
 
 - [Issue #1576](https://github.com/on-par/sound-buddy/issues/1576)
 - [Issue #1574](https://github.com/on-par/sound-buddy/issues/1574)
+
+## Amendment (2026-09-27, #1587)
+
+Dogfood of #1575 showed that clicking the Analyze tab from Session leaves `appMode === 'live'`
+and `body.live-active` set. `analyzeLiveEqView` hides the Analyze island whenever
+`appMode === 'live'`, so the user lands on dead Session chrome, and "Listen live" from the entry
+dialog appears to bounce to Settings or menu. The Decision's rule that the Analyze tab click
+"does not change `appMode`" is the cause, and it is amended as follows:
+
+- **Permitted:** a user-initiated Analyze tab entry (`resolveModeSwitch`'s `analyzeEntry`
+  branch, from `ModeTabs.tsx`) may set `appMode` to `'analyze'` and leave the prior workspace:
+  it clears the workspace-mode body classes (`rc-active`, `live-active`,
+  `#reportcard-view.active`, every `.tab-content.active`) the same way `showAnalyzeStage()`
+  does, and only then applies the existing `enterAnalyze()` entry rule (listen live with a
+  configured secondary device, otherwise the entry dialog).
+- **Session → Analyze is a real mode transition** (`appMode` `'live'` → `'analyze'`), not a
+  stage overlay painted on top of `appMode: 'live'`. Returning to Session goes through
+  `switchMode('live')` as before, which sets `appMode` back to `'live'`. `analyzeLiveEqView`'s
+  `appMode === 'live'` hide gate is kept, so Session's docked `LiveEqPane` owns that screen again.
+- The Analyze tab still never reaches `switchMode()`, and `WorkspaceMode` is still not widened
+  to include `'analyze'`. The Context's rejection of that widening stands.
+
+**Unchanged:** this permission applies only to the user's Analyze tab click, which may start a
+listen or open the dialog because the user asked for Analyze. `showAnalyzeStage()` stays silent.
+Every redirect that goes through it also stays silent and is unaffected by this amendment:
+History (`loadHistoryEntry`), Report Card (`switchMode('reportcard')`'s Simple-mode redirect,
+`openReportCard`), onboarding (`runFirstAnalysis`), File > Open and the boot paint. None of them
+starts a listen or opens the entry dialog. The #1576 cold-boot auto-listen exception is also
+unchanged. Session's `LiveEqPane` isolation (ADR-0141) still holds: nothing is re-parented.
+
+- [Issue #1587](https://github.com/on-par/sound-buddy/issues/1587)
+- [Issue #1575](https://github.com/on-par/sound-buddy/issues/1575)
