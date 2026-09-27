@@ -19,6 +19,12 @@
 // seeds the in-memory name from settings while idle, so a user with a
 // configured room mic could otherwise still get bounced to the dialog/Settings
 // before that seed lands.
+//
+// #1605: finishes the Settings round trip #1589 started. A successful
+// resumePendingListen() now also closes the Settings dialog, so the Analyze
+// live RTA underneath is what the user actually sees. And closing Settings by
+// any path (Escape, close button, programmatic) clears the pending intent, so
+// an unrelated later device pick never hijacks an abandoned bounce.
 
 import { create } from 'zustand';
 import type { StoreApi, UseBoundStore } from 'zustand';
@@ -53,6 +59,13 @@ export interface AnalyzeEntryDeps {
   // starts, so startSecondaryMeasurement resolves a real device index instead
   // of landing on 'disconnected' with an empty in-memory name.
   adoptSecondaryDeviceName(name: string): void;
+  // #1605: dismisses the Settings dialog once a pending Listen-live bounce
+  // resumes, so the Analyze live RTA underneath is what the user sees.
+  closeSettingsDialog(): void;
+  // #1605: registers a listener fired each time the Settings dialog goes
+  // from open to closed (any path: Escape, close button, programmatic).
+  // Returns an unsubscribe function.
+  onSettingsDialogClosed(listener: () => void): () => void;
 }
 
 export interface AnalyzeEntryState {
@@ -81,6 +94,8 @@ export interface AnalyzeEntryState {
   // secondary device, and a device picked there should resume the Analyze
   // listen instead of leaving the stream Settings-started (default channel,
   // `listening` still false). In-memory only, never persisted; starts false.
+  // #1605: also cleared when the Settings dialog closes by any path, so an
+  // abandoned bounce can't hijack a later, unrelated device pick.
   pendingListenAfterSettings: boolean;
   open(): void;
   close(): void;
@@ -91,6 +106,8 @@ export interface AnalyzeEntryState {
   // SecondaryMeasurementPanel.selectSecondaryDevice(), after it sets the
   // device name — a `true` result means Analyze owns the stream start, so
   // the caller must not also call startSecondaryMeasurement().
+  // #1605: a `true` result also closes the Settings dialog, so the Analyze
+  // live RTA underneath is what the user sees.
   resumePendingListen(): Promise<boolean>;
   stopListening(): Promise<void>;
   enterAnalyze(): Promise<void>;
@@ -125,7 +142,7 @@ export function createAnalyzeEntryStore(
   const resolveDeviceName = (): string =>
     effectiveSecondaryDeviceName(deps.getSecondaryDeviceName(), deps.getPersistedSecondaryDeviceName());
 
-  return create<AnalyzeEntryState>()((set, get) => ({
+  const store = create<AnalyzeEntryState>()((set, get) => ({
     dialogOpen: false,
     listening: false,
     analyzeStage: false,
@@ -211,8 +228,9 @@ export function createAnalyzeEntryStore(
     // device is still absent (e.g. None), must not start anything here.
     async resumePendingListen() {
       if (!get().pendingListenAfterSettings) return false;
-      if (resolveListenLiveChoice(deps.getSecondaryDeviceName()) !== 'startListening') return false;
+      if (resolveAnalyzeEntry(resolveDeviceName()) !== 'startListening') return false;
       set({ pendingListenAfterSettings: false });
+      deps.closeSettingsDialog();
       await get().listenLive();
       return true;
     },
@@ -253,6 +271,13 @@ export function createAnalyzeEntryStore(
       await deps.analyzeFilePath(filePath);
     },
   }));
+
+  // #1605: leaving Settings without configuring a device abandons the bounce —
+  // a later, unrelated device pick must not pull the user into an Analyze listen.
+  deps.onSettingsDialogClosed(() => {
+    if (store.getState().pendingListenAfterSettings) store.setState({ pendingListenAfterSettings: false });
+  });
+  return store;
 }
 
 export const useAnalyzeEntryStore = createAnalyzeEntryStore({
@@ -275,4 +300,9 @@ export const useAnalyzeEntryStore = createAnalyzeEntryStore({
   },
   getPersistedSecondaryDeviceName: () => useSettingsStore.getState().settings?.measurementDeviceName ?? '',
   adoptSecondaryDeviceName: (name) => useLiveCaptureStore.getState().setSecondaryDeviceName(name),
+  closeSettingsDialog: () => useSettingsStore.getState().closeDialog(),
+  onSettingsDialogClosed: (listener) =>
+    useSettingsStore.subscribe((s, prev) => {
+      if (prev.dialogOpen && !s.dialogOpen) listener();
+    }),
 });
