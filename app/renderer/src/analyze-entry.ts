@@ -40,10 +40,15 @@ export interface AnalyzeHomeAutoListenInput {
   listening: boolean;
 }
 
-export function decideAnalyzeHomeAutoListen(input: AnalyzeHomeAutoListenInput): boolean {
-  return input.currentMode === 'analyze'
-    && !input.listening
-    && resolveListenLiveChoice(input.deviceName) === 'startListening';
+// #1578: the post-hydration Analyze-home verdict. 'noDevice' is the explicit
+// no-secondary-device branch — stay on the File-mode stage, open no dialog
+// (neither AnalyzeEntryDialog nor Settings > Audio) and start no capture.
+// 'skip' covers not-on-Analyze and already-listening.
+export type AnalyzeHomeAutoListenDecision = 'startListening' | 'noDevice' | 'skip';
+
+export function decideAnalyzeHomeAutoListen(input: AnalyzeHomeAutoListenInput): AnalyzeHomeAutoListenDecision {
+  if (input.currentMode !== 'analyze' || input.listening) return 'skip';
+  return resolveListenLiveChoice(input.deviceName) === 'startListening' ? 'startListening' : 'noDevice';
 }
 
 // #1522: the Analyze stage's mode is derived from listening, never a second

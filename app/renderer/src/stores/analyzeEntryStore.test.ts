@@ -413,6 +413,20 @@ describe('createAnalyzeEntryStore (#1468)', () => {
       expect(openSettingsAudio).not.toHaveBeenCalled();
     });
 
+    it('with no secondary device configured: opens the stage only — no dialog, no Settings, no capture (#1578)', () => {
+      const { deps, startSecondaryMeasurement, chooseAndAnalyzeFile, openSettingsAudio } = createFakeDeps();
+      const store = createAnalyzeEntryStore(deps);
+
+      store.getState().showStage();
+
+      expect(store.getState().analyzeStage).toBe(true);
+      expect(store.getState().dialogOpen).toBe(false);
+      expect(store.getState().listening).toBe(false);
+      expect(openSettingsAudio).not.toHaveBeenCalled();
+      expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+      expect(chooseAndAnalyzeFile).not.toHaveBeenCalled();
+    });
+
     it('is idempotent when the stage is already open', () => {
       const { deps } = createFakeDeps();
       const store = createAnalyzeEntryStore(deps);

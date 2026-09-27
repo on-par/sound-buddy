@@ -47,21 +47,29 @@ describe('analyzeModeOf (#1522)', () => {
   });
 });
 
-describe('decideAnalyzeHomeAutoListen (#1577)', () => {
+describe('decideAnalyzeHomeAutoListen (#1577, #1578)', () => {
   it('starts listening on the Analyze home with a configured device and not already listening', () => {
-    expect(decideAnalyzeHomeAutoListen({ currentMode: 'analyze', deviceName: 'UMIK-1', listening: false })).toBe(true);
+    expect(decideAnalyzeHomeAutoListen({ currentMode: 'analyze', deviceName: 'UMIK-1', listening: false })).toBe('startListening');
   });
 
-  it('does not start when no secondary device is configured', () => {
-    expect(decideAnalyzeHomeAutoListen({ currentMode: 'analyze', deviceName: '', listening: false })).toBe(false);
+  it('returns the explicit noDevice branch when no secondary device is configured (#1578)', () => {
+    expect(decideAnalyzeHomeAutoListen({ currentMode: 'analyze', deviceName: '', listening: false })).toBe('noDevice');
   });
 
   it('does not start when already listening', () => {
-    expect(decideAnalyzeHomeAutoListen({ currentMode: 'analyze', deviceName: 'UMIK-1', listening: true })).toBe(false);
+    expect(decideAnalyzeHomeAutoListen({ currentMode: 'analyze', deviceName: 'UMIK-1', listening: true })).toBe('skip');
   });
 
   it.each(['live', 'reportcard'])('does not start when the current mode is %s, not analyze', (currentMode) => {
-    expect(decideAnalyzeHomeAutoListen({ currentMode, deviceName: 'UMIK-1', listening: false })).toBe(false);
+    expect(decideAnalyzeHomeAutoListen({ currentMode, deviceName: 'UMIK-1', listening: false })).toBe('skip');
+  });
+
+  it('the mode check wins over the device check: a non-analyze mode with no device is still skip, not noDevice', () => {
+    expect(decideAnalyzeHomeAutoListen({ currentMode: 'live', deviceName: '', listening: false })).toBe('skip');
+  });
+
+  it('already listening with no device configured is still skip, not noDevice', () => {
+    expect(decideAnalyzeHomeAutoListen({ currentMode: 'analyze', deviceName: '', listening: true })).toBe('skip');
   });
 });
 

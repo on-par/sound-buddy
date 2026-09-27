@@ -679,7 +679,7 @@ describe('maybeAutoStartLive', () => {
   });
 });
 
-describe('maybeAutoListenAnalyzeHome (#1577)', () => {
+describe('maybeAutoListenAnalyzeHome (#1577, #1578)', () => {
   it('logs and starts listening when on the Analyze home with a configured device', () => {
     useLiveCaptureStore.setState({ appMode: 'analyze', secondaryMeasurement: { status: 'off', deviceName: 'UMIK-1' } });
     const startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
@@ -688,24 +688,28 @@ describe('maybeAutoListenAnalyzeHome (#1577)', () => {
 
     maybeAutoListenAnalyzeHome();
 
-    expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { start: true });
+    expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'startListening' });
     expect(useAnalyzeEntryStore.getState().listening).toBe(true);
     expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
     expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
   });
 
-  it('logs a skip and never opens the dialog when no device is configured', () => {
+  it('logs noDevice and never opens a dialog or the Settings > Audio surface when no device is configured (#1578)', () => {
     useLiveCaptureStore.setState({ appMode: 'analyze', secondaryMeasurement: { status: 'off', deviceName: '' } });
     const startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
       .mockResolvedValue(undefined);
+    const openDialog = vi.spyOn(useSettingsStore.getState(), 'openDialog');
+    const listenLive = vi.spyOn(useAnalyzeEntryStore.getState(), 'listenLive');
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     maybeAutoListenAnalyzeHome();
 
-    expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { start: false });
+    expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'noDevice' });
     expect(useAnalyzeEntryStore.getState().listening).toBe(false);
     expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
     expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+    expect(openDialog).not.toHaveBeenCalled();
+    expect(listenLive).not.toHaveBeenCalled();
   });
 
   it('does not start a second listen when already listening', () => {
@@ -713,20 +717,24 @@ describe('maybeAutoListenAnalyzeHome (#1577)', () => {
     useAnalyzeEntryStore.setState({ listening: true });
     const startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
       .mockResolvedValue(undefined);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     maybeAutoListenAnalyzeHome();
 
     expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'skip' });
   });
 
   it('does nothing when the current mode is not analyze', () => {
     useLiveCaptureStore.setState({ appMode: 'live', secondaryMeasurement: { status: 'off', deviceName: 'UMIK-1' } });
     const startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
       .mockResolvedValue(undefined);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     maybeAutoListenAnalyzeHome();
 
     expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'skip' });
   });
 });
 
@@ -940,15 +948,18 @@ describe('restoreBootMode', () => {
       expect(useAnalyzeEntryStore.getState().listening).toBe(true);
       expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
       expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
-      expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { start: true });
+      expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'startListening' });
     });
 
-    it('does not start listening or open the dialog with no device configured', async () => {
+    it('does not start listening or open any dialog with no device configured, and leaves the File-mode stage up (#1578)', async () => {
       useLiveCaptureStore.setState({ appMode: 'analyze', secondaryMeasurement: { status: 'off', deviceName: '' } });
       useSettingsStore.setState({ settings: settings({ lastAppMode: 'analyze' }) });
+      useAnalyzeEntryStore.setState({ analyzeStage: true });
       const startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
         .mockResolvedValue(undefined);
       const openDialog = vi.spyOn(useSettingsStore.getState(), 'openDialog');
+      const listenLive = vi.spyOn(useAnalyzeEntryStore.getState(), 'listenLive');
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
       await restoreBootMode({
         hydration: Promise.resolve(),
@@ -959,8 +970,11 @@ describe('restoreBootMode', () => {
 
       expect(useAnalyzeEntryStore.getState().listening).toBe(false);
       expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
+      expect(useAnalyzeEntryStore.getState().analyzeStage).toBe(true);
       expect(startSecondaryMeasurement).not.toHaveBeenCalled();
       expect(openDialog).not.toHaveBeenCalled();
+      expect(listenLive).not.toHaveBeenCalled();
+      expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'noDevice' });
     });
 
     it('does not start a second listen when Analyze is already listening', async () => {
