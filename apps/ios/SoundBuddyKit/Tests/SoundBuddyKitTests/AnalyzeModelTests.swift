@@ -130,6 +130,46 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         #expect(source.startCount == 1)
     }
 
+    // MARK: Mic input change (#1594)
+
+    @Test func restartListeningStopsAndStartsALiveSource() async throws {
+        let m = model()
+        await m.appear()
+        try deliver(reading(levels()))
+        #expect(m.overallDb != nil)
+
+        await m.restartListening()
+
+        #expect(source.stopCount == 1)
+        #expect(source.startCount == 2)
+        #expect(m.state == .live)
+        #expect(m.overallDb == nil, "the old input's reading is not carried over")
+    }
+
+    @Test func restartListeningOffScreenStartsNothing() async {
+        let m = model()
+        await m.restartListening()
+        #expect(source.startCount == 0)
+        #expect(source.stopCount == 0)
+        #expect(m.state == .idle)
+    }
+
+    @Test func restartListeningRecoversFromAFailedStart() async {
+        let m = model()
+        source.failStart = true
+        await m.appear()
+        guard case .failed = m.state else {
+            Issue.record("expected a failed start, got \(m.state)")
+            return
+        }
+        source.failStart = false
+
+        await m.restartListening()
+
+        #expect(m.state == .live)
+        #expect(source.startCount == 1)
+    }
+
     @Test func deniedPermissionNeverStartsTheMic() async {
         let m = model(granted: false)
         await m.appear()

@@ -35,8 +35,9 @@ public final class AnalyzeModel {
         case failed(String)
     }
 
-    /// Always shown while analyzing on the built-in mic: a phone mic is not a
-    /// measurement mic, so readings are estimates.
+    /// Short honesty label: a phone mic is not a measurement mic, so readings
+    /// are estimates. No longer a header badge (#1594) — the caveat lives in
+    /// Settings (MicInputPolicy.honestyFootnote) and the level's a11y label.
     public static let honestyCue = "Phone mic estimate"
     /// The coaching stack changes at most this often, so its text stays
     /// readable while the meter runs at 20 Hz.
@@ -54,7 +55,7 @@ public final class AnalyzeModel {
     public static let phoneMicSplOffsetDb = 115.0
     /// The hero's unit: a plain "dB" that the view draws tiny beside the
     /// number. The value is still the unweighted phone-mic SPL estimate (not
-    /// dBA — no A-weighting is applied); the honesty cue carries the caveat.
+    /// dBA — no A-weighting is applied); Settings' honesty footnote carries the caveat.
     /// The RTA and coaching stay in dBFS / relative dB.
     public static let overallLevelUnit = "dB"
     /// Readings at or below this are treated as silence and show "—". Sits
@@ -385,6 +386,14 @@ public final class AnalyzeModel {
 
     /// The "Try again" action after a start failure.
     public func retry() async {
+        await listen()
+    }
+
+    /// The user picked another mic input (#1594): release the old input and
+    /// start again on the new route, if Analyze is on screen. Also recovers a
+    /// failed start, since the new input may be the fix.
+    public func restartListening() async {
+        halt()
         await listen()
     }
 

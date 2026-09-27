@@ -8,7 +8,58 @@ struct SystemMicPermission: MicPermission {
     }
 }
 
-/// Built-in mic -> AVAudioEngine input tap -> SampleRingBuffer; a main-actor
+/// The real MicInputSession (#1594): AVAudioSession's available inputs, with
+/// the built-in mic split into its data sources (bottom / front / back) when
+/// the OS exposes more than one. MicInputController holds the rules.
+@MainActor
+final class SystemMicInputSession: MicInputSession {
+    private struct InputUnavailable: Error {}
+
+    private var session: AVAudioSession { .sharedInstance() }
+
+    func availableOptions() -> [MicInputOption] {
+        // availableInputs is only filled in for a record-capable category;
+        // MicCapture sets the same one, so this is a no-op while live.
+        if session.category != .record {
+            try? session.setCategory(.record, mode: .measurement)
+        }
+        return (session.availableInputs ?? []).flatMap(Self.options(for:))
+    }
+
+    func activeOptionID() -> String? {
+        guard let input = session.currentRoute.inputs.first else { return nil }
+        let options = Self.options(for: input)
+        guard options.count > 1 else { return options.first?.id }
+        let selected = input.selectedDataSource?.dataSourceID.intValue
+        return options.first { $0.dataSourceID == selected }?.id
+    }
+
+    func apply(_ option: MicInputOption?) throws {
+        guard let option else {
+            try session.setPreferredInput(nil)
+            return
+        }
+        guard let port = session.availableInputs?.first(where: { $0.uid == option.portUID }) else {
+            throw InputUnavailable()
+        }
+        if let id = option.dataSourceID,
+           let source = port.dataSources?.first(where: { $0.dataSourceID.intValue == id }) {
+            try port.setPreferredDataSource(source)
+        }
+        try session.setPreferredInput(port)
+    }
+
+    private static func options(for port: AVAudioSessionPortDescription) -> [MicInputOption] {
+        guard port.portType == .builtInMic, let sources = port.dataSources, sources.count > 1 else {
+            return [MicInputOption(portUID: port.uid, dataSourceID: nil, name: port.portName)]
+        }
+        return sources.map {
+            MicInputOption(portUID: port.uid, dataSourceID: $0.dataSourceID.intValue, name: "\(port.portName) (\($0.dataSourceName))")
+        }
+    }
+}
+
+/// Preferred mic (#1594, else the system default) -> AVAudioEngine input tap -> SampleRingBuffer; a main-actor
 /// meter loop pulls the newest FFT frame and runs SpectrumAnalyzer (coaching
 /// bands + the display RTA from one FFT).
 ///
@@ -16,7 +67,8 @@ struct SystemMicPermission: MicPermission {
 /// changes — pause with a visible state and resume per the architecture plan.
 /// TODO(perf): run the FFT on a background queue if the meter loop ever shows
 /// up in Instruments; a 4096-point vDSP FFT at 20 Hz is well under 1% today.
-/// TODO(input): P1 input picker for external mics exposed by the OS.
+/// The input is whatever MicInputController routes before the engine starts;
+/// every input shares the same analysis and the same uncalibrated estimate.
 @MainActor
 final class MicCapture: LiveAudioSource {
     /// UI meter refresh rate (the plan targets 15-30 Hz).
@@ -27,8 +79,13 @@ final class MicCapture: LiveAudioSource {
     static let ringFrames = 4
 
     private let engine = AVAudioEngine()
+    private let inputs: MicInputController
     private var ring: SampleRingBuffer?
     private var meterTask: Task<Void, Never>?
+
+    init(inputs: MicInputController) {
+        self.inputs = inputs
+    }
 
     func start(onReading: @escaping @MainActor (SpectrumReading) -> Void) throws {
         #if os(iOS)
@@ -37,6 +94,9 @@ final class MicCapture: LiveAudioSource {
         // spectrum reflects the room, not the phone's speech enhancement.
         try session.setCategory(.record, mode: .measurement)
         try session.setActive(true)
+        // Route the user's mic (or the system default) before the input
+        // node's format is read, so the tap matches the chosen input.
+        inputs.applyPreferred()
         #endif
 
         let analyzer: SpectrumAnalyzer
