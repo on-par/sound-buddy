@@ -475,6 +475,124 @@ describe('createAnalyzeEntryStore (#1468)', () => {
     });
   });
 
+  describe('Live routing round trip (#1589)', () => {
+    it('device present: listenLive() starts listening, opens the stage, never touches Settings, and leaves the pending flag false', async () => {
+      const { deps, startSecondaryMeasurement, openSettingsAudio } = createFakeDeps({
+        getSecondaryDeviceName: () => 'USB Mic',
+      });
+      const store = createAnalyzeEntryStore(deps);
+
+      await store.getState().listenLive();
+
+      expect(store.getState().listening).toBe(true);
+      expect(store.getState().analyzeStage).toBe(true);
+      expect(openSettingsAudio).not.toHaveBeenCalled();
+      expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
+      expect(store.getState().pendingListenAfterSettings).toBe(false);
+    });
+
+    it('device absent: listenLive() opens Settings once, sets the pending flag and the stage, and starts nothing', async () => {
+      const { deps, startSecondaryMeasurement, openSettingsAudio } = createFakeDeps({
+        getSecondaryDeviceName: () => '',
+      });
+      const store = createAnalyzeEntryStore(deps);
+
+      await store.getState().listenLive();
+
+      expect(openSettingsAudio).toHaveBeenCalledTimes(1);
+      expect(store.getState().pendingListenAfterSettings).toBe(true);
+      expect(store.getState().analyzeStage).toBe(true);
+      expect(store.getState().listening).toBe(false);
+      expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+    });
+
+    it('absent, then configured in Settings: resumePendingListen() resolves true, starts listening exactly once on the clamped channel', async () => {
+      let deviceName = '';
+      const { deps, startSecondaryMeasurement, openSettingsAudio } = createFakeDeps({
+        getSecondaryDeviceName: () => deviceName,
+        getCadence: () => ({ windowSecs: 3, meterIntervalMs: 100 }),
+      });
+      const store = createAnalyzeEntryStore(deps);
+      await store.getState().listenLive();
+      deviceName = 'USB Mic';
+
+      const resumed = await store.getState().resumePendingListen();
+
+      expect(resumed).toBe(true);
+      expect(store.getState().listening).toBe(true);
+      expect(store.getState().analyzeStage).toBe(true);
+      expect(store.getState().pendingListenAfterSettings).toBe(false);
+      expect(openSettingsAudio).toHaveBeenCalledTimes(1);
+      expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
+      expect(startSecondaryMeasurement).toHaveBeenCalledWith({ windowSecs: 3, intervalSecs: 0.1, channel: 0 });
+    });
+
+    it('resume with no pending: resolves false and starts nothing, even with a device configured', async () => {
+      const { deps, startSecondaryMeasurement } = createFakeDeps({
+        getSecondaryDeviceName: () => 'USB Mic',
+      });
+      const store = createAnalyzeEntryStore(deps);
+
+      const resumed = await store.getState().resumePendingListen();
+
+      expect(resumed).toBe(false);
+      expect(store.getState().listening).toBe(false);
+      expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+    });
+
+    it('resume while still no device: pending stays true, resolves false, starts nothing', async () => {
+      const { deps, startSecondaryMeasurement } = createFakeDeps({
+        getSecondaryDeviceName: () => '',
+      });
+      const store = createAnalyzeEntryStore(deps);
+      await store.getState().listenLive();
+
+      const resumed = await store.getState().resumePendingListen();
+
+      expect(resumed).toBe(false);
+      expect(store.getState().pendingListenAfterSettings).toBe(true);
+      expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+    });
+
+    describe('pending cleared by leaving', () => {
+      async function pendResume(exit: (store: ReturnType<typeof createAnalyzeEntryStore>) => void | Promise<void>) {
+        const { deps, startSecondaryMeasurement } = createFakeDeps({
+          getSecondaryDeviceName: () => '',
+        });
+        const store = createAnalyzeEntryStore(deps);
+        await store.getState().listenLive();
+        expect(store.getState().pendingListenAfterSettings).toBe(true);
+
+        await exit(store);
+
+        expect(store.getState().pendingListenAfterSettings).toBe(false);
+        const resumed = await store.getState().resumePendingListen();
+        expect(resumed).toBe(false);
+        expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+      }
+
+      it('exitAnalyze() clears the pending flag', async () => {
+        await pendResume((store) => store.getState().exitAnalyze());
+      });
+
+      it('chooseFile() clears the pending flag', async () => {
+        await pendResume((store) => store.getState().chooseFile());
+      });
+
+      it('switchToFile() clears the pending flag', async () => {
+        await pendResume((store) => store.getState().switchToFile());
+      });
+
+      it("analyzeDroppedFile('/x.wav') clears the pending flag", async () => {
+        await pendResume((store) => store.getState().analyzeDroppedFile('/x.wav'));
+      });
+
+      it('stopListening() clears the pending flag', async () => {
+        await pendResume((store) => store.getState().stopListening());
+      });
+    });
+  });
+
   describe('analyzeDroppedFile() (#1522)', () => {
     it('while listening: stops the measurement before analyzing the dropped path, in order', async () => {
       const { deps, stopSecondaryMeasurement, analyzeFilePath } = createFakeDeps({
