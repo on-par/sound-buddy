@@ -18,6 +18,13 @@ export function resolveListenLiveChoice(deviceName: string): ListenLiveChoice {
   return deviceName === '' ? 'needsSecondarySource' : 'startListening';
 }
 
+// #1604: needsSecondarySource means "no device configured anywhere" — the
+// in-memory liveCaptureStore name OR the persisted settings.measurementDeviceName
+// (bridge.ts seeds the former from the latter only while idle).
+export function effectiveSecondaryDeviceName(liveName: string, persistedName: string | null | undefined): string {
+  return liveName !== '' ? liveName : (persistedName ?? '');
+}
+
 export type AnalyzeEntryAction = 'startListening' | 'openDialog';
 
 // #1485: the Analyze tab's one entry rule, in Simple and Advanced mode alike.

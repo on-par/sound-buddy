@@ -8,6 +8,7 @@ import {
   analyzeModeOf,
   droppedAudioPath,
   decideAnalyzeHomeAutoListen,
+  effectiveSecondaryDeviceName,
 } from './analyze-entry';
 
 describe('resolveAnalyzeEntry (#1485)', () => {
@@ -24,6 +25,28 @@ describe('resolveAnalyzeEntry (#1485)', () => {
     // are the only two device values that matter (configured vs not), and
     // both are asserted above with no settings object involved anywhere.
     expect(resolveAnalyzeEntry('')).not.toBe(resolveAnalyzeEntry('MOTU M2'));
+  });
+});
+
+describe('effectiveSecondaryDeviceName (#1604)', () => {
+  it('prefers the live in-memory name when it is non-empty', () => {
+    expect(effectiveSecondaryDeviceName('MOTU M2', 'UMIK-1')).toBe('MOTU M2');
+  });
+
+  it('falls back to the persisted name when the live name is empty', () => {
+    expect(effectiveSecondaryDeviceName('', 'UMIK-1')).toBe('UMIK-1');
+  });
+
+  it('is empty when both the live and persisted names are empty', () => {
+    expect(effectiveSecondaryDeviceName('', '')).toBe('');
+  });
+
+  it('treats a null persisted name as empty', () => {
+    expect(effectiveSecondaryDeviceName('', null)).toBe('');
+  });
+
+  it('treats an undefined persisted name as empty', () => {
+    expect(effectiveSecondaryDeviceName('', undefined)).toBe('');
   });
 });
 
