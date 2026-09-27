@@ -22,6 +22,8 @@ import UIKit
 /// RTA never moves when editing starts or ends (#1565). While editing, a row
 /// of preset pills (Flat / Music fullrange / Worship service) sits under the
 /// legend band; tapping one seeds the draft from that bundled curve (#1560).
+/// While editing, problem markers hide and the landscape coaching peek stays
+/// closed, so neither overlay collides with the handles or the chip (#1562).
 ///
 /// TODO(ipad): the layout is single-column; switch the RTA and coaching
 /// stack side by side on a regular horizontal size class.
@@ -35,6 +37,9 @@ struct AnalyzeView: View {
             let layout = AnalyzeLayout(width: proxy.size.width, height: proxy.size.height)
             content(for: layout, proxy: proxy)
                 .onChange(of: layout) { _, _ in coachingPeekOpen = false }
+                .onChange(of: model.isEditingTarget) { _, editing in
+                    coachingPeekOpen = AnalyzeLayout.peekOpen(afterEditingChange: editing, wasOpen: coachingPeekOpen)
+                }
         }
         .padding(Layout.screenPadding)
         .background(Palette.background.ignoresSafeArea())
@@ -71,7 +76,10 @@ struct AnalyzeView: View {
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
             header
             VStack(alignment: .leading, spacing: Layout.legendSpacing) {
-                RTAView(model: model, showsProblemMarkers: AnalyzeLayout.portrait.showsProblemMarkers)
+                RTAView(
+                    model: model,
+                    showsProblemMarkers: AnalyzeLayout.portrait.showsProblemMarkers(isEditingTarget: model.isEditingTarget)
+                )
                 if AnalyzeLayout.portrait.targetControlsUnderRTA {
                     TargetControlsBand(model: model, onEdit: beginTargetEdit)
                 }
@@ -89,7 +97,11 @@ struct AnalyzeView: View {
     private func landscapeBody(proxy: GeometryProxy) -> some View {
         VStack(spacing: Layout.landscapeSpacing) {
             landscapeStrip
-            RTAView(model: model, fillsHeight: true, showsProblemMarkers: AnalyzeLayout.landscape.showsProblemMarkers)
+            RTAView(
+                model: model,
+                fillsHeight: true,
+                showsProblemMarkers: AnalyzeLayout.landscape.showsProblemMarkers(isEditingTarget: model.isEditingTarget)
+            )
             if AnalyzeLayout.landscape.targetControlsUnderRTA {
                 TargetControlsBand(model: model, onEdit: beginTargetEdit)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -173,6 +185,7 @@ private struct CoachingPeekHandle: View {
     @Binding var isOpen: Bool
 
     var body: some View {
+        let enabled = AnalyzeLayout.coachingPeekEnabled(isEditingTarget: model.isEditingTarget)
         HStack(spacing: Layout.landscapeStripSpacing) {
             Text(AnalyzeLayout.coachingPeekLabel(count: model.coaching.count))
                 .font(.footnote.weight(.semibold))
@@ -193,10 +206,17 @@ private struct CoachingPeekHandle: View {
                     }
                 }
         )
+        .opacity(enabled ? 1 : Layout.peekDisabledOpacity)
+        .allowsHitTesting(enabled)
+        .disabled(!enabled)
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("Coaching")
         .accessibilityValue("\(model.coaching.count) hints")
-        .accessibilityHint(isOpen ? "Hides the coaching cards" : "Shows the coaching cards")
+        .accessibilityHint(
+            enabled
+                ? (isOpen ? "Hides the coaching cards" : "Shows the coaching cards")
+                : "Unavailable while editing the target"
+        )
     }
 }
 
@@ -518,6 +538,8 @@ private enum Layout {
     static let peekHandleHeight: CGFloat = 28
     static let peekDragMinDistance: CGFloat = 8
     static let peekMaxHeightFraction: CGFloat = 0.6
+    /// Dims the coaching peek handle while target-edit mode disables it (#1562).
+    static let peekDisabledOpacity: Double = 0.4
     static let landscapeStripSpacing: CGFloat = 12
 }
 

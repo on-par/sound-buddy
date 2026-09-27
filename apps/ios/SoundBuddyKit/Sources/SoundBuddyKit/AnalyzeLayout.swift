@@ -27,6 +27,14 @@ public enum AnalyzeLayout: Equatable, Sendable {
     /// (#1554). Deliberately independent of peek state.
     public var showsProblemMarkers: Bool { true }
 
+    /// Problem markers are hidden while the target is being edited (#1562): they
+    /// are frozen against the pre-edit curve (ADR-0156) yet drawn hugging the
+    /// moving draft line, right under the drag handles. They come back unchanged
+    /// on Done/Cancel.
+    public func showsProblemMarkers(isEditingTarget: Bool) -> Bool {
+        showsProblemMarkers && !isEditingTarget
+    }
+
     /// Both layouts put the target legend and the "Editing target" chip in one
     /// fixed-height band directly under the RTA, and the header / landscape
     /// strip always keeps the listening indicator — so entering or leaving
@@ -45,5 +53,19 @@ public enum AnalyzeLayout: Equatable, Sendable {
         if translationY <= -peekDragThreshold { return true }
         if translationY >= peekDragThreshold { return false }
         return wasOpen
+    }
+
+    /// The landscape coaching peek is disabled while editing (#1562): its panel
+    /// would cover the Editing chip and preset pills, and its cards are frozen
+    /// anyway. The handle keeps its slot so the RTA never moves (#1565).
+    public static func coachingPeekEnabled(isEditingTarget: Bool) -> Bool {
+        !isEditingTarget
+    }
+
+    /// Peek state after edit mode toggles: entering edit mode closes the peek;
+    /// leaving it keeps whatever state it had (closed), so tap/swipe resumes
+    /// exactly as before.
+    public static func peekOpen(afterEditingChange isEditingTarget: Bool, wasOpen: Bool) -> Bool {
+        isEditingTarget ? false : wasOpen
     }
 }
