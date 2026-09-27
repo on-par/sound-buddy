@@ -85,6 +85,21 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         )
     }
 
+    func model(
+        target: IdealCurve,
+        targetIsAuto: Bool = true,
+        presetLoader: @escaping (String) throws -> IdealCurve
+    ) -> AnalyzeModel {
+        AnalyzeModel(
+            permission: FakePermission(granted: true),
+            source: source,
+            target: target,
+            targetIsAuto: targetIsAuto,
+            presetLoader: presetLoader,
+            now: { [clock] in clock.now }
+        )
+    }
+
     func deliver(_ r: SpectrumReading) throws {
         let send = try #require(source.onReading, "source is not running")
         send(r)
@@ -697,6 +712,104 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         m.beginTargetHandleDrag(3)
         m.dragTargetHandle(translationFraction: 0.1)
         #expect(m.coachingCurve == m.target)
+    }
+
+    // MARK: presets (#1560)
+
+    @Test(arguments: TargetCurvePreset.all)
+    func selectingAPresetResetsTheDraftAfterDrags(preset: TargetCurvePreset) async throws {
+        let m = try await liveModelWithFullReading(target: .flat)
+        m.beginTargetEdit()
+        m.beginTargetHandleDrag(3)
+        m.dragTargetHandle(translationFraction: 0.1)
+
+        #expect(m.selectTargetPreset(preset) == true)
+
+        let expected = try IdealCurveLibrary.builtIn(id: preset.id)
+        #expect(m.target == expected)
+        #expect(m.coachingCurve == m.target)
+        #expect(m.activeTargetPresetId == preset.id)
+    }
+
+    @Test func selectTargetPresetIsANoOpWhenNotEditing() async throws {
+        let m = try await liveModelWithFullReading(target: .flat)
+        #expect(m.selectTargetPreset(.worshipService) == false)
+        #expect(m.target == .flat)
+        #expect(!m.isEditingTarget)
+    }
+
+    @Test func selectTargetPresetEndsAnActiveDrag() async throws {
+        let m = try await liveModelWithFullReading(target: .flat)
+        m.beginTargetEdit()
+        m.beginTargetHandleDrag(3)
+        #expect(m.activeTargetHandle == 3)
+
+        #expect(m.selectTargetPreset(.worshipService) == true)
+        #expect(m.activeTargetHandle == nil)
+
+        let before = m.target
+        m.dragTargetHandle(translationFraction: 0.5)
+        #expect(m.target == before, "dragTargetHandle is a no-op without a fresh begin")
+    }
+
+    @Test func aDragAfterAPresetStartsFromThePresetShape() async throws {
+        let m = try await liveModelWithFullReading(target: .flat)
+        m.beginTargetEdit()
+        m.selectTargetPreset(.worshipService)
+        let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        // The bundled JSON's freqs are rounded decimals, not bit-identical to
+        // the computed grid, so moving() resamples through onGrid first —
+        // compare against that same resampling, not the raw bundled offsets.
+        let worshipGrid = TargetCurveHandles.onGrid(worship)
+
+        m.beginTargetHandleDrag(3)
+        let fraction = 0.1
+        m.dragTargetHandle(translationFraction: fraction)
+
+        let handleIndex = TargetCurveHandles.gridIndices[3]
+        let neighbourSpan = TargetCurveHandles.gridIndices[2]...TargetCurveHandles.gridIndices[4]
+        for (index, offset) in m.target.dbOffsets.enumerated() where !neighbourSpan.contains(index) {
+            #expect(abs(offset - worshipGrid.dbOffsets[index]) < 1e-9)
+        }
+
+        let expectedHandleOffset = worshipGrid.dbOffsets[handleIndex] + fraction * m.rtaScale.spanDb
+        #expect(abs(m.target.dbOffsets[handleIndex] - expectedHandleOffset) < 1e-9)
+    }
+
+    @Test func selectTargetPresetReturnsFalseWhenTheLoaderThrows() throws {
+        struct LoaderFailure: Error {}
+        let m = model(target: .flat, targetIsAuto: true, presetLoader: { _ in throw LoaderFailure() })
+        m.beginTargetEdit()
+        #expect(m.selectTargetPreset(.worshipService) == false)
+        #expect(m.target == .flat)
+    }
+
+    @Test func cancelAfterAPresetRestoresTheOriginal() throws {
+        let m = model(target: .flat, targetIsAuto: true)
+        m.beginTargetEdit()
+        m.selectTargetPreset(.worshipService)
+        m.cancelTargetEdit()
+        #expect(m.target == .flat)
+        #expect(m.targetIsAuto)
+        #expect(!m.isEditingTarget)
+    }
+
+    @Test func activeTargetPresetIdIsNilWhenNotEditingAndAfterADrag() async throws {
+        let m = try await liveModelWithFullReading(target: .flat)
+        #expect(m.activeTargetPresetId == nil, "not editing")
+
+        m.beginTargetEdit()
+        #expect(m.activeTargetPresetId == IdealCurveLibrary.flatId)
+
+        m.selectTargetPreset(.worshipService)
+        #expect(m.activeTargetPresetId == IdealCurveLibrary.worshipServiceId)
+
+        m.beginTargetHandleDrag(3)
+        m.dragTargetHandle(translationFraction: 0.1)
+        #expect(m.activeTargetPresetId == nil, "a drag makes the draft custom")
+
+        m.commitTargetEdit()
+        #expect(m.activeTargetPresetId == nil, "not editing after commit")
     }
 
     // MARK: Copy

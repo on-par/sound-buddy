@@ -95,6 +95,9 @@ public final class AnalyzeModel {
     /// stays under the finger instead of drifting as the shift tracks the
     /// meter.
     private var handleDrag: TargetHandleDrag?
+    /// Loads a bundled preset curve (#1560); injected so tests can fake or
+    /// fail loading without a real bundle.
+    private let presetLoader: (String) throws -> IdealCurve
     private var sessionStart: Date?
     private var lastReadingAt: Date?
     private var lastCoachingAt: Date?
@@ -106,6 +109,7 @@ public final class AnalyzeModel {
         source: LiveAudioSource,
         target: IdealCurve = .flat,
         targetIsAuto: Bool = true,
+        presetLoader: @escaping (String) throws -> IdealCurve = IdealCurveLibrary.builtIn(id:),
         now: @escaping () -> Date = Date.init
     ) {
         self.permission = permission
@@ -114,6 +118,7 @@ public final class AnalyzeModel {
         self.target = target
         self.targetIsAuto = targetIsAuto
         self.rtaTargetOffsets = RTATarget.resample(target, onto: RTALayout.standard)
+        self.presetLoader = presetLoader
         self.now = now
     }
 
@@ -264,6 +269,27 @@ public final class AnalyzeModel {
     /// next reading. No-op without an active drag.
     public func endTargetHandleDrag() {
         handleDrag = nil
+    }
+
+    // MARK: Target curve presets (#1560)
+
+    /// The preset whose curve the draft currently is, for pill highlighting;
+    /// nil when not editing or once a drag has made the draft custom.
+    public var activeTargetPresetId: String? {
+        guard isEditingTarget, TargetCurvePreset.all.contains(where: { $0.id == target.id }) else { return nil }
+        return target.id
+    }
+
+    /// Replaces the draft with `preset`'s bundled curve, discarding unsaved
+    /// drags. Ends any active handle drag first so the next drag starts from
+    /// the preset's shape with a freshly captured level shift. Returns false
+    /// (no-op) when not editing or when the bundled curve can't be loaded.
+    @discardableResult
+    public func selectTargetPreset(_ preset: TargetCurvePreset) -> Bool {
+        guard isEditingTarget, let curve = try? preset.curve(load: presetLoader) else { return false }
+        handleDrag = nil
+        updateTargetDraft(curve)
+        return true
     }
 
     // MARK: Lifecycle
