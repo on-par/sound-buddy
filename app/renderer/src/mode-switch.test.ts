@@ -2,6 +2,14 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+// #1579: call-through spy so the silent-redirect tests can assert the
+// auto-listen decision helper is never consulted outside restoreBootMode's
+// post-hydration tail. Every other export (and the helper's real behavior)
+// is untouched.
+vi.mock('./analyze-entry', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./analyze-entry')>();
+  return { ...actual, decideAnalyzeHomeAutoListen: vi.fn(actual.decideAnalyzeHomeAutoListen) };
+});
 import {
   resolveModeSwitch,
   isWorkspaceMode,
@@ -15,6 +23,7 @@ import {
   maybeAutoListenAnalyzeHome,
   restoreBootMode,
 } from './mode-switch';
+import { decideAnalyzeHomeAutoListen } from './analyze-entry';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useRigStore } from './stores/rigStore';
 import { useSettingsStore } from './stores/settingsStore';
@@ -656,6 +665,113 @@ describe('applyInitialMode (#1510)', () => {
     applyInitialMode('bogus');
 
     expect(useLiveCaptureStore.getState().appMode).toBe('reportcard');
+  });
+});
+
+// #1579: regression guard for the ADR-0146 amendment — restoreBootMode's tail
+// is the ONE permitted auto-listen call site. Every redirect route that also
+// reaches showAnalyzeStage (History/File>Open/onboarding, the Simple-mode and
+// flag-off Report Card redirects, openReportCard, restoreBootMode's own
+// restored-mode redirect) and the pre-hydration boot paint
+// (applyInitialMode('analyze')) must stay silent even with a configured
+// measurement device present — the exact state in which auto-listen would
+// otherwise fire.
+describe('silent showAnalyzeStage redirects (#1579)', () => {
+  let startSecondaryMeasurement: ReturnType<typeof vi.fn>;
+  let logSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.mocked(decideAnalyzeHomeAutoListen).mockClear();
+    // The exact state in which maybeAutoListenAnalyzeHome would decide 'startListening'.
+    useLiveCaptureStore.setState({ appMode: 'recent', secondaryMeasurement: { status: 'off', deviceName: 'UMIK-1' } });
+    startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
+      .mockResolvedValue(undefined);
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  function expectSilent() {
+    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+    expect(vi.mocked(decideAnalyzeHomeAutoListen)).not.toHaveBeenCalled();
+    expect(logSpy).not.toHaveBeenCalledWith('analyze-auto-listen', expect.anything());
+    expect(useAnalyzeEntryStore.getState().listening).toBe(false);
+    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
+    expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+  }
+
+  it('showAnalyzeStage() — the History, File > Open and onboarding route — never runs the auto-listen decision', () => {
+    showAnalyzeStage();
+
+    expectSilent();
+  });
+
+  it('Simple-mode Report Card redirect stays silent', () => {
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false }) });
+
+    switchMode('reportcard');
+
+    expectSilent();
+  });
+
+  it('flag-off Report Card redirect stays silent', () => {
+    useSettingsStore.setState({
+      settings: settings({ advancedFeaturesEnabled: true }),
+      featureFlags: ALL_FEATURE_FLAGS_OFF,
+    });
+
+    switchMode('reportcard');
+
+    expectSilent();
+  });
+
+  it('openReportCard() in Simple mode stays silent', () => {
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false }) });
+
+    openReportCard();
+
+    expectSilent();
+  });
+
+  it("restoreBootMode's restored-analyze redirect stays silent", async () => {
+    useSettingsStore.setState({ settings: settings({ lastAppMode: 'reportcard', advancedFeaturesEnabled: false }) });
+
+    await restoreBootMode({
+      hydration: Promise.resolve(),
+      getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+      getCurrentMode: () => useLiveCaptureStore.getState().appMode,
+      getSettings: () => useSettingsStore.getState().settings,
+    });
+
+    expectSilent();
+  });
+
+  it("pre-hydration boot paint (applyInitialMode('analyze')) stays silent", () => {
+    applyInitialMode('analyze');
+
+    expectSilent();
+    expect(useAnalyzeEntryStore.getState().analyzeStage).toBe(true);
+  });
+
+  it('showAnalyzeStage({ boot: true }) stays silent', () => {
+    showAnalyzeStage({ boot: true });
+
+    expectSilent();
+  });
+
+  // Positive control: proves the spy is wired and the negative assertions
+  // above are not passing vacuously.
+  it('restoreBootMode on the still-analyze boot home is the one path that consults the decision', async () => {
+    useLiveCaptureStore.setState({ appMode: 'analyze', secondaryMeasurement: { status: 'off', deviceName: 'UMIK-1' } });
+    useSettingsStore.setState({ settings: settings({ lastAppMode: 'analyze' }) });
+
+    await restoreBootMode({
+      hydration: Promise.resolve(),
+      getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+      getCurrentMode: () => useLiveCaptureStore.getState().appMode,
+      getSettings: () => useSettingsStore.getState().settings,
+    });
+
+    expect(vi.mocked(decideAnalyzeHomeAutoListen)).toHaveBeenCalledTimes(1);
+    expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'startListening' });
   });
 });
 
