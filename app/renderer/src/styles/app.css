@@ -732,6 +732,12 @@
     .rec-offer .ro-text { flex:1; min-width:0; font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-secondary); }
     .rec-offer .ro-text b { color:var(--text-primary); font-weight:var(--fw-semibold); }
 
+    /* #1597: the post-stop strip replaces the stacked-bar wedge — offer rows
+       lay out as compact side-by-side chips instead of full-width bars. */
+    .session-offers { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+    .session-offers .rec-offer { flex:1 1 240px; margin-top:0; padding:6px 10px; border-radius:var(--radius-md); }
+    .session-offers .rec-offer .ro-text { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
     /* Spectrum panel */
     #spectrum-panel { flex:1; display:flex; flex-direction:column; min-width:0; overflow:hidden; }
 
