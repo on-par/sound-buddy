@@ -18,7 +18,7 @@ function secondary(status: SecondaryMeasurementState['status'], overrides: Parti
 
 describe('analyzeLiveEqView (#1469, lc-06)', () => {
   it('is hidden when neither listening nor the stage is open, even with an active + overridden secondary source', () => {
-    expect(analyzeLiveEqView({ listening: false, analyzeStage: false, appMode: 'reportcard', secondary: secondary('active'), override: OVERRIDE }))
+    expect(analyzeLiveEqView({ listening: false, analyzeStage: false, appMode: 'analyze', secondary: secondary('active'), override: OVERRIDE }))
       .toEqual({ kind: 'hidden' });
   });
 
@@ -32,38 +32,64 @@ describe('analyzeLiveEqView (#1469, lc-06)', () => {
       .toEqual({ kind: 'hidden' });
   });
 
-  it('renders room when listening, active, and an override is present', () => {
-    expect(analyzeLiveEqView({ listening: true, analyzeStage: true, appMode: 'reportcard', secondary: secondary('active'), override: OVERRIDE }))
+  // #1604: appMode is a positive gate on 'analyze', not a 'live' blacklist —
+  // any other workspace (console, reportcard, ...) hides the island too, even
+  // while a listen survives a tab switch.
+  it.each(['console', 'reportcard'])('is hidden on the %s workspace even while listening with an active override', (appMode) => {
+    const view = analyzeLiveEqView({ listening: true, analyzeStage: true, appMode, secondary: secondary('active'), override: OVERRIDE });
+    expect(view).toEqual({ kind: 'hidden' });
+  });
+
+  // #1604: the Session→Analyze-Live transition — the same listening state
+  // flips from hidden to room purely on appMode, nothing else changing.
+  it('the same listening+active+override input is hidden on live and room on analyze (#1604 transition)', () => {
+    const input = { listening: true, analyzeStage: true, secondary: secondary('active'), override: OVERRIDE };
+    expect(analyzeLiveEqView({ ...input, appMode: 'live' })).toEqual({ kind: 'hidden' });
+    expect(analyzeLiveEqView({ ...input, appMode: 'analyze' })).toEqual({ kind: 'room', override: OVERRIDE });
+  });
+
+  it('renders room when appMode is analyze, listening, active, and an override is present', () => {
+    expect(analyzeLiveEqView({ listening: true, analyzeStage: true, appMode: 'analyze', secondary: secondary('active'), override: OVERRIDE }))
       .toEqual({ kind: 'room', override: OVERRIDE });
   });
 
+  it('renders a notice on analyze when off/disconnected with no working device', () => {
+    const view = analyzeLiveEqView({ listening: true, analyzeStage: true, appMode: 'analyze', secondary: secondary('off'), override: null });
+    expect(view.kind).toBe('notice');
+  });
+
+  it('renders the file kind on analyze when the stage is open but not listening', () => {
+    const view = analyzeLiveEqView({ listening: false, analyzeStage: true, appMode: 'analyze', secondary: secondary('off'), override: null });
+    expect(view).toEqual({ kind: 'file' });
+  });
+
   it('renders a notice — not room — when active but no override data has arrived yet', () => {
-    const view = analyzeLiveEqView({ listening: true, analyzeStage: true, appMode: 'reportcard', secondary: secondary('active'), override: null });
+    const view = analyzeLiveEqView({ listening: true, analyzeStage: true, appMode: 'analyze', secondary: secondary('active'), override: null });
     expect(view.kind).toBe('notice');
   });
 
   it('renders a notice honestly reflecting DISCONNECTED rather than freezing on the last override (AC3)', () => {
     const view = analyzeLiveEqView({
-      listening: true, analyzeStage: true, appMode: 'reportcard',
+      listening: true, analyzeStage: true, appMode: 'analyze',
       secondary: secondary('disconnected'), override: OVERRIDE,
     });
     expect(view).toEqual({ kind: 'notice', text: expect.stringContaining('disconnected') });
   });
 
   it('renders a notice while starting', () => {
-    const view = analyzeLiveEqView({ listening: true, analyzeStage: true, appMode: 'reportcard', secondary: secondary('starting'), override: null });
+    const view = analyzeLiveEqView({ listening: true, analyzeStage: true, appMode: 'analyze', secondary: secondary('starting'), override: null });
     expect(view).toEqual({ kind: 'notice', text: expect.stringContaining('Starting') });
   });
 
   it('renders a notice when blocked', () => {
-    const view = analyzeLiveEqView({ listening: true, analyzeStage: true, appMode: 'reportcard', secondary: secondary('blocked'), override: null });
+    const view = analyzeLiveEqView({ listening: true, analyzeStage: true, appMode: 'analyze', secondary: secondary('blocked'), override: null });
     expect(view).toEqual({ kind: 'notice', text: expect.stringContaining('blocked') });
   });
 
   it('never reaches room from a status other than active, even with a stale override object (AC3, structural)', () => {
     const statuses: SecondaryMeasurementState['status'][] = ['off', 'starting', 'blocked', 'disconnected'];
     for (const status of statuses) {
-      const view = analyzeLiveEqView({ listening: true, analyzeStage: true, appMode: 'reportcard', secondary: secondary(status), override: OVERRIDE });
+      const view = analyzeLiveEqView({ listening: true, analyzeStage: true, appMode: 'analyze', secondary: secondary(status), override: OVERRIDE });
       expect(view.kind).not.toBe('room');
     }
   });
@@ -74,17 +100,17 @@ describe('analyzeLiveEqView (#1469, lc-06)', () => {
   // curve) instead of the whole stage vanishing.
   describe('analyzeStage (#1487, #1522)', () => {
     it('renders the file kind once listening has stopped but the stage is still open (#1522)', () => {
-      const view = analyzeLiveEqView({ listening: false, analyzeStage: true, appMode: 'reportcard', secondary: secondary('off'), override: null });
+      const view = analyzeLiveEqView({ listening: false, analyzeStage: true, appMode: 'analyze', secondary: secondary('off'), override: null });
       expect(view).toEqual({ kind: 'file' });
     });
 
     it('never reaches room from analyzeStage alone — room still requires listening', () => {
-      const view = analyzeLiveEqView({ listening: false, analyzeStage: true, appMode: 'reportcard', secondary: secondary('active'), override: OVERRIDE });
+      const view = analyzeLiveEqView({ listening: false, analyzeStage: true, appMode: 'analyze', secondary: secondary('active'), override: OVERRIDE });
       expect(view.kind).toBe('file');
     });
 
     it('is hidden once both listening and the stage have closed', () => {
-      expect(analyzeLiveEqView({ listening: false, analyzeStage: false, appMode: 'reportcard', secondary: secondary('off'), override: null }))
+      expect(analyzeLiveEqView({ listening: false, analyzeStage: false, appMode: 'analyze', secondary: secondary('off'), override: null }))
         .toEqual({ kind: 'hidden' });
     });
   });

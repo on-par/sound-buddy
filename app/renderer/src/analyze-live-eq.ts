@@ -19,6 +19,11 @@
 // its own (that still requires `listening`), so File mode is what a
 // stage-only visit gets (#1522 — a File-mode dropzone, replacing the old
 // idle notice).
+//
+// #1604: visibility is gated positively on `appMode === 'analyze'` — the
+// Analyze stage itself — rather than an `appMode !== 'live'` blacklist. The
+// island is visible only on the Analyze stage; Session ('live') and every
+// other workspace hide it, even while `listening` survives a tab switch.
 
 import { secondaryStatusHTML, type SecondaryMeasurementState } from './measurement-device-state';
 import type { EqPaneRoomOverride } from './live-capture-panel';
@@ -37,11 +42,18 @@ export type AnalyzeLiveEqView =
   | { kind: 'room'; override: EqPaneRoomOverride }
   | { kind: 'file' };
 
-// Analyze's live-listening EQ never appears while the Session (live)
-// workspace is active — LiveEqPane's docked pane owns that screen (AC2) —
-// so this island and the docked pane are never both visible at once.
+// #1604: 'analyze' is a named constant, not a magic string — this island
+// belongs to the Analyze stage.
+const ANALYZE_APP_MODE = 'analyze';
+
+// #1604: visibility is keyed positively on appMode === 'analyze' — the
+// Analyze stage — rather than an appMode !== 'live' blacklist. Session
+// ('live') and every other workspace (console, reportcard, ...) hide the
+// island, even if `listening` survives a tab switch (exitAnalyze never
+// touches it — see analyzeEntryStore.ts). This also keeps this island and
+// LiveEqPane's docked Session pane never both visible at once (AC2).
 export function analyzeLiveEqView(input: AnalyzeLiveEqInput): AnalyzeLiveEqView {
-  if (input.appMode === 'live' || (!input.listening && !input.analyzeStage)) return { kind: 'hidden' };
+  if (input.appMode !== ANALYZE_APP_MODE || (!input.listening && !input.analyzeStage)) return { kind: 'hidden' };
   if (!input.listening) return { kind: 'file' };
   if (input.secondary.status === 'active' && input.override) {
     return { kind: 'room', override: input.override };
