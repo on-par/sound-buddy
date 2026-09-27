@@ -68,6 +68,10 @@ public final class AnalyzeModel {
     /// drawn as text-free pulses on the portrait RTA.
     public private(set) var problemMarkers: [ProblemMarkerDescriptor] = []
     public let rtaLayout = RTALayout.standard
+    /// The clamp authority for target-handle drags (#1559): RTAView passes
+    /// this as its own scale's default, so the drawn window and the drag
+    /// clamp always agree.
+    public let rtaScale = RTAScale.standard
     public let measurementSource: CoachingEvent.Source = .phoneMicEstimate
     /// The ideal-EQ curve drawn as the RTA's dashed target line. Changes only
     /// on edit-mode transitions, never at the meter rate.
@@ -86,6 +90,11 @@ public final class AnalyzeModel {
     /// `target` changes.
     private var rtaTargetOffsets: [Double]
     private var targetEditor = TargetCurveEditor()
+    /// The one active target-handle drag (#1559); nil when no finger holds a
+    /// handle. Freezes the level-match shift for its duration so the handle
+    /// stays under the finger instead of drifting as the shift tracks the
+    /// meter.
+    private var handleDrag: TargetHandleDrag?
     private var sessionStart: Date?
     private var lastReadingAt: Date?
     private var lastCoachingAt: Date?
@@ -139,8 +148,16 @@ public final class AnalyzeModel {
     /// RTAView (it already observes `rta`/`state`), so the coaching stack
     /// never re-renders at the meter rate.
     public var rtaTargetDb: [Double]? {
-        guard state == .live else { return nil }
-        return RTATarget.levelMatched(offsets: rtaTargetOffsets, measured: rta.levels)
+        guard state == .live, let shift = currentLevelShift else { return nil }
+        return rtaTargetOffsets.map { $0 + shift }
+    }
+
+    /// The live dB-mean level-match shift, or the shift frozen at grab while
+    /// a target handle is being dragged (#1559) — both `rtaTargetDb` and the
+    /// handle overlay read this so the drawn line and the handles never
+    /// disagree while a finger is down.
+    private var currentLevelShift: Double? {
+        handleDrag?.levelShiftDb ?? RTATarget.levelShift(offsets: rtaTargetOffsets, measured: rta.levels)
     }
 
     /// "Target · <label>", with " (auto)" appended when the target was picked
@@ -189,13 +206,64 @@ public final class AnalyzeModel {
     /// before editing began. No-op when not editing.
     public func cancelTargetEdit() {
         guard let resolution = targetEditor.cancel() else { return }
+        handleDrag = nil
         apply(target: resolution.curve, isAuto: resolution.isAuto)
     }
 
     /// Exits edit mode and keeps the current draft. No-op when not editing.
     public func commitTargetEdit() {
         guard let resolution = targetEditor.done() else { return }
+        handleDrag = nil
         apply(target: resolution.curve, isAuto: resolution.isAuto)
+    }
+
+    // MARK: Target curve handle drags (#1559)
+
+    /// One control-point handle plus its display dB (level-matched, or the
+    /// frozen drag shift while it is the active drag) — what RTAView draws.
+    public struct RTATargetHandle: Equatable, Sendable {
+        public let handle: TargetCurveHandle
+        public let displayDb: Double
+    }
+
+    /// The handle overlay, level-matched for display. Empty unless editing,
+    /// live, and a level shift is available (a full-width reading has
+    /// arrived).
+    public var rtaTargetHandles: [RTATargetHandle] {
+        guard isEditingTarget, state == .live, let shift = currentLevelShift else { return [] }
+        return TargetCurveHandles.handles(for: target).map { RTATargetHandle(handle: $0, displayDb: $0.offsetDb + shift) }
+    }
+
+    /// The ordinal of the handle currently held by a finger, or nil.
+    public var activeTargetHandle: Int? { handleDrag?.handle }
+
+    /// Grabs `handle`: returns `false` (no-op) when not editing, when `handle`
+    /// is out of range, when a drag is already active (one active drag
+    /// target at a time), or when there is no level shift yet. Otherwise
+    /// captures the handle's current offset and freezes the level-match
+    /// shift for the duration of the drag.
+    @discardableResult
+    public func beginTargetHandleDrag(_ handle: Int) -> Bool {
+        guard isEditingTarget, handleDrag == nil, let shift = currentLevelShift else { return false }
+        let handles = TargetCurveHandles.handles(for: target)
+        guard handles.indices.contains(handle) else { return false }
+        handleDrag = TargetHandleDrag(handle: handle, startOffsetDb: handles[handle].offsetDb, levelShiftDb: shift)
+        return true
+    }
+
+    /// Moves the active drag by `translationFraction` (vertical drag distance
+    /// as a fraction of the plot height, positive up) and writes the result
+    /// into the draft. No-op without an active drag.
+    public func dragTargetHandle(translationFraction: Double) {
+        guard let drag = handleDrag else { return }
+        let offsetDb = drag.offsetDb(forTranslationFraction: translationFraction, scale: rtaScale)
+        updateTargetDraft(TargetCurveHandles.moving(target, handle: drag.handle, toOffsetDb: offsetDb))
+    }
+
+    /// Releases the active drag; the live level-match shift resumes on the
+    /// next reading. No-op without an active drag.
+    public func endTargetHandleDrag() {
+        handleDrag = nil
     }
 
     // MARK: Lifecycle
@@ -270,6 +338,7 @@ public final class AnalyzeModel {
         coaching = []
         problemMarkers = []
         overallDb = nil
+        handleDrag = nil
         state = .idle
     }
 

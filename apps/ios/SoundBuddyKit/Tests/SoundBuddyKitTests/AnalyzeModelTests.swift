@@ -531,6 +531,174 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         #expect(m.target == worship)
     }
 
+    // MARK: Target curve handle drags (#1559)
+
+    private func liveModelWithFullReading(target: IdealCurve = .flat) async throws -> AnalyzeModel {
+        let m = model(target: target, targetIsAuto: true)
+        await m.appear()
+        let count = RTALayout.standard.bands.count
+        try deliver(reading(.silent, rta: Array(repeating: -50.0, count: count)))
+        return m
+    }
+
+    @Test func rtaTargetHandlesIsEmptyWhenNotEditing() async throws {
+        let m = try await liveModelWithFullReading()
+        #expect(m.rtaTargetHandles.isEmpty)
+    }
+
+    @Test func rtaTargetHandlesIsEmptyWhenEditingButNotLive() throws {
+        let m = model(target: .flat, targetIsAuto: true)
+        m.beginTargetEdit()
+        #expect(m.rtaTargetHandles.isEmpty)
+    }
+
+    @Test func rtaTargetHandlesHasTenEntriesMatchingRtaTargetDbWhenEditingAndLive() async throws {
+        let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        let m = try await liveModelWithFullReading(target: worship)
+        m.beginTargetEdit()
+        let handles = m.rtaTargetHandles
+        #expect(handles.count == TargetCurveHandles.handleCount)
+        let shift = try #require(RTATarget.levelShift(offsets: RTATarget.resample(worship, onto: RTALayout.standard), measured: m.rta.levels))
+        for entry in handles {
+            #expect(abs(entry.displayDb - (entry.handle.offsetDb + shift)) < 1e-6)
+        }
+    }
+
+    @Test func beginTargetHandleDragReturnsFalseWhenNotEditing() async throws {
+        let m = try await liveModelWithFullReading()
+        #expect(m.beginTargetHandleDrag(0) == false)
+        #expect(m.activeTargetHandle == nil)
+    }
+
+    @Test func beginTargetHandleDragReturnsFalseForAnOutOfRangeHandle() async throws {
+        let m = try await liveModelWithFullReading()
+        m.beginTargetEdit()
+        #expect(m.beginTargetHandleDrag(TargetCurveHandles.handleCount) == false)
+        #expect(m.beginTargetHandleDrag(-1) == false)
+        #expect(m.activeTargetHandle == nil)
+    }
+
+    @Test func beginTargetHandleDragReturnsFalseWithNoReadingYet() throws {
+        let m = model(target: .flat, targetIsAuto: true)
+        m.beginTargetEdit()
+        #expect(m.beginTargetHandleDrag(0) == false)
+    }
+
+    @Test func beginTargetHandleDragReturnsTrueAndSetsTheActiveHandleWhenEditingAndLive() async throws {
+        let m = try await liveModelWithFullReading()
+        m.beginTargetEdit()
+        #expect(m.beginTargetHandleDrag(2) == true)
+        #expect(m.activeTargetHandle == 2)
+    }
+
+    @Test func aSecondBeginReturnsFalseAndKeepsTheFirstHandle() async throws {
+        let m = try await liveModelWithFullReading()
+        m.beginTargetEdit()
+        #expect(m.beginTargetHandleDrag(2) == true)
+        #expect(m.beginTargetHandleDrag(5) == false)
+        #expect(m.activeTargetHandle == 2)
+    }
+
+    @Test func dragTargetHandleMovesTheDraft() async throws {
+        let m = try await liveModelWithFullReading()
+        m.beginTargetEdit()
+        m.beginTargetHandleDrag(3)
+        let fraction = 0.1
+        m.dragTargetHandle(translationFraction: fraction)
+        let gridIndex = TargetCurveHandles.gridIndices[3]
+        let expected = 0 + fraction * m.rtaScale.spanDb
+        #expect(abs(m.target.dbOffsets[gridIndex] - expected) < 1e-6)
+        #expect(m.target.id == TargetCurveHandles.customId)
+    }
+
+    @Test func rtaTargetDbUsesTheFrozenShiftDuringADrag() async throws {
+        let m = try await liveModelWithFullReading()
+        m.beginTargetEdit()
+        m.beginTargetHandleDrag(3)
+        let shiftBeforeDrag = try #require(RTATarget.levelShift(offsets: RTATarget.resample(.flat, onto: RTALayout.standard), measured: m.rta.levels))
+        let fraction = 0.1
+        m.dragTargetHandle(translationFraction: fraction)
+
+        let expectedOffset = fraction * m.rtaScale.spanDb
+        let handleDisplayDb = try #require(m.rtaTargetHandles.first { $0.handle.ordinal == 3 }?.displayDb)
+        #expect(abs(handleDisplayDb - (expectedOffset + shiftBeforeDrag)) < 1e-6)
+
+        // Delivering a new reading mid-drag does not move the frozen shift.
+        let count = RTALayout.standard.bands.count
+        try deliver(reading(.silent, rta: Array(repeating: -90.0, count: count)))
+        let handleDisplayDbAfterNewReading = try #require(m.rtaTargetHandles.first { $0.handle.ordinal == 3 }?.displayDb)
+        #expect(abs(handleDisplayDbAfterNewReading - handleDisplayDb) < 1e-6)
+    }
+
+    @Test func aDragFarPastTheTopOrBottomClampsTheDisplayedDb() async throws {
+        let m = try await liveModelWithFullReading()
+        m.beginTargetEdit()
+        m.beginTargetHandleDrag(3)
+        m.dragTargetHandle(translationFraction: 1000)
+        let handles = m.rtaTargetHandles
+        let entry = try #require(handles.first { $0.handle.ordinal == 3 })
+        #expect(abs(entry.displayDb - m.rtaScale.ceilingDb) < 1e-6)
+
+        m.dragTargetHandle(translationFraction: -1000)
+        let loweredEntry = try #require(m.rtaTargetHandles.first { $0.handle.ordinal == 3 })
+        #expect(abs(loweredEntry.displayDb - m.rtaScale.floorDb) < 1e-6)
+    }
+
+    @Test func dragTargetHandleWithoutABeginIsANoOp() async throws {
+        let m = try await liveModelWithFullReading()
+        m.beginTargetEdit()
+        let before = m.target
+        m.dragTargetHandle(translationFraction: 0.5)
+        #expect(m.target == before)
+    }
+
+    @Test func endCancelAndCommitEachClearTheActiveHandle() async throws {
+        let m = try await liveModelWithFullReading()
+        m.beginTargetEdit()
+        m.beginTargetHandleDrag(3)
+        m.endTargetHandleDrag()
+        #expect(m.activeTargetHandle == nil)
+
+        m.beginTargetHandleDrag(3)
+        m.cancelTargetEdit()
+        #expect(m.activeTargetHandle == nil)
+
+        m.beginTargetEdit()
+        m.beginTargetHandleDrag(3)
+        m.commitTargetEdit()
+        #expect(m.activeTargetHandle == nil)
+    }
+
+    @Test func cancelAfterADragRestoresTheOriginalCurveAndAutoFlag() async throws {
+        let m = try await liveModelWithFullReading(target: .flat)
+        m.beginTargetEdit()
+        m.beginTargetHandleDrag(3)
+        m.dragTargetHandle(translationFraction: 0.1)
+        m.cancelTargetEdit()
+        #expect(m.target == .flat)
+        #expect(m.targetIsAuto)
+        #expect(!m.isEditingTarget)
+    }
+
+    @Test func commitAfterADragLeavesANonAutoCustomTarget() async throws {
+        let m = try await liveModelWithFullReading(target: .flat)
+        m.beginTargetEdit()
+        m.beginTargetHandleDrag(3)
+        m.dragTargetHandle(translationFraction: 0.1)
+        m.commitTargetEdit()
+        #expect(!m.isEditingTarget)
+        #expect(!m.targetIsAuto)
+        #expect(m.target.label == TargetCurveHandles.customLabel)
+    }
+
+    @Test func coachingCurveFollowsTheDraftAfterADrag() async throws {
+        let m = try await liveModelWithFullReading(target: .flat)
+        m.beginTargetEdit()
+        m.beginTargetHandleDrag(3)
+        m.dragTargetHandle(translationFraction: 0.1)
+        #expect(m.coachingCurve == m.target)
+    }
+
     // MARK: Copy
 
     @Test func coachingPlaceholderNeverAsksForATap() async {
