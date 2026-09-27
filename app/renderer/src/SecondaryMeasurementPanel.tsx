@@ -16,10 +16,15 @@
 // via one new optional method on the existing window.liveCaptureRuntime
 // object (LiveControls.tsx's LiveCaptureRuntime interface), the same way
 // LiveSourceSettings.tsx's own onChange handlers reach bridged orchestration.
+// #1589: a device pick here can be the far end of a Listen-live bounce from
+// Analyze; selectSecondaryDevice() hands the stream start to Analyze
+// (resumePendingListen()) whenever one is pending, so the round trip lands
+// on the Analyze RTA rather than starting the stream from this panel alone.
 
 import { useEffect, type JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore, type StartCaptureOpts } from './stores/liveCaptureStore';
+import { useAnalyzeEntryStore } from './stores/analyzeEntryStore';
 import {
   deviceIndexForName,
   secondaryStatusHTML,
@@ -50,7 +55,11 @@ export async function selectSecondaryDevice(
   } else {
     const dev = devices.find((d) => String(d.index) === value);
     useLiveCaptureStore.getState().setSecondaryDeviceName(dev ? dev.name : '');
-    await useLiveCaptureStore.getState().startSecondaryMeasurement(opts);
+    // #1589: a Listen-live bounce to Settings is waiting on this pick —
+    // Analyze owns the start (on its listenChannel) so the stream starts
+    // exactly once.
+    const resumed = await useAnalyzeEntryStore.getState().resumePendingListen();
+    if (!resumed) await useLiveCaptureStore.getState().startSecondaryMeasurement(opts);
   }
   runtime()?.afterSecondaryMeasurementChange?.();
 }
