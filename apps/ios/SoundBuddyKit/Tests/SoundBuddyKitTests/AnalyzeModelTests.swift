@@ -438,6 +438,35 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         #expect(m.problemMarkers.isEmpty)
     }
 
+    /// AnalyzeLayout hides the pulses while editing (#1562) — the frozen
+    /// markers themselves (ADR-0156) are untouched, so they come back
+    /// unchanged on Done/Cancel and the peek re-enables.
+    @Test func editModeHidesProblemMarkersViaAnalyzeLayout() async throws {
+        let m = model()
+        await m.appear()
+        try deliver(reading(levels([.lowMid: -22])))
+        let before = m.problemMarkers
+        #expect(!before.isEmpty)
+        #expect(AnalyzeLayout.landscape.showsProblemMarkers(isEditingTarget: m.isEditingTarget))
+
+        m.beginTargetEdit()
+        #expect(!AnalyzeLayout.landscape.showsProblemMarkers(isEditingTarget: m.isEditingTarget))
+        #expect(m.problemMarkers == before)
+        #expect(!AnalyzeLayout.coachingPeekEnabled(isEditingTarget: m.isEditingTarget))
+
+        m.commitTargetEdit()
+        #expect(AnalyzeLayout.landscape.showsProblemMarkers(isEditingTarget: m.isEditingTarget))
+        #expect(AnalyzeLayout.coachingPeekEnabled(isEditingTarget: m.isEditingTarget))
+        #expect(m.problemMarkers == before)
+
+        m.beginTargetEdit()
+        #expect(!AnalyzeLayout.landscape.showsProblemMarkers(isEditingTarget: m.isEditingTarget))
+        m.cancelTargetEdit()
+        #expect(AnalyzeLayout.landscape.showsProblemMarkers(isEditingTarget: m.isEditingTarget))
+        #expect(AnalyzeLayout.coachingPeekEnabled(isEditingTarget: m.isEditingTarget))
+        #expect(m.problemMarkers == before)
+    }
+
     // MARK: Target curve editing (#1558)
 
     @Test func beginTargetEditEntersEditModeWithoutChangingTheTarget() throws {

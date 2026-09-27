@@ -94,6 +94,13 @@ Capabilities**. The project sets no team on purpose.
     legend now reads "Target · Custom". Repeat and tap Cancel instead — the
     cards refresh within about a second against the original curve, as if the
     edit never happened.
+12. Rotate to landscape, play lopsided material until the problem-marker
+    pulses show, and open the Coaching peek. Tap the Target legend to enter
+    edit mode: the peek closes and the pulses vanish, and the Editing chip,
+    preset pills and handles are fully unobstructed. The Coaching handle stays
+    in place (the RTA does not move) but is dimmed and does not respond to tap
+    or swipe. Tap Done or Cancel — the pulses return and the peek opens and
+    closes by tap and swipe exactly as before.
 
 ## Tests
 
