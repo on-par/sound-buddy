@@ -69,20 +69,23 @@ public final class AnalyzeModel {
     public private(set) var problemMarkers: [ProblemMarkerDescriptor] = []
     public let rtaLayout = RTALayout.standard
     public let measurementSource: CoachingEvent.Source = .phoneMicEstimate
-    /// The ideal-EQ curve drawn as the RTA's dashed target line.
-    public let target: IdealCurve
-    /// Whether `target` was picked automatically (vs. a future user choice) —
-    /// only affects the legend copy.
-    public let targetIsAuto: Bool
+    /// The ideal-EQ curve drawn as the RTA's dashed target line. Changes only
+    /// on edit-mode transitions, never at the meter rate.
+    public private(set) var target: IdealCurve
+    /// Whether `target` was picked automatically (vs. a user choice made
+    /// while editing) — only affects the legend copy.
+    public private(set) var targetIsAuto: Bool
 
     private let permission: MicPermission
     private let source: LiveAudioSource
     // Coaches against `target`, the same curve drawn as the RTA target, so the
     // overlay and the hints never disagree.
-    private let coach: BandDeviationCoach
+    private var coach: BandDeviationCoach
     private let now: () -> Date
-    /// `target` resampled onto `rtaLayout`'s band centers, computed once.
-    private let rtaTargetOffsets: [Double]
+    /// `target` resampled onto `rtaLayout`'s band centers, recomputed whenever
+    /// `target` changes.
+    private var rtaTargetOffsets: [Double]
+    private var targetEditor = TargetCurveEditor()
     private var sessionStart: Date?
     private var lastReadingAt: Date?
     private var lastCoachingAt: Date?
@@ -103,6 +106,16 @@ public final class AnalyzeModel {
         self.targetIsAuto = targetIsAuto
         self.rtaTargetOffsets = RTATarget.resample(target, onto: RTALayout.standard)
         self.now = now
+    }
+
+    /// Sets `target`/`targetIsAuto` and recomputes everything derived from the
+    /// curve (the coach, the resampled RTA offsets) together, so the drawn
+    /// line and the coaching hints never disagree.
+    private func apply(target: IdealCurve, isAuto: Bool) {
+        self.target = target
+        self.targetIsAuto = isAuto
+        coach = BandDeviationCoach(ideal: target)
+        rtaTargetOffsets = RTATarget.resample(target, onto: rtaLayout)
     }
 
     /// The curve the coach judges the room against — always `target`, so
@@ -136,8 +149,8 @@ public final class AnalyzeModel {
         targetLegendPrefix + label + (isAuto ? targetAutoSuffix : "")
     }
 
-    /// The legend row shown under the RTA. Depends only on `let`s, so it never
-    /// changes at the meter rate.
+    /// The legend row shown under the RTA. Changes only on edit-mode
+    /// transitions, never at the meter rate.
     public var targetLegendText: String { Self.formatTargetLegend(label: target.label, isAuto: targetIsAuto) }
 
     /// Placeholder for an empty coaching stack. Never points at a button:
@@ -151,6 +164,38 @@ public final class AnalyzeModel {
         case .micDenied, .failed:
             "Coaching starts once the microphone is on."
         }
+    }
+
+    // MARK: Target curve editing (#1558)
+
+    /// True while the in-place target-curve editor is open. The view swaps
+    /// the Target legend for the "Editing target" chip while this is true.
+    public var isEditingTarget: Bool { targetEditor.isEditing }
+
+    /// Enters edit mode, snapshotting the active curve and its auto flag so
+    /// Cancel can restore them exactly. No-op while already editing.
+    public func beginTargetEdit() {
+        targetEditor.begin(active: target, isAuto: targetIsAuto)
+    }
+
+    /// Applies `curve` as the draft, so the RTA line and the coach follow it
+    /// immediately. No-op when not editing.
+    public func updateTargetDraft(_ curve: IdealCurve) {
+        guard targetEditor.updateDraft(curve) else { return }
+        apply(target: curve, isAuto: false)
+    }
+
+    /// Exits edit mode and restores the curve and auto flag that were active
+    /// before editing began. No-op when not editing.
+    public func cancelTargetEdit() {
+        guard let resolution = targetEditor.cancel() else { return }
+        apply(target: resolution.curve, isAuto: resolution.isAuto)
+    }
+
+    /// Exits edit mode and keeps the current draft. No-op when not editing.
+    public func commitTargetEdit() {
+        guard let resolution = targetEditor.done() else { return }
+        apply(target: resolution.curve, isAuto: resolution.isAuto)
     }
 
     // MARK: Lifecycle

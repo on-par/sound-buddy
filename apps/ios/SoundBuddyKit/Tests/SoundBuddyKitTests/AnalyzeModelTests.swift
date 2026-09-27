@@ -423,6 +423,114 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         #expect(m.problemMarkers.isEmpty)
     }
 
+    // MARK: Target curve editing (#1558)
+
+    @Test func beginTargetEditEntersEditModeWithoutChangingTheTarget() throws {
+        let curve = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        let m = model(target: curve, targetIsAuto: true)
+        m.beginTargetEdit()
+        #expect(m.isEditingTarget)
+        #expect(m.target == curve)
+        #expect(m.targetLegendText == "Target · Worship service (auto)")
+    }
+
+    @Test func cancelRestoresThePreEditCurveAfterADraftChange() throws {
+        let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        let m = model(target: .flat, targetIsAuto: true)
+        m.beginTargetEdit()
+        m.updateTargetDraft(worship)
+        #expect(m.target == worship)
+        #expect(m.coachingCurve == worship)
+        m.cancelTargetEdit()
+        #expect(!m.isEditingTarget)
+        #expect(m.target == .flat)
+        #expect(m.coachingCurve == .flat)
+        #expect(m.targetLegendText == "Target · Flat / neutral (auto)")
+    }
+
+    @Test func commitKeepsTheDraftAndClearsAuto() throws {
+        let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        let m = model(target: .flat, targetIsAuto: true)
+        m.beginTargetEdit()
+        m.updateTargetDraft(worship)
+        m.commitTargetEdit()
+        #expect(!m.isEditingTarget)
+        #expect(m.target == worship)
+        #expect(!m.targetIsAuto)
+        #expect(m.targetLegendText == "Target · Worship service")
+    }
+
+    @Test func commitWithNoChangeLeavesTheTargetAndAutoFlagUnchanged() {
+        let m = model(target: .flat, targetIsAuto: true)
+        m.beginTargetEdit()
+        m.commitTargetEdit()
+        #expect(!m.isEditingTarget)
+        #expect(m.target == .flat)
+        #expect(m.targetIsAuto)
+        #expect(m.targetLegendText == "Target · Flat / neutral (auto)")
+    }
+
+    @Test func editTransitionsAreNoOpsWhenNotEditing() throws {
+        let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        let m = model(target: .flat, targetIsAuto: true)
+        m.updateTargetDraft(worship)
+        m.cancelTargetEdit()
+        m.commitTargetEdit()
+        #expect(m.target == .flat)
+        #expect(m.targetIsAuto)
+        #expect(!m.isEditingTarget)
+    }
+
+    @Test func draftFollowsIntoTheLiveRTATarget() async throws {
+        let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        let m = model(target: .flat, targetIsAuto: true)
+        await m.appear()
+        let count = RTALayout.standard.bands.count
+        let measured = (0..<count).map { -55.0 + Double($0 % 12) }
+
+        m.beginTargetEdit()
+        m.updateTargetDraft(worship)
+        try deliver(reading(.silent, rta: measured))
+        let target = try #require(m.rtaTargetDb)
+
+        let expectedModel = model(target: worship)
+        await expectedModel.appear()
+        try deliver(reading(.silent, rta: measured))
+        let expected = try #require(expectedModel.rtaTargetDb)
+
+        #expect(target.count == expected.count)
+        for (actual, want) in zip(target, expected) {
+            #expect(abs(actual - want) < 1e-6)
+        }
+    }
+
+    @Test func editCallsNeverStartOrStopTheSource() async throws {
+        let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        let m = model(target: .flat, targetIsAuto: true)
+        await m.appear()
+        let startCount = source.startCount
+        let stopCount = source.stopCount
+
+        m.beginTargetEdit()
+        m.updateTargetDraft(worship)
+        #expect(source.startCount == startCount)
+        #expect(source.stopCount == stopCount)
+        m.commitTargetEdit()
+        #expect(source.startCount == startCount)
+        #expect(source.stopCount == stopCount)
+    }
+
+    @Test func editModeSurvivesDisappear() async throws {
+        let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        let m = model(target: .flat, targetIsAuto: true)
+        await m.appear()
+        m.beginTargetEdit()
+        m.updateTargetDraft(worship)
+        m.disappear()
+        #expect(m.isEditingTarget)
+        #expect(m.target == worship)
+    }
+
     // MARK: Copy
 
     @Test func coachingPlaceholderNeverAsksForATap() async {
