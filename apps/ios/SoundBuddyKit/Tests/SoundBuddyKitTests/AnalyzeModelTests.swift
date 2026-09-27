@@ -118,6 +118,7 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         #expect(m.overallDb == nil)
         #expect(m.overallSplDb == nil)
         #expect(m.overallLevelText == "—")
+        #expect(m.overallLevelNumberText == "—")
     }
 
     // MARK: Always listening
@@ -297,7 +298,8 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         try deliver(SpectrumReading(bands: .silent, rtaDb: [-40], overallDb: -18.43))
         #expect(m.overallDb == -18.43, "dBFS is unchanged")
         #expect(abs(m.overallSplDb! - 96.57) < 1e-9)
-        #expect(m.overallLevelText == "96.6 dBSPL")
+        #expect(m.overallLevelText == "96.6 dB")
+        #expect(m.overallLevelNumberText == "96.6")
         clock.advance(AnalyzeModel.coachingRefreshSeconds / 2)
         try deliver(SpectrumReading(bands: .silent, rtaDb: [-40], overallDb: -30.1))
         #expect(m.overallDb == -30.1, "the meter updates every reading, not just at the coaching cadence")
@@ -310,6 +312,7 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         #expect(m.overallDb == nil)
         #expect(m.overallSplDb == nil)
         #expect(m.overallLevelText == "—")
+        #expect(m.overallLevelNumberText == "—")
     }
 
     @Test func coachingNeverMentionsSplOrDbfs() async throws {
@@ -966,10 +969,10 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
 @Suite struct FormatOverallLevelTests {
     @Test(arguments: [
         (nil, "—"),
-        (89.64, "89.6 dBSPL"),
-        (89.66, "89.7 dBSPL"),
-        (-0.02, "0.0 dBSPL"),
-        (120.0, "120.0 dBSPL"),
+        (89.64, "89.6 dB"),
+        (89.66, "89.7 dB"),
+        (-0.02, "0.0 dB"),
+        (120.0, "120.0 dB"),
         (Double.nan, "—"),
         (-Double.infinity, "—"),
     ] as [(Double?, String)])
@@ -982,9 +985,33 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
             let text = AnalyzeModel.formatOverallLevel(db)
             #expect(!text.contains("dBFS"))
             if db != nil {
-                #expect(text.contains("dBSPL"))
+                #expect(text.hasSuffix(" dB"))
             }
         }
+    }
+
+    @Test func neverClaimsAWeightingOrSpl() {
+        #expect(AnalyzeModel.overallLevelUnit == "dB")
+        for db in [15.0, 89.6, 120.0] {
+            let text = AnalyzeModel.formatOverallLevel(db)
+            #expect(!text.contains("dBA"))
+            #expect(!text.contains("SPL"))
+        }
+    }
+
+    @Test(arguments: [
+        (nil, "—"),
+        (89.64, "89.6"),
+        (-0.02, "0.0"),
+        (120.0, "120.0"),
+        (Double.nan, "—"),
+    ] as [(Double?, String)])
+    func numberOmitsTheUnit(db: Double?, expected: String) {
+        #expect(AnalyzeModel.formatOverallLevelNumber(db) == expected)
+    }
+
+    @Test func fullTextIsTheNumberPlusTheUnit() {
+        #expect(AnalyzeModel.formatOverallLevel(96.57) == "\(AnalyzeModel.formatOverallLevelNumber(96.57)) \(AnalyzeModel.overallLevelUnit)")
     }
 }
 

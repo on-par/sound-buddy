@@ -52,9 +52,11 @@ public final class AnalyzeModel {
     /// Unweighted (Z), the same DC-excluded power sum SpectrumAnalyzer reports.
     /// A future user calibration replaces this at the same seam (ADR-0158).
     public static let phoneMicSplOffsetDb = 115.0
-    /// The hero reads estimated sound pressure level; the RTA and coaching stay
-    /// in dBFS / relative dB.
-    public static let overallLevelUnit = "dBSPL"
+    /// The hero's unit: a plain "dB" that the view draws tiny beside the
+    /// number. The value is still the unweighted phone-mic SPL estimate (not
+    /// dBA — no A-weighting is applied); the honesty cue carries the caveat.
+    /// The RTA and coaching stay in dBFS / relative dB.
+    public static let overallLevelUnit = "dB"
     /// Readings at or below this are treated as silence and show "—". Sits
     /// above the analyzer's -120 floor and well below any real room.
     public static let overallLevelFloorDb = -100.0
@@ -170,16 +172,27 @@ public final class AnalyzeModel {
     /// The latest reading as an estimated dB SPL; nil whenever overallDb is.
     public var overallSplDb: Double? { Self.estimatedSpl(fromDbfs: overallDb) }
 
-    /// "92.3 dBSPL", or "—" when there is nothing to report — never a fake 0.
-    public static func formatOverallLevel(_ splDb: Double?) -> String {
+    /// Just the number, "92.3", or "—" when there is nothing to report —
+    /// never a fake 0. The view draws this large and the unit small.
+    public static func formatOverallLevelNumber(_ splDb: Double?) -> String {
         guard let splDb, splDb.isFinite else { return noLevelText }
         let rounded = (splDb * 10).rounded() / 10
         let value = abs(rounded) < halfDisplayStep ? 0 : rounded
-        return String(format: "%.1f %@", value, overallLevelUnit)
+        return String(format: "%.1f", value)
     }
 
-    /// The Analyze header's readout, rendered next to the honesty capsule.
+    /// "92.3 dB" (the estimated SPL with its unit), or "—" when there is
+    /// nothing to report — never a fake 0.
+    public static func formatOverallLevel(_ splDb: Double?) -> String {
+        guard let splDb, splDb.isFinite else { return noLevelText }
+        return "\(formatOverallLevelNumber(splDb)) \(overallLevelUnit)"
+    }
+
+    /// The Analyze header's readout as one string (accessibility, tests).
     public var overallLevelText: String { Self.formatOverallLevel(overallSplDb) }
+
+    /// The readout's number alone, drawn large next to the tiny unit.
+    public var overallLevelNumberText: String { Self.formatOverallLevelNumber(overallSplDb) }
 
     /// `target` level-matched to the live meter's dB mean, one value per
     /// `rtaLayout` band — the RTA's dashed target line. `nil` when not live
