@@ -59,12 +59,25 @@ final class SystemMicInputSession: MicInputSession {
     }
 }
 
+extension MicRouteChange {
+    /// Reads AVAudioSession.routeChangeNotification's reason (#1601).
+    init(notification: Notification) {
+        let raw = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+        switch raw.flatMap(AVAudioSession.RouteChangeReason.init(rawValue:)) {
+        case .oldDeviceUnavailable: self = .deviceRemoved
+        case .newDeviceAvailable: self = .deviceAdded
+        default: self = .other
+        }
+    }
+}
+
 /// Preferred mic (#1594, else the system default) -> AVAudioEngine input tap -> SampleRingBuffer; a main-actor
 /// meter loop pulls the newest FFT frame and runs SpectrumAnalyzer (coaching
 /// bands + the display RTA from one FFT).
 ///
-/// TODO(session): handle AVAudioSession interruptions (calls, Siri) and route
-/// changes — pause with a visible state and resume per the architecture plan.
+/// A device coming or going restarts capture on the new route (#1601; see
+/// AnalyzeView). TODO(session): handle AVAudioSession interruptions (calls,
+/// Siri) — pause with a visible state and resume per the architecture plan.
 /// TODO(perf): run the FFT on a background queue if the meter loop ever shows
 /// up in Instruments; a 4096-point vDSP FFT at 20 Hz is well under 1% today.
 /// The input is whatever MicInputController routes before the engine starts;
@@ -78,7 +91,9 @@ final class MicCapture: LiveAudioSource {
     /// Ring holds this many FFT frames of history.
     static let ringFrames = 4
 
-    private let engine = AVAudioEngine()
+    /// Rebuilt on every start: after a route change the old engine's input
+    /// node can keep the unplugged device's format.
+    private var engine = AVAudioEngine()
     private let inputs: MicInputController
     private var ring: SampleRingBuffer?
     private var meterTask: Task<Void, Never>?
@@ -101,6 +116,8 @@ final class MicCapture: LiveAudioSource {
 
         let analyzer: SpectrumAnalyzer
         let ring: SampleRingBuffer
+        let engine = AVAudioEngine()
+        self.engine = engine
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         do {

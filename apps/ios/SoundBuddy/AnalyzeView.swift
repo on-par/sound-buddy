@@ -92,6 +92,14 @@ struct AnalyzeView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
             keepAwake.release()
         }
+        // An external mic unplugged (or a new one plugged in) while
+        // listening (#1601): fall back to the system default and keep going
+        // on the new route instead of leaving a dead engine.
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification).receive(on: RunLoop.main)) { note in
+            if micInputs.routeChanged(MicRouteChange(notification: note)) {
+                Task { await model.restartListening() }
+            }
+        }
         #endif
     }
 
