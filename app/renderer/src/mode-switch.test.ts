@@ -751,6 +751,32 @@ describe('enterAnalyzeFromTab (#1588)', () => {
 
     expect(vi.mocked(decideAnalyzeHomeAutoListen)).not.toHaveBeenCalled();
   });
+
+  // #1603: the AC is an ordering guarantee, not just an end-state — pins
+  // that the workspace teardown (appMode -> 'analyze', live-active cleared)
+  // has already happened by the time enterAnalyze()'s listen/dialog entry
+  // rule runs, not merely by the time enterAnalyzeFromTab() resolves.
+  it('lands appMode analyze and clears live-active before the entry rule runs (#1603)', async () => {
+    useLiveCaptureStore.setState({
+      appMode: 'live',
+      secondaryMeasurement: { status: 'off', deviceName: '' },
+    });
+    bodyClassList.add('live-active');
+    const seen: { appMode: string; liveActive: boolean }[] = [];
+    const enterSpy = vi.spyOn(useAnalyzeEntryStore.getState(), 'enterAnalyze')
+      .mockImplementation(async () => {
+        seen.push({
+          appMode: useLiveCaptureStore.getState().appMode,
+          liveActive: bodyClassList.contains('live-active'),
+        });
+      });
+
+    await enterAnalyzeFromTab();
+
+    expect(enterSpy).toHaveBeenCalledTimes(1);
+    expect(seen).toEqual([{ appMode: 'analyze', liveActive: false }]);
+    enterSpy.mockRestore();
+  });
 });
 
 describe('applyInitialMode (#1510)', () => {
