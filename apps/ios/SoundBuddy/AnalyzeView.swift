@@ -5,9 +5,10 @@ import UIKit
 #endif
 
 /// The P0 Analyze screen: a console-style RTA (with its dashed ideal-EQ
-/// target and legend), the short coaching stack, the overall dBFS readout,
-/// and the phone-mic honesty cue. Always listening while on screen in the
-/// foreground — no Start/Stop control; lifecycle events go to the model.
+/// target and legend), the short coaching stack, the overall level readout
+/// (estimated dBSPL), and the phone-mic honesty cue. Always listening while
+/// on screen in the foreground — no Start/Stop control; lifecycle events go
+/// to the model.
 /// Pure rendering — every decision lives in AnalyzeModel (SoundBuddyKit),
 /// which is where the tests are.
 ///
@@ -146,8 +147,9 @@ struct AnalyzeView: View {
     }
 }
 
-/// The overall dBFS readout. Shared by the portrait header and the landscape
-/// status strip so the accessibility label stays identical in both.
+/// The overall level readout (estimated dBSPL). Shared by the portrait header
+/// and the landscape status strip so the accessibility label stays identical
+/// in both.
 private struct OverallLevelReadout: View {
     let model: AnalyzeModel
     let font: Font
@@ -172,7 +174,7 @@ private struct HonestyBadge: View {
             .padding(.vertical, Layout.badgePaddingV)
             .background(Palette.surface, in: Capsule())
             .foregroundStyle(Palette.secondaryText)
-            .accessibilityLabel("\(AnalyzeModel.honestyCue): readings are relative, not calibrated")
+            .accessibilityLabel("\(AnalyzeModel.honestyCue): level is an uncalibrated dB SPL estimate, coaching is relative to the target")
     }
 }
 

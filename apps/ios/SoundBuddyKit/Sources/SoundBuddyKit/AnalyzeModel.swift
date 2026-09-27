@@ -44,14 +44,23 @@ public final class AnalyzeModel {
     /// A gap longer than this between readings (e.g. a stalled engine) ages
     /// the RTA meter by this much at most.
     static let maxMeterStepSeconds = 0.5
-    /// Uncalibrated phone mic: full scale, never SPL.
-    public static let overallLevelUnit = "dBFS"
+    /// Default dBFS -> dB SPL offset for the built-in phone mic (#1571). An
+    /// uncalibrated estimate, not a measurement: MicCapture runs the session in
+    /// .measurement mode (no AGC), so one broadband offset is a stable first
+    /// guess. 115 dB matches the dogfood datum (-25.4 dBFS on the phone vs ~90 dB
+    /// on a handheld meter) and a built-in mic clipping near 115-120 dB SPL.
+    /// Unweighted (Z), the same DC-excluded power sum SpectrumAnalyzer reports.
+    /// A future user calibration replaces this at the same seam (ADR-0158).
+    public static let phoneMicSplOffsetDb = 115.0
+    /// The hero reads estimated sound pressure level; the RTA and coaching stay
+    /// in dBFS / relative dB.
+    public static let overallLevelUnit = "dBSPL"
     /// Readings at or below this are treated as silence and show "—". Sits
     /// above the analyzer's -120 floor and well below any real room.
     public static let overallLevelFloorDb = -100.0
     /// Shown when there is no level to report.
     public static let noLevelText = "—"
-    /// Half of the one-decimal display step, so the "-0.0 dBFS" check uses an
+    /// Half of the one-decimal display step, so the "-0.0" check uses an
     /// epsilon rather than float equality.
     static let halfDisplayStep = 0.05
     static let targetLegendPrefix = "Target · "
@@ -151,16 +160,26 @@ public final class AnalyzeModel {
     /// the coach (#1561).
     public var coachingCurve: IdealCurve { coach.ideal }
 
-    /// "-18.4 dBFS", or "—" when there is nothing to report — never a fake 0.
-    public static func formatOverallLevel(_ db: Double?) -> String {
-        guard let db, db.isFinite else { return noLevelText }
-        let rounded = (db * 10).rounded() / 10
+    /// The hero's estimated dB SPL for a dBFS level: dbfs + phoneMicSplOffsetDb.
+    /// nil (or non-finite) in means nil out — never a fake number.
+    public static func estimatedSpl(fromDbfs dbfs: Double?) -> Double? {
+        guard let dbfs, dbfs.isFinite else { return nil }
+        return dbfs + phoneMicSplOffsetDb
+    }
+
+    /// The latest reading as an estimated dB SPL; nil whenever overallDb is.
+    public var overallSplDb: Double? { Self.estimatedSpl(fromDbfs: overallDb) }
+
+    /// "92.3 dBSPL", or "—" when there is nothing to report — never a fake 0.
+    public static func formatOverallLevel(_ splDb: Double?) -> String {
+        guard let splDb, splDb.isFinite else { return noLevelText }
+        let rounded = (splDb * 10).rounded() / 10
         let value = abs(rounded) < halfDisplayStep ? 0 : rounded
         return String(format: "%.1f %@", value, overallLevelUnit)
     }
 
     /// The Analyze header's readout, rendered next to the honesty capsule.
-    public var overallLevelText: String { Self.formatOverallLevel(overallDb) }
+    public var overallLevelText: String { Self.formatOverallLevel(overallSplDb) }
 
     /// `target` level-matched to the live meter's dB mean, one value per
     /// `rtaLayout` band — the RTA's dashed target line. `nil` when not live
