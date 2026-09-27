@@ -60,33 +60,36 @@ Capabilities**. The project sets no team on purpose.
    the target. Try a gentle cut around 60-250 Hz." The cards update in place
    about once a second.
 5. Check that the **Phone mic estimate** badge is always visible.
-6. Go to the Home Screen. The app releases the mic (P0 has no background
+6. The header level reads in dBSPL (an estimate: overall dBFS + 115 dB). A
+   quiet room reads low; speaking or playing music raises it toward
+   handheld-meter levels.
+7. Go to the Home Screen. The app releases the mic (P0 has no background
    audio). Open the app again: it resumes listening by itself.
-7. Rotate the Simulator (⌘→). The RTA fills the screen, and the Listening
-   indicator, dBFS, Phone mic estimate and Target legend stay visible. A
-   "Coaching" handle sits at the bottom, and tapping it or swiping it up
-   shows the same cards. Rotating back (⌘←) restores the portrait layout,
-   and "Listening" never flickers to "Starting microphone…".
-8. To test the denied path, run `xcrun simctl privacy booted revoke microphone
+8. Rotate the Simulator (⌘→). The RTA fills the screen, and the Listening
+   indicator, the dBSPL estimate, Phone mic estimate and Target legend stay
+   visible. A "Coaching" handle sits at the bottom, and tapping it or swiping
+   it up shows the same cards. Rotating back (⌘←) restores the portrait
+   layout, and "Listening" never flickers to "Starting microphone…".
+9. To test the denied path, run `xcrun simctl privacy booted revoke microphone
    com.soundbuddy.ios` and relaunch. The screen tells you to turn access on in
    Settings and shows an **Open Settings** button. After you allow access and
    return, listening starts.
-9. Tap the Target legend (or the pencil). An **Editing target** chip with
-   Cancel and Done takes the legend's place under the RTA. The RTA does not
-   move and no new screen is pushed; the header still shows the listening
-   indicator. The dashed target line turns solid, and white handles appear on
-   it. Touching one gives a haptic (on a device) and dragging it reshapes the
-   curve into a smooth spline around the handle, redrawing on every movement.
-   Drag a handle past the top or bottom of the grid — it stops exactly at the
-   ceiling or floor line rather than leaving the plot. Cancel or Done puts the
-   legend back, returns the line to dashed, and hides the handles.
-10. While still in edit mode, a row of **Flat / Music fullrange / Worship
+10. Tap the Target legend (or the pencil). An **Editing target** chip with
+    Cancel and Done takes the legend's place under the RTA. The RTA does not
+    move and no new screen is pushed; the header still shows the listening
+    indicator. The dashed target line turns solid, and white handles appear on
+    it. Touching one gives a haptic (on a device) and dragging it reshapes the
+    curve into a smooth spline around the handle, redrawing on every movement.
+    Drag a handle past the top or bottom of the grid — it stops exactly at the
+    ceiling or floor line rather than leaving the plot. Cancel or Done puts the
+    legend back, returns the line to dashed, and hides the handles.
+11. While still in edit mode, a row of **Flat / Music fullrange / Worship
     service** pills sits under the chip. Tapping one snaps the solid target
     line to that curve and highlights the pill. Dragging a handle afterwards
     reshapes the curve from that new baseline and un-highlights the pill.
     Cancel restores the pre-edit target, and the RTA does not move when edit
     mode opens or closes.
-11. Play lopsided material until coaching cards and problem-marker pulses
+12. Play lopsided material until coaching cards and problem-marker pulses
     appear, then tap the Target legend to enter edit mode. Drag a handle or
     tap a preset pill: the coaching cards and pulses stop updating and hold
     their last values, no matter how long you keep editing. Tap Done — the
@@ -94,7 +97,7 @@ Capabilities**. The project sets no team on purpose.
     legend now reads "Target · Custom". Repeat and tap Cancel instead — the
     cards refresh within about a second against the original curve, as if the
     edit never happened.
-12. Rotate to landscape, play lopsided material until the problem-marker
+13. Rotate to landscape, play lopsided material until the problem-marker
     pulses show, and open the Coaching peek. Tap the Target legend to enter
     edit mode: the peek closes and the pulses vanish, and the Editing chip,
     preset pills and handles are fully unobstructed. The Coaching handle stays
