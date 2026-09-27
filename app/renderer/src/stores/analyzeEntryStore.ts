@@ -61,10 +61,21 @@ export interface AnalyzeEntryState {
   // listen resumes on it; only listenLive()'s clamp and selectListenChannel()
   // ever change it.
   listenChannel: number;
+  // #1589: listenLive() bounced to Settings > Audio for lack of a configured
+  // secondary device, and a device picked there should resume the Analyze
+  // listen instead of leaving the stream Settings-started (default channel,
+  // `listening` still false). In-memory only, never persisted; starts false.
+  pendingListenAfterSettings: boolean;
   open(): void;
   close(): void;
   chooseFile(): Promise<void>;
   listenLive(): Promise<void>;
+  // #1589: resumes a listenLive() that bounced to Settings > Audio once a
+  // secondary device is configured. Its single caller is
+  // SecondaryMeasurementPanel.selectSecondaryDevice(), after it sets the
+  // device name — a `true` result means Analyze owns the stream start, so
+  // the caller must not also call startSecondaryMeasurement().
+  resumePendingListen(): Promise<boolean>;
   stopListening(): Promise<void>;
   enterAnalyze(): Promise<void>;
   exitAnalyze(): void;
@@ -97,6 +108,7 @@ export function createAnalyzeEntryStore(
     listening: false,
     analyzeStage: false,
     listenChannel: 0,
+    pendingListenAfterSettings: false,
 
     open() {
       set({ dialogOpen: true });
@@ -112,7 +124,7 @@ export function createAnalyzeEntryStore(
     // picker opens, so no file analysis can ever render behind a still-running
     // live listen.
     async chooseFile() {
-      set({ dialogOpen: false });
+      set({ dialogOpen: false, pendingListenAfterSettings: false });
       if (get().listening) await get().stopListening();
       await deps.chooseAndAnalyzeFile();
     },
@@ -137,9 +149,11 @@ export function createAnalyzeEntryStore(
     // tab change so the Analyze results rail/live-EQ island don't linger once
     // the user has navigated elsewhere. Deliberately never touches `listening`
     // — a still-running room-mic listen survives a tab switch exactly as it
-    // does today (see analyzeStage's doc comment above).
+    // does today (see analyzeStage's doc comment above). #1589: also drops a
+    // pending Settings resume — leaving Analyze means a later device pick in
+    // Settings must not pull the user back into a listen they didn't ask for.
     exitAnalyze() {
-      set({ analyzeStage: false });
+      set({ analyzeStage: false, pendingListenAfterSettings: false });
     },
 
     showStage() {
@@ -148,21 +162,35 @@ export function createAnalyzeEntryStore(
 
     async listenLive() {
       const choice = resolveListenLiveChoice(deps.getSecondaryDeviceName());
-      set({ dialogOpen: false });
+      set({ dialogOpen: false, analyzeStage: true });
       if (choice === 'needsSecondarySource') {
+        set({ pendingListenAfterSettings: true });
         deps.openSettingsAudio();
         return;
       }
       // #1524: clamp a stale listenChannel (e.g. carried over from a wider
       // device) into range for the device actually being listened to.
       const channel = Math.max(0, Math.min(get().listenChannel, deps.getSecondaryInputCount() - 1));
-      set({ listening: true, listenChannel: channel });
+      set({ listening: true, listenChannel: channel, pendingListenAfterSettings: false });
       const { windowSecs, meterIntervalMs } = deps.getCadence();
       await deps.startSecondaryMeasurement(captureOptsFromCadence(windowSecs, meterIntervalMs, channel));
     },
 
+    // #1589: called by SecondaryMeasurementPanel.selectSecondaryDevice() after
+    // it sets the secondary device name. No-op (returns false) unless a
+    // listenLive() bounce to Settings is still pending and a device is now
+    // configured — a device pick with no pending bounce, or a pick while a
+    // device is still absent (e.g. None), must not start anything here.
+    async resumePendingListen() {
+      if (!get().pendingListenAfterSettings) return false;
+      if (resolveListenLiveChoice(deps.getSecondaryDeviceName()) !== 'startListening') return false;
+      set({ pendingListenAfterSettings: false });
+      await get().listenLive();
+      return true;
+    },
+
     async stopListening() {
-      set({ listening: false });
+      set({ listening: false, pendingListenAfterSettings: false });
       await deps.stopSecondaryMeasurement();
     },
 
@@ -184,7 +212,7 @@ export function createAnalyzeEntryStore(
     // calls chooseAndAnalyzeFile — the File toggle only switches mode; the
     // dropzone or the existing Load file… button does the actual loading.
     async switchToFile() {
-      set({ dialogOpen: false });
+      set({ dialogOpen: false, pendingListenAfterSettings: false });
       if (get().listening) await get().stopListening();
     },
 
@@ -192,7 +220,7 @@ export function createAnalyzeEntryStore(
     // as chooseFile(), but for an already-resolved disk path instead of a
     // native-dialog result.
     async analyzeDroppedFile(filePath) {
-      set({ dialogOpen: false, analyzeStage: true });
+      set({ dialogOpen: false, analyzeStage: true, pendingListenAfterSettings: false });
       if (get().listening) await get().stopListening();
       await deps.analyzeFilePath(filePath);
     },
