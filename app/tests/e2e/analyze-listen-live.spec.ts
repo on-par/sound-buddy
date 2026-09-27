@@ -17,6 +17,14 @@ import { launchApp } from './e2e-helpers';
 // else via e2e-helpers' launchApp defaults) — deliberately NOT added to
 // playwright.config.ts's MEDIA_SPECS, so it still runs under
 // SB_E2E_STUBBED_ONLY=1 CI.
+//
+// #1590 adds the Session → Analyze → Live round trip below, covering the
+// ADR-0141/#1498 isolation between Session's docked LiveEqPane and Analyze's
+// live-EQ island after #1595/#1598 changed the shared Analyze entry code.
+
+// Mirrors EQ_PANE_MIN_W (app/renderer/src/live-capture-panel.ts) — the
+// docked LiveEqPane never renders narrower than this.
+const EQ_PANE_MIN_WIDTH_PX = 260;
 
 async function stubMeasurementIpc(electronApp: ElectronApplication): Promise<void> {
   await electronApp.evaluate(({ ipcMain }) => {
@@ -247,6 +255,77 @@ test.describe('Analyze tab entry point (#1485), Advanced features on', () => {
       const calls = await measurementCalls(electronApp);
       expect(calls.slice(-2)).toEqual([{ kind: 'stop' }, { kind: 'start', channel: 5 }]);
     }).toPass();
+  });
+});
+
+// #1590: Session → Analyze → Live round trip. The appMode/routing work in
+// #1595 (enterAnalyzeFromTab) and #1598 (resumePendingListen) touched the
+// Analyze entry code Session shares, so this drives the whole path in the
+// real DOM: Session's docked #live-eq-pane (LiveEqPane.tsx, shown only while
+// appMode === 'live') and Analyze's #analyze-live-island (AnalyzeLiveEqPanel,
+// shown only under body.analyze-listening) must never be on screen together
+// (ADR-0141). `listening` is read through DOM that renders strictly from it:
+// #analyze-mode-live's aria-pressed (analyzeModeOf) and #analyze-live-eq-stop.
+test.describe('Session → Analyze → Live round trip (#1590)', () => {
+  let electronApp: ElectronApplication;
+  let window: Page;
+
+  test.beforeAll(async () => {
+    ({ electronApp, window } = await launchApp());
+    await stubMeasurementIpc(electronApp);
+    await stubOpenFileDialogTracked(electronApp, null);
+  });
+  test.afterAll(async () => { await electronApp.close(); });
+
+  test('AC: Session → Analyze → Live enters the Analyze live RTA with listening on', async () => {
+    // Start on Session.
+    await window.locator('.mode-tab[data-mode="live"]').click();
+    await expect(window.locator('#tab-live')).toHaveClass(/active/);
+    await expect(window.locator('#live-eq-pane')).toBeVisible();
+    await expect(window.locator('#analyze-live-island')).toBeHidden();
+
+    // Analyze: no room mic yet → entry dialog with Listen live.
+    await window.locator('#nav-analyze').click();
+    await expect(window.locator('#analyze-entry-dialog')).toBeVisible();
+    await expect(window.locator('#live-eq-pane')).toBeHidden(); // Session chrome cleared (#1595)
+
+    // Live: bounces to Settings > Audio; the device pick resumes the listen (#1598).
+    await window.locator('#analyze-entry-listen-live').click();
+    await expect(window.locator('#settings-pane-audio')).toBeVisible();
+    await window.locator('#secondary-measurement-device').selectOption('0');
+    await window.locator('#settings-dialog-done').click();
+    await expect(window.locator('#settings-dialog')).toBeHidden();
+
+    await expect(window.locator('body')).toHaveClass(/analyze-listening/);
+    await expect(window.locator('#analyze-live-island')).toBeVisible();
+    await expect(window.locator('#analyze-mode-live')).toHaveAttribute('aria-pressed', 'true');
+    await expect(window.locator('#analyze-live-eq-stop')).toBeVisible();
+    await expect(window.locator('#live-eq-pane')).toBeHidden();
+    expect(await openFileDialogCallCount(electronApp)).toBe(0);
+  });
+
+  test('AC: returning to Session re-hides the Analyze island and restores the docked LiveEqPane', async () => {
+    await window.locator('.mode-tab[data-mode="live"]').click();
+    await expect(window.locator('#tab-live')).toHaveClass(/active/);
+    await expect(window.locator('body')).not.toHaveClass(/analyze-listening/);
+    await expect(window.locator('#analyze-live-island')).toBeHidden();
+    await expect(window.locator('#analyze-live-eq-stop')).toBeHidden();
+    const pane = window.locator('#live-eq-pane');
+    await expect(pane).toBeVisible();
+    const box = await pane.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeGreaterThanOrEqual(EQ_PANE_MIN_WIDTH_PX);
+
+    // Repeat: device is configured now, so the Analyze tab goes straight to
+    // the live RTA, and Session still takes the screen back afterwards.
+    await window.locator('#nav-analyze').click();
+    await expect(window.locator('#analyze-live-island')).toBeVisible();
+    await expect(window.locator('#analyze-mode-live')).toHaveAttribute('aria-pressed', 'true');
+    await expect(pane).toBeHidden();
+
+    await window.locator('.mode-tab[data-mode="live"]').click();
+    await expect(window.locator('#analyze-live-island')).toBeHidden();
+    await expect(pane).toBeVisible();
   });
 });
 
