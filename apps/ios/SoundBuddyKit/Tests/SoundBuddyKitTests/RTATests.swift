@@ -50,6 +50,14 @@ private func sine(hz: Double, amplitude: Double, count: Int) -> [Float] {
 @Suite struct RTAScaleTests {
     let scale = RTAScale.standard
 
+    @Test func standardWindowRunsFromMinus120UpToFullScale() {
+        // #1609: a -20 ceiling pinned loud program at the top; 0 dBFS is full scale.
+        #expect(scale.floorDb == -120)
+        #expect(scale.ceilingDb == 0)
+        #expect(scale.tickStepDb == 10)
+        #expect(scale.dbTicks == [0, -10, -20, -30, -40, -50, -60, -70, -80, -90, -100, -110, -120])
+    }
+
     @Test func fractionMapsTheWindowToZeroThroughOne() {
         #expect(scale.fraction(db: scale.ceilingDb) == 1)
         #expect(scale.fraction(db: scale.floorDb) == 0)

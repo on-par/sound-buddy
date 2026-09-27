@@ -69,7 +69,9 @@ public struct RTAScale: Equatable, Sendable {
     /// A quiet room reads roughly -100 to -90 dBFS per 1/6-octave band on the
     /// Simulator's USB input; program material through a PA lands around
     /// -60 to -30. The floor sits below room noise so the bars never flatline.
-    public static let standard = RTAScale(floorDb: -120, ceilingDb: -20, tickStepDb: 10)
+    /// The ceiling is 0 dBFS, full scale (#1609): a -20 ceiling pinned loud
+    /// program at the top of the plot. Fixed window, no auto-ranging.
+    public static let standard = RTAScale(floorDb: -120, ceilingDb: 0, tickStepDb: 10)
 
     /// Bar height in 0...1 for `db`, clamped to the window.
     public func fraction(db: Double) -> Double {

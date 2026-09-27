@@ -2,7 +2,8 @@ import SoundBuddyKit
 import SwiftUI
 
 /// Console-style real-time analyzer: ~60 log-spaced 1/6-octave bars from
-/// 20 Hz to 20 kHz on a dBFS grid, with peak-hold ticks, plus a dashed
+/// 20 Hz to 20 kHz on a dBFS grid (numeric ticks only, no unit title —
+/// #1610), with peak-hold ticks, plus a dashed
 /// level-matched target line for the active ideal-EQ curve. Warm lows, cool
 /// mids/highs (RTAColor). When showsProblemMarkers is on (both Analyze
 /// layouts), pulsing amber/cyan regions hug the target line over each
@@ -150,12 +151,6 @@ struct RTAView: View {
                 anchor: .top
             )
         }
-        context.draw(
-            Text("dBFS").font(.system(size: RTAMetrics.labelFontSize).weight(.semibold))
-                .foregroundStyle(RTAPalette.label),
-            at: CGPoint(x: plot.minX - RTAMetrics.labelGap, y: plot.minY - RTAMetrics.topInset / 2),
-            anchor: .trailing
-        )
     }
 
     private func drawBars(in context: inout GraphicsContext, plot: CGRect, layout: RTALayout, meter: RTAMeter) {

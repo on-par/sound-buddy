@@ -17,8 +17,8 @@ consistent with a built-in iPhone mic clipping around 115-120 dB SPL.
 
 ## Decision
 
-The iOS Analyze hero shows `overall dBFS + AnalyzeModel.phoneMicSplOffsetDb` (115.0 dB, a
-named constant) labelled "dBSPL", unweighted (Z, the same DC-excluded broadband power sum the
+The iOS Analyze hero shows `overall dBFS + AnalyzeModel.phoneMicSplOffsetDb` (103.0 dB since
+#1611, originally 115.0 dB; a named constant — see Amendments) labelled "dBSPL", unweighted (Z, the same DC-excluded broadband power sum the
 analyzer already reports), converted only at AnalyzeModel's display seam
 (`estimatedSpl(fromDbfs:)` / `overallSplDb` / `formatOverallLevel`). `overallDb`, the RTA,
 the ideal-curve level match and coaching keep their dBFS / relative-dB meaning and never see
@@ -36,7 +36,16 @@ material reads higher than an A-weighted meter. iOS and Mac now differ when unca
 shows dBFS until the user calibrates); a later iOS calibration slice supplies the per-device
 correction.
 
+## Amendments
+
+- 2026-09-27 (#1611): recalibrated the default offset from 115 to 103 dB. In dogfood the hero
+  read 104.5 while the handheld meter read ~92, i.e. ~12.5 dB hot; 115 - 12.5 = 102.5, rounded
+  half up to 103. The decision is otherwise unchanged: still one fixed, unweighted default at
+  the same display seam, still labelled an estimate, still replaced by a future calibration.
+
 ## References
+
+- [Issue #1611 — recalibrate the iOS phone-mic SPL offset](https://github.com/on-par/sound-buddy/issues/1611)
 
 - [Issue #1571 — iOS Analyze hero level as estimated dBSPL](https://github.com/on-par/sound-buddy/issues/1571)
 - [Issue #1544 — overall dB on iOS Analyze (dBFS baseline)](https://github.com/on-par/sound-buddy/issues/1544)

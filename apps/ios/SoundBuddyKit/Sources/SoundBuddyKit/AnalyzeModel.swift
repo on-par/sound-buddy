@@ -48,11 +48,13 @@ public final class AnalyzeModel {
     /// Default dBFS -> dB SPL offset for the built-in phone mic (#1571). An
     /// uncalibrated estimate, not a measurement: MicCapture runs the session in
     /// .measurement mode (no AGC), so one broadband offset is a stable first
-    /// guess. 115 dB matches the dogfood datum (-25.4 dBFS on the phone vs ~90 dB
-    /// on a handheld meter) and a built-in mic clipping near 115-120 dB SPL.
+    /// guess. The first cut, 115 dB, came from -25.4 dBFS on the phone vs ~90 dB
+    /// on a handheld meter; dogfood 2026-09-27 (#1611) then showed the hero at
+    /// 104.5 while the handheld read ~92, ~12.5 dB hot, so 115 - 12.5 = 102.5,
+    /// rounded half up to 103.
     /// Unweighted (Z), the same DC-excluded power sum SpectrumAnalyzer reports.
     /// A future user calibration replaces this at the same seam (ADR-0158).
-    public static let phoneMicSplOffsetDb = 115.0
+    public static let phoneMicSplOffsetDb = 103.0
     /// The hero's unit: a plain "dB" that the view draws tiny beside the
     /// number. The value is still the unweighted phone-mic SPL estimate (not
     /// dBA — no A-weighting is applied); Settings' honesty footnote carries the caveat.

@@ -67,7 +67,7 @@ Capabilities**. The project sets no team on purpose.
    still connected. When it is gone, Settings falls back to System default.
    The Analyze header has no mic badge.
 6. The header level shows a large number with a tiny "dB" unit. It is an
-   unweighted SPL estimate (overall dBFS + 115 dB), not dBA. A
+   unweighted SPL estimate (overall dBFS + 103 dB), not dBA. A
    quiet room reads low; speaking or playing music raises it toward
    handheld-meter levels.
 7. Go to the Home Screen. The app releases the mic (P0 has no background
