@@ -1,12 +1,13 @@
 import SoundBuddyKit
 import SwiftUI
 #if canImport(UIKit)
+import AVFAudio
 import UIKit
 #endif
 
 /// The P0 Analyze screen: a console-style RTA (with its dashed ideal-EQ
 /// target and legend), the short coaching stack, the overall level readout
-/// (an estimated dB, unit drawn tiny), and the phone-mic honesty cue. Always listening while
+/// (an estimated dB, unit drawn tiny). Always listening while
 /// on screen in the foreground — no Start/Stop control; lifecycle events go
 /// to the model.
 /// Pure rendering — every decision lives in AnalyzeModel (SoundBuddyKit),
@@ -26,17 +27,20 @@ import UIKit
 /// While editing, problem markers hide and the landscape coaching peek stays
 /// closed, so neither overlay collides with the handles or the chip (#1562).
 ///
-/// A gear button beside the honesty badge (end of the landscape strip) opens
-/// the Settings sheet (#1591), whose one toggle is keep-awake (#1584): while
-/// on (the default, persisted) and the scene is active, auto-lock is off;
-/// leaving the foreground always restores it. KeepAwakePolicy decides; this
-/// view owns the stored preference and applies it.
+/// A gear button beside the level readout (end of the landscape strip) opens
+/// the Settings sheet (#1591). Its keep-awake toggle (#1584): while on (the
+/// default, persisted) and the scene is active, auto-lock is off; leaving the
+/// foreground always restores it. KeepAwakePolicy decides; this view owns the
+/// stored preference and applies it. Its Microphone section (#1594) picks the
+/// input and carries the honesty copy that used to be a header badge;
+/// choosing an input restarts listening on the new route.
 ///
 /// TODO(ipad): the layout is single-column; switch the RTA and coaching
 /// stack side by side on a regular horizontal size class.
 struct AnalyzeView: View {
     let model: AnalyzeModel
     let keepAwake: KeepAwakeController
+    let micInputs: MicInputController
     @Environment(\.scenePhase) private var scenePhase
     @State private var coachingPeekOpen = false
     @State private var settingsOpen = false
@@ -55,7 +59,10 @@ struct AnalyzeView: View {
         .background(Palette.background.ignoresSafeArea())
         .preferredColorScheme(.dark)
         .sheet(isPresented: $settingsOpen) {
-            SettingsView(keepAwakeEnabled: $keepAwakeEnabled)
+            SettingsView(keepAwakeEnabled: $keepAwakeEnabled, micInputs: micInputs) { id in
+                micInputs.select(id)
+                Task { await model.restartListening() }
+            }
         }
         .task { await model.appear() }
         .onAppear { applyKeepAwake() }
@@ -153,15 +160,14 @@ struct AnalyzeView: View {
             ListeningIndicator(state: model.state)
             Spacer()
             OverallLevelReadout(model: model, font: .headline.monospacedDigit())
-            HonestyBadge()
             SettingsButton { settingsOpen = true }
         }
         .lineLimit(1)
     }
 
     /// Brand first: the Mac icon's mark and "Sound Buddy", with the Analyze
-    /// section label and listening status beneath; the level readout, the
-    /// honesty badge, and the settings gear stay on the right.
+    /// section label and listening status beneath; the level readout and the
+    /// settings gear stay on the right.
     private var header: some View {
         HStack(alignment: .center, spacing: Layout.brandSpacing) {
             Image("BrandMark")
@@ -184,10 +190,7 @@ struct AnalyzeView: View {
             Spacer(minLength: 0)
             VStack(alignment: .trailing, spacing: Layout.headerSpacing) {
                 OverallLevelReadout(model: model, font: .title2.weight(.bold).monospacedDigit())
-                HStack(spacing: Layout.indicatorSpacing) {
-                    HonestyBadge()
-                    SettingsButton { settingsOpen = true }
-                }
+                SettingsButton { settingsOpen = true }
             }
         }
     }
@@ -219,21 +222,7 @@ private struct OverallLevelReadout: View {
     }
 }
 
-/// The "Phone mic estimate" honesty cue. Shared by the portrait header and
-/// the landscape status strip so the accessibility label stays identical.
-private struct HonestyBadge: View {
-    var body: some View {
-        Label(AnalyzeModel.honestyCue, systemImage: "iphone.gen3")
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, Layout.badgePaddingH)
-            .padding(.vertical, Layout.badgePaddingV)
-            .background(Palette.surface, in: Capsule())
-            .foregroundStyle(Palette.secondaryText)
-            .accessibilityLabel("\(AnalyzeModel.honestyCue): level is an uncalibrated dB estimate, coaching is relative to the target")
-    }
-}
-
-/// Gear chip beside the honesty badge that opens the Settings sheet (#1591).
+/// Gear chip beside the level readout that opens the Settings sheet (#1591).
 /// Shared by the portrait header and the landscape status strip.
 private struct SettingsButton: View {
     let action: () -> Void
@@ -253,11 +242,15 @@ private struct SettingsButton: View {
     }
 }
 
-/// The Settings sheet (#1591): for now just the keep-awake preference
-/// (#1584). The binding is AnalyzeView's @AppStorage, so flipping it here
-/// re-applies keep-awake through AnalyzeView's onChange.
+/// The Settings sheet (#1591): the keep-awake preference (#1584) and the
+/// microphone picker with the honesty copy (#1594). The keep-awake binding is
+/// AnalyzeView's @AppStorage, so flipping it here re-applies keep-awake
+/// through AnalyzeView's onChange. `onSelectMic` persists and routes the
+/// choice (nil = system default) and restarts listening.
 private struct SettingsView: View {
     @Binding var keepAwakeEnabled: Bool
+    let micInputs: MicInputController
+    let onSelectMic: (String?) -> Void
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -271,6 +264,21 @@ private struct SettingsView: View {
                         .accessibilityIdentifier("settings.keepAwake")
                 } footer: {
                     Text("Stops the screen from locking while Analyze is open. Auto-lock always returns when you leave the app.")
+                }
+                .listRowBackground(Palette.surface)
+
+                Section {
+                    LabeledContent("In use", value: micInputs.activeName)
+                        .accessibilityIdentifier("settings.mic.active")
+                    MicInputRow(name: MicInputPolicy.systemDefaultName, id: nil, isSelected: micInputs.preferredID == nil, onSelect: onSelectMic)
+                    ForEach(micInputs.options) { option in
+                        MicInputRow(name: option.name, id: option.id, isSelected: micInputs.preferredID == option.id, onSelect: onSelectMic)
+                    }
+                } header: {
+                    Text(MicInputPolicy.sectionTitle)
+                } footer: {
+                    Text(MicInputPolicy.honestyFootnote)
+                        .accessibilityIdentifier("settings.mic.honesty")
                 }
                 .listRowBackground(Palette.surface)
             }
@@ -287,6 +295,39 @@ private struct SettingsView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onAppear { micInputs.refresh() }
+        #if canImport(UIKit)
+        // A mic plugged in or pulled while the sheet is up.
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification).receive(on: RunLoop.main)) { _ in
+            micInputs.refresh()
+        }
+        #endif
+    }
+}
+
+/// One microphone choice in Settings: the name with a checkmark when chosen.
+private struct MicInputRow: View {
+    let name: String
+    /// nil is the system-default row.
+    let id: String?
+    let isSelected: Bool
+    let onSelect: (String?) -> Void
+
+    var body: some View {
+        Button { onSelect(id) } label: {
+            HStack {
+                Text(name)
+                    .foregroundStyle(Color.primary)
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(Palette.accent)
+                }
+            }
+        }
+        .accessibilityLabel(MicInputPolicy.accessibilityLabel(name: name, isSelected: isSelected))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier(MicInputPolicy.accessibilityIdentifier(for: id))
     }
 }
 

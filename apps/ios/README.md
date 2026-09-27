@@ -59,7 +59,13 @@ Capabilities**. The project sets no team on purpose.
    second, up to three coaching cards appear. An example: "Bass is 6.2 dB over
    the target. Try a gentle cut around 60-250 Hz." The cards update in place
    about once a second.
-5. Check that the **Phone mic estimate** badge is always visible.
+5. Tap the gear. Settings shows **Keep screen awake** and a **Microphone**
+   section: the input in use, **System default** plus each available input
+   (built-in data sources and connected mics), and the honesty footnote
+   "Level is an uncalibrated estimate, not dBA." Pick an input: listening
+   restarts on it, and the choice survives a relaunch while that input is
+   still connected. When it is gone, Settings falls back to System default.
+   The Analyze header has no mic badge.
 6. The header level shows a large number with a tiny "dB" unit. It is an
    unweighted SPL estimate (overall dBFS + 115 dB), not dBA. A
    quiet room reads low; speaking or playing music raises it toward
@@ -67,7 +73,7 @@ Capabilities**. The project sets no team on purpose.
 7. Go to the Home Screen. The app releases the mic (P0 has no background
    audio). Open the app again: it resumes listening by itself.
 8. Rotate the Simulator (⌘→). The RTA fills the screen, and the Listening
-   indicator, the dB estimate, Phone mic estimate and Target legend stay
+   indicator, the dB estimate, the settings gear and Target legend stay
    visible. A "Coaching" handle sits at the bottom, and tapping it or swiping
    it up shows the same cards. Rotating back (⌘←) restores the portrait
    layout, and "Listening" never flickers to "Starting microphone…".
