@@ -116,6 +116,7 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         #expect(AnalyzeModel.honestyCue == "Phone mic estimate")
         #expect(source.startCount == 0, "nothing listens until the screen appears")
         #expect(m.overallDb == nil)
+        #expect(m.overallSplDb == nil)
         #expect(m.overallLevelText == "—")
     }
 
@@ -294,8 +295,9 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         let m = model()
         await m.appear()
         try deliver(SpectrumReading(bands: .silent, rtaDb: [-40], overallDb: -18.43))
-        #expect(m.overallDb == -18.43)
-        #expect(m.overallLevelText == "-18.4 dBFS")
+        #expect(m.overallDb == -18.43, "dBFS is unchanged")
+        #expect(abs(m.overallSplDb! - 96.57) < 1e-9)
+        #expect(m.overallLevelText == "96.6 dBSPL")
         clock.advance(AnalyzeModel.coachingRefreshSeconds / 2)
         try deliver(SpectrumReading(bands: .silent, rtaDb: [-40], overallDb: -30.1))
         #expect(m.overallDb == -30.1, "the meter updates every reading, not just at the coaching cadence")
@@ -306,7 +308,20 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         await m.appear()
         try deliver(SpectrumReading(bands: .silent, rtaDb: [-40], overallDb: AnalyzeModel.overallLevelFloorDb))
         #expect(m.overallDb == nil)
+        #expect(m.overallSplDb == nil)
         #expect(m.overallLevelText == "—")
+    }
+
+    @Test func coachingNeverMentionsSplOrDbfs() async throws {
+        let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        let m = model(target: worship)
+        await m.appear()
+        try deliver(reading(levels(base: -30)))
+        #expect(!m.coaching.isEmpty)
+        for event in m.coaching {
+            #expect(!event.message.contains("SPL"))
+            #expect(!event.message.contains("dBFS"))
+        }
     }
 
     // MARK: RTA target overlay
@@ -951,10 +966,10 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
 @Suite struct FormatOverallLevelTests {
     @Test(arguments: [
         (nil, "—"),
-        (-18.44, "-18.4 dBFS"),
-        (-18.46, "-18.5 dBFS"),
-        (-0.02, "0.0 dBFS"),
-        (3.0, "3.0 dBFS"),
+        (89.64, "89.6 dBSPL"),
+        (89.66, "89.7 dBSPL"),
+        (-0.02, "0.0 dBSPL"),
+        (120.0, "120.0 dBSPL"),
         (Double.nan, "—"),
         (-Double.infinity, "—"),
     ] as [(Double?, String)])
@@ -962,10 +977,30 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         #expect(AnalyzeModel.formatOverallLevel(db) == expected)
     }
 
-    @Test func neverClaimsSpl() {
-        for db in [nil, -18.4, 0.0, 3.0] as [Double?] {
-            #expect(!AnalyzeModel.formatOverallLevel(db).contains("SPL"))
+    @Test func neverShowsFullScale() {
+        for db in [nil, 15.0, 89.6, 120.0] as [Double?] {
+            let text = AnalyzeModel.formatOverallLevel(db)
+            #expect(!text.contains("dBFS"))
+            if db != nil {
+                #expect(text.contains("dBSPL"))
+            }
         }
+    }
+}
+
+@MainActor
+@Suite struct EstimatedSplTests {
+    @Test func offsetIsTheDocumentedConstant() {
+        #expect(AnalyzeModel.phoneMicSplOffsetDb == 115.0)
+    }
+
+    @Test func addsTheOffsetToADbfsReading() {
+        #expect(abs(AnalyzeModel.estimatedSpl(fromDbfs: -25.4)! - 89.6) < 1e-9)
+    }
+
+    @Test(arguments: [nil, Double.nan, -Double.infinity] as [Double?])
+    func nonFiniteOrMissingInputStaysNil(dbfs: Double?) {
+        #expect(AnalyzeModel.estimatedSpl(fromDbfs: dbfs) == nil)
     }
 }
 
