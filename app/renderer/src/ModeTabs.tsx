@@ -12,8 +12,7 @@ import { useState, type JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
-import { useAnalyzeEntryStore } from './stores/analyzeEntryStore';
-import { resolveModeSwitch, switchMode, type ModeSwitchRequest } from './mode-switch';
+import { resolveModeSwitch, switchMode, enterAnalyzeFromTab, type ModeSwitchRequest } from './mode-switch';
 import { isModeFlagEnabled, visibleTabModes } from './simple-mode';
 import { iconSvg } from './report-card';
 
@@ -58,12 +57,13 @@ export default function ModeTabs(): JSX.Element {
   /* c8 ignore start -- click dispatch; needs a real DOM click event to
      exercise (no jsdom in this harness). Covered by e2e specs that drive the
      .mode-tab click idiom, notably tests/e2e/analyze-listen-live.spec.ts for
-     the Analyze entry rule (#1485). resolveModeSwitch/switchMode
-     themselves are exhaustively unit-tested in mode-switch.test.ts. */
+     the Analyze entry rule (#1485). resolveModeSwitch/switchMode and the
+     Analyze teardown + entry (enterAnalyzeFromTab) are exhaustively
+     unit-tested in mode-switch.test.ts. */
   function handleClick(mode: ModeSwitchRequest): void {
     const decision = resolveModeSwitch(mode, useLiveCaptureStore.getState().appMode);
     if (decision.type === 'noop') return;
-    if (decision.type === 'analyzeEntry') { void useAnalyzeEntryStore.getState().enterAnalyze(); return; }
+    if (decision.type === 'analyzeEntry') { void enterAnalyzeFromTab(); return; }
     if (decision.type === 'redirect') {
       handleClick(decision.mode);
       setHistoryActive(true);

@@ -120,8 +120,9 @@ export function createAnalyzeEntryStore(
     // #1485: the Analyze tab's entry action. Live room-mic listening is the
     // default; the dialog is the no-device-configured fork. Never opens a file
     // picker on its own. Already-listening is a no-op — re-clicking the
-    // Analyze tab (it never becomes the "active" workspace mode, so nothing
-    // marks it as already selected) must not restart an in-progress capture.
+    // Analyze tab must not restart an in-progress capture. mode-switch.ts's
+    // enterAnalyzeFromTab() (#1588) lands appMode 'analyze' first, then calls
+    // this unchanged.
     async enterAnalyze() {
       set({ analyzeStage: true });
       if (get().listening) return;

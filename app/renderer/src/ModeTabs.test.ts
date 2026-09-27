@@ -221,8 +221,9 @@ describe('ModeTabs Listen live wiring (#1485)', () => {
   const modeTabsSource = fs.readFileSync(
     path.join(path.dirname(fileURLToPath(import.meta.url)), 'ModeTabs.tsx'), 'utf8');
 
-  it('routes the Analyze tab through enterAnalyze()', () => {
-    expect(modeTabsSource).toContain('enterAnalyze()');
+  it('routes the Analyze tab through enterAnalyzeFromTab()', () => {
+    expect(modeTabsSource).toContain('enterAnalyzeFromTab()');
+    expect(modeTabsSource).not.toContain('useAnalyzeEntryStore');
   });
 
   // handleClick carries a justified /* c8 ignore */ (no jsdom in this harness),

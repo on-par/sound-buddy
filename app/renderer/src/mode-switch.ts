@@ -46,8 +46,9 @@ export type ModeSwitchDecision =
 // Verbatim port of the special-casing at the top of the old .mode-tab click
 // listener (inline-app.js) — pure, no DOM.
 // #1485: the Analyze tab always resolves to the entry point — never a direct
-// file-chooser — in both Simple and Advanced mode. analyzeEntryStore.enterAnalyze()
-// applies analyze-entry.ts's device-based resolveAnalyzeEntry rule from there.
+// file-chooser — in both Simple and Advanced mode. enterAnalyzeFromTab(), which
+// calls analyzeEntryStore.enterAnalyze(), applies analyze-entry.ts's
+// device-based resolveAnalyzeEntry rule from there.
 export function resolveModeSwitch(requestedMode: string, currentMode: string): ModeSwitchDecision {
   if (requestedMode === 'analyze') return { type: 'analyzeEntry' };
   if (requestedMode === 'history') return { type: 'redirect', mode: 'recent' };
@@ -169,14 +170,11 @@ export function maybeAutoListenAnalyzeHome(): void {
   void entry.listenLive();
 }
 
-// #1510: the non-interactive Analyze-stage opener used by boot's default
-// mode, clampBootMode's Simple-mode fallback (via switchMode's redirect
-// below and restoreBootMode) and every other route that must land on the
-// Analyze results rail without starting a room-mic listen or opening the
-// entry dialog. Deliberately never calls exitAnalyze(), enterAnalyze(),
-// listenLive() or maybeAutoStartLive() — see the plan's rejected
-// alternatives for why enterAnalyze() is unsafe to reuse here.
-export function showAnalyzeStage(opts?: { boot?: boolean }): void {
+// Shared workspace teardown for both Analyze landings (ADR-0146 + the #1587
+// amendment): showAnalyzeStage() (silent) and enterAnalyzeFromTab() (the
+// user-initiated Analyze tab click) both leave the prior workspace through
+// this exact sequence, so the two paths cannot drift apart.
+function landAnalyzeWorkspace(opts?: { boot?: boolean }): void {
   getSoundBuddy().recordAppEvent('screen.analyze');
   useLiveCaptureStore.getState().setAppMode('analyze');
   if (!opts?.boot) void useSettingsStore.getState().updateSettings({ lastAppMode: 'analyze' });
@@ -186,10 +184,30 @@ export function showAnalyzeStage(opts?: { boot?: boolean }): void {
   document.getElementById('reportcard-view')?.classList.remove('active');
   document.querySelectorAll('.tab-content').forEach((tc) => tc.classList.remove('active'));
 
-  useAnalyzeEntryStore.getState().showStage();
-
   applySpectrumForMode('analyze');
   applySingleColumnSync();
+}
+
+// #1510: the non-interactive Analyze-stage opener used by boot's default
+// mode, clampBootMode's Simple-mode fallback (via switchMode's redirect
+// below and restoreBootMode) and every other route that must land on the
+// Analyze results rail without starting a room-mic listen or opening the
+// entry dialog. Deliberately never calls exitAnalyze(), enterAnalyze(),
+// listenLive() or maybeAutoStartLive() — see the plan's rejected
+// alternatives for why enterAnalyze() is unsafe to reuse here.
+export function showAnalyzeStage(opts?: { boot?: boolean }): void {
+  landAnalyzeWorkspace(opts);
+  useAnalyzeEntryStore.getState().showStage();
+}
+
+// #1588 (ADR-0146 #1587 amendment): the Analyze tab click's action. Unlike
+// showAnalyzeStage() it is user-initiated, so after leaving the prior
+// workspace it applies enterAnalyze()'s existing entry rule (listen live with
+// a configured room mic, otherwise the entry dialog). Already on Analyze it
+// is exactly enterAnalyze() — no re-teardown, no settings write.
+export async function enterAnalyzeFromTab(): Promise<void> {
+  if (useLiveCaptureStore.getState().appMode !== 'analyze') landAnalyzeWorkspace();
+  await useAnalyzeEntryStore.getState().enterAnalyze();
 }
 
 // Verbatim port of the .mode-tab click listener's body (inline-app.js) minus
@@ -234,9 +252,9 @@ export function switchMode(mode: WorkspaceMode, opts?: { boot?: boolean }): void
   sb.recordAppEvent(`screen.${mode === 'reportcard' ? 'reportcard' : mode}`);
   // #1487: clicking a workspace tab always leaves the Analyze stage — the
   // Analyze tab itself never reaches switchMode() (resolveModeSwitch's
-  // 'analyzeEntry' branch short-circuits before this), so every real call
-  // here is a navigation away from it. Never touches `listening` (see
-  // analyzeEntryStore's analyzeStage doc comment).
+  // 'analyzeEntry' branch short-circuits before this into enterAnalyzeFromTab()),
+  // so every real call here is a navigation away from it. Never touches
+  // `listening` (see analyzeEntryStore's analyzeStage doc comment).
   useAnalyzeEntryStore.getState().exitAnalyze();
   // Live replaces the spectrum area with unrelated content — don't leave the
   // analyzed file playing silently in the background with no visible control.
