@@ -152,16 +152,20 @@ export function maybeAutoStartLive(): void {
 // enterAnalyze(), so a no-device cold boot never opens AnalyzeEntryDialog.
 // Always logs one 'analyze-auto-listen' line with the verdict, mirroring
 // maybeAutoStartLive's 'live-auto-start' diagnosability.
+// #1578: 'noDevice' deliberately makes no call at all — not listenLive()
+// (which would route to openSettingsAudio, seizing a Settings dialog) and
+// not enterAnalyze() (which would open AnalyzeEntryDialog). The File-mode
+// stage that showAnalyzeStage already painted is left exactly as-is.
 export function maybeAutoListenAnalyzeHome(): void {
   const live = useLiveCaptureStore.getState();
   const entry = useAnalyzeEntryStore.getState();
-  const start = decideAnalyzeHomeAutoListen({
+  const decision = decideAnalyzeHomeAutoListen({
     currentMode: live.appMode,
     deviceName: live.secondaryMeasurement.deviceName,
     listening: entry.listening,
   });
-  console.log('analyze-auto-listen', { start });
-  if (!start) return;
+  console.log('analyze-auto-listen', { decision });
+  if (decision !== 'startListening') return;
   void entry.listenLive();
 }
 
