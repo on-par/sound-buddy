@@ -1,6 +1,6 @@
 # 'analyze' is a landed appMode, and Simple-mode Report Card requests redirect to the Analyze stage inside switchMode
 
-- Status: Accepted (amended 2026-09-27, #1576 and #1587 — see Amendments)
+- Status: Accepted (amended 2026-09-27, #1576, #1587 and #1602 — see Amendments)
 - Date: 2026-09-24
 
 ## Context
@@ -30,6 +30,9 @@ not a `WorkspaceMode`. `mode-switch.ts`'s `showAnalyzeStage()` is the only funct
 it clears the workspace-mode body classes (`rc-active`, `live-active`, `#reportcard-view.active`,
 every `.tab-content.active`), opens the stage through `analyzeEntryStore.showStage()`
 (`analyzeStage` only, never `listening` or the entry dialog) and re-syncs single-column.
+*(Amended by #1587/#1602: the teardown now lives in a private `landAnalyzeWorkspace()` helper
+shared by `showAnalyzeStage()` and the Analyze tab's `enterAnalyzeFromTab()`; `showAnalyzeStage()`
+is still the only **silent** setter.)*
 
 `liveCaptureStore`'s initial `appMode` is `'analyze'`. `clampBootMode`'s fallback is `'analyze'`
 for any mode outside `visibleTabModes(settings)` — including `'reportcard'` itself in Simple mode,
@@ -124,3 +127,25 @@ unchanged. Session's `LiveEqPane` isolation (ADR-0141) still holds: nothing is r
 
 - [Issue #1587](https://github.com/on-par/sound-buddy/issues/1587)
 - [Issue #1575](https://github.com/on-par/sound-buddy/issues/1575)
+
+### Implementation (#1595, recorded by #1602)
+
+- `mode-switch.ts`'s private `landAnalyzeWorkspace()` is the single teardown for both Analyze
+  landings: `setAppMode('analyze')`, persist `lastAppMode` (skipped on boot), remove
+  `live-active`, `rc-active`, `#reportcard-view.active` and every `.tab-content.active`, then
+  `applySpectrumForMode('analyze')` and re-sync single-column. `showAnalyzeStage()` and
+  `enterAnalyzeFromTab()` both call it, so the two paths cannot drift.
+- `enterAnalyzeFromTab()` (dispatched from `ModeTabs.tsx` on `resolveModeSwitch`'s
+  `analyzeEntry` decision) runs the teardown **only when entering from a non-Analyze workspace**
+  (`appMode !== 'analyze'`, e.g. Session), then applies the unchanged `enterAnalyze()` entry
+  rule. Already on Analyze, the tab click is exactly `enterAnalyze()`: no re-teardown, no
+  settings write.
+- This does not apply to the silent redirects. History (`loadHistoryEntry`), Report Card
+  (`switchMode('reportcard')`'s Simple-mode redirect, `openReportCard`), onboarding
+  (`runFirstAnalysis`), File > Open and the boot paint still go through `showAnalyzeStage()`,
+  which never starts a listen or opens the entry dialog. Their behavior is unchanged.
+- Session's docked `LiveEqPane` isolation (ADR-0141) is unaffected: Analyze's live EQ stays its
+  own `#analyze-live-island`, and nothing is re-parented or imported across the two.
+
+- [Issue #1602](https://github.com/on-par/sound-buddy/issues/1602)
+- [PR #1595](https://github.com/on-par/sound-buddy/pull/1595)
