@@ -16,6 +16,7 @@ import {
   switchMode,
   openReportCard,
   showAnalyzeStage,
+  enterAnalyzeFromTab,
   applyInitialMode,
   applySpectrumForMode,
   applySingleColumnSync,
@@ -23,6 +24,7 @@ import {
   maybeAutoListenAnalyzeHome,
   restoreBootMode,
 } from './mode-switch';
+import { analyzeLiveEqView } from './analyze-live-eq';
 import { decideAnalyzeHomeAutoListen } from './analyze-entry';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useRigStore } from './stores/rigStore';
@@ -635,6 +637,119 @@ describe('showAnalyzeStage (#1510)', () => {
 
     expect(settingsSpy).not.toHaveBeenCalled();
     expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+  });
+});
+
+describe('enterAnalyzeFromTab (#1588)', () => {
+  let startSecondaryMeasurement: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.mocked(decideAnalyzeHomeAutoListen).mockClear();
+    startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
+      .mockResolvedValue(undefined);
+  });
+
+  it('Session -> Analyze with a configured room mic lands appMode and starts listening (AC1 + AC2)', async () => {
+    useLiveCaptureStore.setState({
+      appMode: 'live',
+      secondaryMeasurement: { status: 'off', deviceName: 'UMIK-1' },
+    });
+    bodyClassList.add('live-active');
+
+    await enterAnalyzeFromTab();
+
+    const live = useLiveCaptureStore.getState();
+    const entry = useAnalyzeEntryStore.getState();
+    expect(live.appMode).toBe('analyze');
+    expect(bodyClassList.contains('live-active')).toBe(false);
+    expect(entry.analyzeStage).toBe(true);
+    expect(entry.listening).toBe(true);
+    expect(entry.dialogOpen).toBe(false);
+    expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
+    expect(analyzeLiveEqView({
+      listening: entry.listening,
+      analyzeStage: entry.analyzeStage,
+      appMode: live.appMode,
+      secondary: live.secondaryMeasurement,
+      override: null,
+    })).not.toEqual({ kind: 'hidden' });
+  });
+
+  it('Session -> Analyze with no room mic opens the entry dialog instead (AC2 dialog fork)', async () => {
+    useLiveCaptureStore.setState({
+      appMode: 'live',
+      secondaryMeasurement: { status: 'off', deviceName: '' },
+    });
+    bodyClassList.add('live-active');
+
+    await enterAnalyzeFromTab();
+
+    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+    expect(bodyClassList.contains('live-active')).toBe(false);
+    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(true);
+    expect(useAnalyzeEntryStore.getState().listening).toBe(false);
+    expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+  });
+
+  it('clears Report Card / tab-content chrome too, and records + persists the landing', async () => {
+    useLiveCaptureStore.setState({
+      appMode: 'reportcard',
+      secondaryMeasurement: { status: 'off', deviceName: '' },
+    });
+    bodyClassList.add('rc-active');
+    elements['reportcard-view'].classList.add('active');
+    tabContentEls.forEach((el) => el.classList.add('active'));
+    const eventSpy = vi.spyOn(mock.api, 'recordAppEvent');
+    const settingsSpy = vi.spyOn(mock.api, 'updateSettings');
+
+    await enterAnalyzeFromTab();
+
+    expect(bodyClassList.contains('rc-active')).toBe(false);
+    expect(elements['reportcard-view'].classList.contains('active')).toBe(false);
+    tabContentEls.forEach((el) => expect(el.classList.contains('active')).toBe(false));
+    expect(eventSpy).toHaveBeenCalledWith('screen.analyze');
+    expect(settingsSpy).toHaveBeenCalledWith({ lastAppMode: 'analyze' });
+  });
+
+  it('already on Analyze does no teardown, writes no settings and records no event', async () => {
+    useLiveCaptureStore.setState({
+      appMode: 'analyze',
+      secondaryMeasurement: { status: 'off', deviceName: '' },
+    });
+    bodyClassList.add('live-active');
+    const eventSpy = vi.spyOn(mock.api, 'recordAppEvent');
+    const settingsSpy = vi.spyOn(mock.api, 'updateSettings');
+
+    await enterAnalyzeFromTab();
+
+    expect(eventSpy).not.toHaveBeenCalled();
+    expect(settingsSpy).not.toHaveBeenCalled();
+    expect(bodyClassList.contains('live-active')).toBe(true);
+    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(true);
+  });
+
+  it('an already-listening capture is a no-op for the room mic', async () => {
+    useLiveCaptureStore.setState({
+      appMode: 'live',
+      secondaryMeasurement: { status: 'off', deviceName: 'UMIK-1' },
+    });
+    useAnalyzeEntryStore.setState({ listening: true });
+
+    await enterAnalyzeFromTab();
+
+    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+    expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+  });
+
+  it('never consults the cold-boot auto-listen decision', async () => {
+    useLiveCaptureStore.setState({
+      appMode: 'live',
+      secondaryMeasurement: { status: 'off', deviceName: 'UMIK-1' },
+    });
+
+    await enterAnalyzeFromTab();
+
+    expect(vi.mocked(decideAnalyzeHomeAutoListen)).not.toHaveBeenCalled();
   });
 });
 
