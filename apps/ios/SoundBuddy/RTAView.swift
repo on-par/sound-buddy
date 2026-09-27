@@ -19,15 +19,11 @@ struct RTAView: View {
         let meter = model.rta
         let layout = model.rtaLayout
         let target = model.rtaTargetDb
+        let isEditingTarget = model.isEditingTarget
         let spans = showsProblemMarkers ? RTAProblemMarkers.spans(for: model.problemMarkers, on: layout) : []
         TimelineView(.animation(paused: spans.isEmpty)) { timeline in
             Canvas { context, size in
-                let plot = CGRect(
-                    x: RTAMetrics.dbLabelWidth,
-                    y: RTAMetrics.topInset,
-                    width: size.width - RTAMetrics.dbLabelWidth - RTAMetrics.trailingInset,
-                    height: size.height - RTAMetrics.topInset - RTAMetrics.freqLabelHeight
-                )
+                let plot = plotRect(in: size)
                 drawGrid(in: &context, plot: plot)
                 drawBars(in: &context, plot: plot, layout: layout, meter: meter)
                 if let target, target.count == layout.bands.count {
@@ -41,7 +37,17 @@ struct RTAView: View {
                             opacity: RTAProblemMarkers.pulseOpacity(atSeconds: timeline.date.timeIntervalSinceReferenceDate)
                         )
                     }
-                    drawTarget(in: &context, plot: plot, layout: layout, target: target)
+                    drawTarget(in: &context, plot: plot, layout: layout, target: target, isEditing: isEditingTarget)
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Real-time analyzer, 20 hertz to 20 kilohertz")
+        .accessibilityValue(accessibilityValue(layout: layout, meter: meter))
+        .overlay {
+            if isEditingTarget {
+                GeometryReader { proxy in
+                    handleOverlay(in: plotRect(in: proxy.size))
                 }
             }
         }
@@ -50,9 +56,15 @@ struct RTAView: View {
             maxHeight: fillsHeight ? .infinity : RTAMetrics.height
         )
         .background(RTAPalette.plotBackground, in: RoundedRectangle(cornerRadius: RTAMetrics.cornerRadius))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Real-time analyzer, 20 hertz to 20 kilohertz")
-        .accessibilityValue(accessibilityValue(layout: layout, meter: meter))
+    }
+
+    private func plotRect(in size: CGSize) -> CGRect {
+        CGRect(
+            x: RTAMetrics.dbLabelWidth,
+            y: RTAMetrics.topInset,
+            width: size.width - RTAMetrics.dbLabelWidth - RTAMetrics.trailingInset,
+            height: size.height - RTAMetrics.topInset - RTAMetrics.freqLabelHeight
+        )
     }
 
     private func y(_ db: Double, in plot: CGRect) -> CGFloat {
@@ -61,6 +73,53 @@ struct RTAView: View {
 
     private func x(_ hz: Double, in plot: CGRect) -> CGFloat {
         plot.minX + plot.width * RTALayout.xFraction(hz: hz)
+    }
+
+    /// One draggable circle per `model.rtaTargetHandles` entry, while editing.
+    /// The first `onChanged` grabs the handle (firing the haptic on success);
+    /// later calls drag it; `onEnded` releases it. `DragGesture(minimumDistance:
+    /// 0)` so a tap-and-hold grabs immediately, with no dead zone.
+    private func handleOverlay(in plot: CGRect) -> some View {
+        ForEach(model.rtaTargetHandles, id: \.handle.ordinal) { entry in
+            let ordinal = entry.handle.ordinal
+            let isActive = model.activeTargetHandle == ordinal
+            let diameter = isActive ? RTAMetrics.activeHandleDiameter : RTAMetrics.handleDiameter
+            Circle()
+                .fill(RTAPalette.target)
+                .frame(width: diameter, height: diameter)
+                .contentShape(Circle().size(width: RTAMetrics.handleHitDiameter, height: RTAMetrics.handleHitDiameter))
+                .position(x: x(entry.handle.hz, in: plot), y: y(entry.displayDb, in: plot))
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            if model.activeTargetHandle == nil {
+                                if model.beginTargetHandleDrag(ordinal) {
+                                    fireHapticForHandleGrab()
+                                }
+                            }
+                            model.dragTargetHandle(translationFraction: -value.translation.height / plot.height)
+                        }
+                        .onEnded { value in
+                            model.dragTargetHandle(translationFraction: -value.translation.height / plot.height)
+                            model.endTargetHandleDrag()
+                        }
+                )
+                .accessibilityIdentifier("analyze.targetHandle.\(ordinal)")
+                .accessibilityLabel("Target handle, \(Int(entry.handle.hz.rounded())) hertz")
+                .accessibilityAdjustableAction { direction in
+                    let stepDb = direction == .increment ? RTAMetrics.accessibilityStepDb : -RTAMetrics.accessibilityStepDb
+                    if model.beginTargetHandleDrag(ordinal) {
+                        model.dragTargetHandle(translationFraction: stepDb / scale.spanDb)
+                        model.endTargetHandleDrag()
+                    }
+                }
+        }
+    }
+
+    private func fireHapticForHandleGrab() {
+        #if canImport(UIKit)
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        #endif
     }
 
     private func drawGrid(in context: inout GraphicsContext, plot: CGRect) {
@@ -127,7 +186,9 @@ struct RTAView: View {
         }
     }
 
-    private func drawTarget(in context: inout GraphicsContext, plot: CGRect, layout: RTALayout, target: [Double]) {
+    /// Dashed while it's a fixed reference; solid and slightly thicker while
+    /// editing, so the line itself reads as the thing being reshaped (#1559).
+    private func drawTarget(in context: inout GraphicsContext, plot: CGRect, layout: RTALayout, target: [Double], isEditing: Bool) {
         var path = Path()
         for (i, band) in layout.bands.enumerated() {
             let point = CGPoint(x: x(band.centerHz, in: plot), y: y(target[i], in: plot))
@@ -141,10 +202,10 @@ struct RTAView: View {
             path,
             with: .color(RTAPalette.target),
             style: StrokeStyle(
-                lineWidth: RTAMetrics.targetLineWidth,
+                lineWidth: isEditing ? RTAMetrics.editingTargetLineWidth : RTAMetrics.targetLineWidth,
                 lineCap: .round,
                 lineJoin: .round,
-                dash: RTAMetrics.targetDash
+                dash: isEditing ? [] : RTAMetrics.targetDash
             )
         )
     }
@@ -230,8 +291,18 @@ private enum RTAMetrics {
     static let barBaseOpacity = 0.45
     static let targetLineWidth: CGFloat = 1.5
     static let targetDash: [CGFloat] = [5, 4]
+    /// Thicker than the dashed reference line, so an editable target reads
+    /// differently at a glance (#1559).
+    static let editingTargetLineWidth: CGFloat = 2.5
     /// How far a problem-marker region extends from the target line (#1553).
     static let markerDepth: CGFloat = 22
+    static let handleDiameter: CGFloat = 12
+    static let activeHandleDiameter: CGFloat = 16
+    /// Bigger than the visible circle, so a handle stays easy to grab on an
+    /// iPhone without widening the drawn dot.
+    static let handleHitDiameter: CGFloat = 32
+    /// VoiceOver's adjustable-action nudge for a target handle.
+    static let accessibilityStepDb: Double = 1
 }
 
 enum RTAPalette {

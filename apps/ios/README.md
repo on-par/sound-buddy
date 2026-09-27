@@ -74,7 +74,12 @@ Capabilities**. The project sets no team on purpose.
 9. Tap the Target legend (or the pencil). An **Editing target** chip with
    Cancel and Done takes the legend's place under the RTA. The RTA does not
    move and no new screen is pushed; the header still shows the listening
-   indicator. Cancel or Done puts the legend back.
+   indicator. The dashed target line turns solid, and white handles appear on
+   it. Touching one gives a haptic (on a device) and dragging it reshapes the
+   curve into a smooth spline around the handle, redrawing on every movement.
+   Drag a handle past the top or bottom of the grid — it stops exactly at the
+   ceiling or floor line rather than leaving the plot. Cancel or Done puts the
+   legend back, returns the line to dashed, and hides the handles.
 
 ## Tests
 
