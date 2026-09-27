@@ -34,7 +34,7 @@ struct AnalyzeLayoutTests {
         "showsProblemMarkers",
         arguments: [
             (AnalyzeLayout.portrait, true),
-            (AnalyzeLayout.landscape, false),
+            (AnalyzeLayout.landscape, true),
         ]
     )
     func showsProblemMarkers(layout: AnalyzeLayout, expected: Bool) {
