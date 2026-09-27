@@ -26,12 +26,18 @@ import UIKit
 /// While editing, problem markers hide and the landscape coaching peek stays
 /// closed, so neither overlay collides with the handles or the chip (#1562).
 ///
+/// A sun/moon chip beside the honesty badge toggles keep-awake (#1584): while
+/// on (the default, persisted) and the scene is active, auto-lock is off;
+/// leaving the foreground always restores it. KeepAwakePolicy decides.
+///
 /// TODO(ipad): the layout is single-column; switch the RTA and coaching
 /// stack side by side on a regular horizontal size class.
 struct AnalyzeView: View {
     let model: AnalyzeModel
+    let keepAwake: KeepAwakeController
     @Environment(\.scenePhase) private var scenePhase
     @State private var coachingPeekOpen = false
+    @AppStorage(KeepAwakePolicy.defaultsKey) private var keepAwakeEnabled = KeepAwakePolicy.defaultValue
 
     var body: some View {
         GeometryReader { proxy in
@@ -46,12 +52,18 @@ struct AnalyzeView: View {
         .background(Palette.background.ignoresSafeArea())
         .preferredColorScheme(.dark)
         .task { await model.appear() }
-        .onDisappear { model.disappear() }
+        .onAppear { applyKeepAwake() }
+        .onDisappear {
+            model.disappear()
+            keepAwake.release()
+        }
+        .onChange(of: keepAwakeEnabled) { _, _ in applyKeepAwake() }
         // No background audio mode in P0: release the mic when the app leaves
         // the foreground instead of letting the OS cut the engine, and pick it
         // back up on return. .inactive (permission alert, Control Center) is
         // deliberately ignored.
         .onChange(of: scenePhase) { _, phase in
+            applyKeepAwake()
             switch phase {
             case .background: model.enterBackground()
             case .active: Task { await model.enterForeground() }
@@ -62,7 +74,16 @@ struct AnalyzeView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willTerminateNotification)) { _ in
             model.terminate()
         }
+        // Belt and braces: scenePhase also reports .inactive, but never leave
+        // auto-lock disabled once the app starts to leave the foreground.
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+            keepAwake.release()
+        }
         #endif
+    }
+
+    private func applyKeepAwake() {
+        keepAwake.apply(keepAwake: keepAwakeEnabled, isSceneActive: scenePhase == .active)
     }
 
     @ViewBuilder
@@ -127,6 +148,7 @@ struct AnalyzeView: View {
             Spacer()
             OverallLevelReadout(model: model, font: .headline.monospacedDigit())
             HonestyBadge()
+            KeepAwakeToggle(isOn: $keepAwakeEnabled)
         }
         .lineLimit(1)
     }
@@ -156,7 +178,10 @@ struct AnalyzeView: View {
             Spacer(minLength: 0)
             VStack(alignment: .trailing, spacing: Layout.headerSpacing) {
                 OverallLevelReadout(model: model, font: .title2.weight(.bold).monospacedDigit())
-                HonestyBadge()
+                HStack(spacing: Layout.indicatorSpacing) {
+                    HonestyBadge()
+                    KeepAwakeToggle(isOn: $keepAwakeEnabled)
+                }
             }
         }
     }
@@ -199,6 +224,30 @@ private struct HonestyBadge: View {
             .background(Palette.surface, in: Capsule())
             .foregroundStyle(Palette.secondaryText)
             .accessibilityLabel("\(AnalyzeModel.honestyCue): level is an uncalibrated dB estimate, coaching is relative to the target")
+    }
+}
+
+/// Sun (keep awake, gold) / moon (normal auto-lock) chip beside the honesty
+/// badge (#1584). Tapping flips the persisted preference.
+private struct KeepAwakeToggle: View {
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Button {
+            isOn.toggle()
+        } label: {
+            Image(systemName: KeepAwakePolicy.symbolName(keepAwake: isOn))
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, Layout.badgePaddingH)
+                .padding(.vertical, Layout.badgePaddingV)
+                .background(Palette.surface, in: Capsule())
+                .foregroundStyle(isOn ? Palette.accent : Palette.secondaryText)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(KeepAwakePolicy.accessibilityLabel)
+        .accessibilityValue(KeepAwakePolicy.accessibilityValue(keepAwake: isOn))
+        .accessibilityHint("Stops the screen from locking while Analyze is open")
+        .accessibilityIdentifier("analyze.keepAwake")
     }
 }
 

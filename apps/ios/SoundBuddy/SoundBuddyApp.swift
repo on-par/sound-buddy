@@ -1,5 +1,6 @@
 import SoundBuddyKit
 import SwiftUI
+import UIKit
 
 @main
 struct SoundBuddyApp: App {
@@ -8,10 +9,11 @@ struct SoundBuddyApp: App {
         source: MicCapture(),
         target: IdealCurveLibrary.liveDefault()
     )
+    @State private var keepAwake = KeepAwakeController(timer: UIApplication.shared)
 
     var body: some Scene {
         WindowGroup {
-            AnalyzeView(model: model)
+            AnalyzeView(model: model, keepAwake: keepAwake)
         }
     }
 }
