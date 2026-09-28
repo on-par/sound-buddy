@@ -32,22 +32,24 @@ describe('computeRecommendations', () => {
 
   it('warns about excess sub-bass energy', () => {
     const recs = grading.computeRecommendations(makeSrc({ bands: { ...flatBands(-30), subBass: -5 } }));
-    expect(recs).toContain('Too much sub-bass energy. Apply a high-pass filter below 80Hz.');
+    expect(recs).toContain(
+      'Turn on the high-pass filter (low cut) at about 80 Hz on your vocal and instrument channels to clear sub-bass rumble.',
+    );
   });
 
-  it('names the over-hot band and caps the suggested cut at 10 dB', () => {
+  it('names the over-hot band, the main EQ, and caps the suggested cut at 10 dB', () => {
     const recs = grading.computeRecommendations(makeSrc({ bands: { ...flatBands(-30), mid: -8 } }));
-    expect(recs).toContain('Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range.');
+    expect(recs).toContain('Cut the mids (500Hz-2kHz) about 10 dB on the main EQ.');
   });
 
   it('warns about a dull mix whose brilliance sits well below the other bands', () => {
     const recs = grading.computeRecommendations(makeSrc({ bands: { ...flatBands(-30), brilliance: -50 } }));
-    expect(recs).toContain('Mix lacks air and brightness. Boost 2-3 dB above 8kHz.');
+    expect(recs).toContain('Boost the highs (above 8 kHz) about 2-3 dB on the main EQ.');
   });
 
   it('does not call a balanced-but-quiet recording dull (the verdict is relative, not an absolute level)', () => {
     const recs = grading.computeRecommendations(makeSrc({ bands: flatBands(-70) }));
-    expect(recs).not.toContain('Mix lacks air and brightness. Boost 2-3 dB above 8kHz.');
+    expect(recs).not.toContain('Boost the highs (above 8 kHz) about 2-3 dB on the main EQ.');
   });
 
   it('congratulates a clean recording when nothing is wrong', () => {
@@ -77,19 +79,20 @@ describe('band-balance channel attribution (#262)', () => {
       makeSrc({ bands: { ...flatBands(-30), mid: -8 }, channels }),
     );
     expect(recs).toContain(
-      'Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range. Mostly coming from "Acoustic Guitar".',
+      'Cut the mids (500Hz-2kHz) about 10 dB on the "Acoustic Guitar" channel EQ.',
     );
   });
 
   it('falls back to the engine-supplied name when no label is saved', () => {
     const channels = makeChannels([
       { name: 'Kick Mic', bands: { ...flatBands(-30), mid: -8 } },
+      { bands: flatBands(-30) },
     ]);
     const recs = grading.computeRecommendations(
       makeSrc({ bands: { ...flatBands(-30), mid: -8 }, channels }),
     );
     expect(recs).toContain(
-      'Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range. Mostly coming from "Kick Mic".',
+      'Cut the mids (500Hz-2kHz) about 10 dB on the "Kick Mic" channel EQ.',
     );
   });
 
@@ -103,19 +106,20 @@ describe('band-balance channel attribution (#262)', () => {
       makeSrc({ bands: { ...flatBands(-30), mid: -8 }, channels }),
     );
     expect(recs).toContain(
-      'Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range. Mostly coming from "Channel 3".',
+      'Cut the mids (500Hz-2kHz) about 10 dB on the "Channel 3" channel EQ.',
     );
   });
 
   it('treats a whitespace-only label as absent and falls back to the name', () => {
     const channels = makeChannels([
       { label: '   ', name: 'Overhead L', bands: { ...flatBands(-30), mid: -8 } },
+      { bands: flatBands(-30) },
     ]);
     const recs = grading.computeRecommendations(
       makeSrc({ bands: { ...flatBands(-30), mid: -8 }, channels }),
     );
     expect(recs).toContain(
-      'Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range. Mostly coming from "Overhead L".',
+      'Cut the mids (500Hz-2kHz) about 10 dB on the "Overhead L" channel EQ.',
     );
   });
 
@@ -128,21 +132,21 @@ describe('band-balance channel attribution (#262)', () => {
       makeSrc({ bands: { ...flatBands(-30), mid: -8 }, channels }),
     );
     expect(recs).toContain(
-      'Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range. Mostly coming from "First".',
+      'Cut the mids (500Hz-2kHz) about 10 dB on the "First" channel EQ.',
     );
   });
 
-  it('emits the exact band-only text with no attribution when the source has no channels field', () => {
+  it('emits the main-EQ wording with no channel attribution when the source has no channels field', () => {
     const recs = grading.computeRecommendations(makeSrc({ bands: { ...flatBands(-30), mid: -8 } }));
-    expect(recs).toContain('Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range.');
-    expect(recs.some(r => r.includes('Mostly coming from'))).toBe(false);
+    expect(recs).toContain('Cut the mids (500Hz-2kHz) about 10 dB on the main EQ.');
+    expect(recs.some(r => r.includes('channel EQ'))).toBe(false);
   });
 
-  it('falls back to band-only text for an empty channels array or unusable channel data', () => {
+  it('falls back to main-EQ wording for an empty channels array or unusable channel data', () => {
     const emptyRecs = grading.computeRecommendations(
       makeSrc({ bands: { ...flatBands(-30), mid: -8 }, channels: [] }),
     );
-    expect(emptyRecs).toContain('Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range.');
+    expect(emptyRecs).toContain('Cut the mids (500Hz-2kHz) about 10 dB on the main EQ.');
 
     const unusableChannels = [
       { label: 'No Bands' },
@@ -151,8 +155,55 @@ describe('band-balance channel attribution (#262)', () => {
     const unusableRecs = grading.computeRecommendations(
       makeSrc({ bands: { ...flatBands(-30), mid: -8 }, channels: unusableChannels }),
     );
-    expect(unusableRecs).toContain('Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range.');
-    expect(unusableRecs.some(r => r.includes('Mostly coming from'))).toBe(false);
+    expect(unusableRecs).toContain('Cut the mids (500Hz-2kHz) about 10 dB on the main EQ.');
+    expect(unusableRecs.some(r => r.includes('channel EQ'))).toBe(false);
+  });
+
+  it('never attributes a single-channel source (e.g. the Analyze room mic) to itself', () => {
+    const channels = makeChannels([
+      { label: 'Room', bands: { ...flatBands(-30), mid: -8 } },
+    ]);
+    const recs = grading.computeRecommendations(
+      makeSrc({ bands: { ...flatBands(-30), mid: -8 }, channels }),
+    );
+    expect(recs).toContain('Cut the mids (500Hz-2kHz) about 10 dB on the main EQ.');
+    expect(recs.some(r => r.includes('channel EQ'))).toBe(false);
+  });
+});
+
+describe('grading.formatEqMove', () => {
+  it('formats a move with an amount', () => {
+    expect(grading.formatEqMove('Cut', 'the mids (500Hz-2kHz)', '10 dB', 'the main EQ')).toBe(
+      'Cut the mids (500Hz-2kHz) about 10 dB on the main EQ.',
+    );
+  });
+
+  it('formats a move with no amount', () => {
+    expect(grading.formatEqMove('Boost', 'the highs (above 8 kHz)', '', 'the main EQ')).toBe(
+      'Boost the highs (above 8 kHz) on the main EQ.',
+    );
+  });
+});
+
+describe('grading.eqControlFor', () => {
+  it('returns the main EQ for a null contributor', () => {
+    expect(grading.eqControlFor(null)).toBe('the main EQ');
+  });
+
+  it('names the contributor channel EQ', () => {
+    expect(grading.eqControlFor({ index: 0, label: 'Vocal' })).toBe('the "Vocal" channel EQ');
+  });
+});
+
+describe('every EQ recommendation names a direction and a control (#1625)', () => {
+  it('matches the control-naming contract for a multi-problem source', () => {
+    const bands = { ...flatBands(-30), subBass: -5, mid: -8, brilliance: -50 };
+    const recs = grading.computeRecommendations(makeSrc({ bands }));
+    const eqRecs = recs.filter(r => r !== 'Great job! No major issues detected — levels and balance are solid.');
+    expect(eqRecs.length).toBeGreaterThan(0);
+    for (const r of eqRecs) {
+      expect(r).toMatch(/^(Cut|Boost|Turn on) .* on (the main EQ|the ".+" channel EQ|your vocal and instrument channels)/);
+    }
   });
 });
 

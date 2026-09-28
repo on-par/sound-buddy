@@ -130,14 +130,20 @@ describe('explainGrade with symptoms', () => {
 });
 
 describe('computeRecommendations with symptoms', () => {
-  it('never emits Great job! beside a named symptom, and names the fix', () => {
+  it('never emits Great job! beside a named symptom, and names the fix and the control', () => {
     const recs = grading.computeRecommendations(makeSrc({ symptoms: [muddySymptom()] }));
-    expect(recs).toContain('Muddy: Highpass below ~100 Hz and cut ~250 Hz');
+    expect(recs).toContain('Muddy: Highpass below ~100 Hz and cut ~250 Hz on the main EQ.');
     expect(recs.some((r) => r.includes('Great job!'))).toBe(false);
   });
 
   it('still emits Great job! when there are no symptoms', () => {
     const recs = grading.computeRecommendations(makeSrc());
     expect(recs.some((r) => r.includes('Great job!'))).toBe(true);
+  });
+
+  it('emits just the symptom name with no control appended when the instruction is empty', () => {
+    const recs = grading.computeRecommendations(makeSrc({ symptoms: [muddySymptom({ instruction: '' })] }));
+    expect(recs).toContain('Muddy');
+    expect(recs.some((r) => r.includes('on the main EQ'))).toBe(false);
   });
 });

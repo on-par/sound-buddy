@@ -172,3 +172,40 @@ describe('analyzeResultsView (#1487)', () => {
     expect(view.kind).toBe('result');
   });
 });
+
+// #1625: the coach's control-naming EQ wording lives in the one shared pure
+// grading.computeRecommendations, so live listening and file analysis must
+// produce the same wording for the same imbalanced bands. Requires the real
+// grading module (not the fake above) — same require pattern as
+// LiveEqPane.test.ts.
+describe('#1625 live/file coaching parity', () => {
+  const grading = require('../grading.js') as AnalyzeResultsGradingApi;
+
+  // lowMid pushed well over the other flat bands so band-balance's hotDiff
+  // (12 dB) fires and the suggested-cut amount saturates at the 10 dB cap.
+  const IMBALANCED_BANDS = {
+    subBass: -30, bass: -30, lowMid: -8, mid: -30, highMid: -30, presence: -30, brilliance: -30,
+  };
+  const EXPECTED_REC = 'Cut the low-mids (250-500 Hz) about 10 dB on the main EQ.';
+
+  it('live mode names the same control-naming fix as file mode for the same imbalance', () => {
+    const liveSrc: ReportCardSource = {
+      filename: 'live.wav', rms: -18, peak: -6, dynamicRange: null, clipping: false, centroid: 1200,
+      bands: IMBALANCED_BANDS,
+    };
+    const fileAnalysis = {
+      ...ANALYSIS,
+      spectrum: { ...ANALYSIS.spectrum, bands: IMBALANCED_BANDS },
+    } satisfies AnalysisPayload;
+
+    const liveView = analyzeResultsView(null, liveSrc, null, 'live', grading);
+    const fileView = analyzeResultsView(fileAnalysis, null, null, 'file', grading);
+
+    expect(liveView.kind).toBe('result');
+    expect(fileView.kind).toBe('result');
+    if (liveView.kind !== 'result' || fileView.kind !== 'result') throw new Error('unreachable');
+
+    expect(liveView.grade.recommendations).toContain(EXPECTED_REC);
+    expect(fileView.grade.recommendations).toContain(EXPECTED_REC);
+  });
+});

@@ -221,15 +221,25 @@
 
   // Band label + frequency metadata used to phrase the "too much energy in X"
   // recommendation. Grading-only — the renderer's own band table lives inline.
+  // #1625: `plain` is the coach's plain-English band name (lowercase, no
+  // hyphenated jargon) used by formatEqMove; `label`/`freq` are unchanged.
   const RC_BAND_INFO = {
-    subBass:    { label: 'Sub-bass',   freq: '20-60 Hz' },
-    bass:       { label: 'Bass',       freq: '60-250 Hz' },
-    lowMid:     { label: 'Low-mid',    freq: '250-500 Hz' },
-    mid:        { label: 'Mid',        freq: '500Hz-2kHz' },
-    highMid:    { label: 'High-mid',   freq: '2-4kHz' },
-    presence:   { label: 'Presence',   freq: '4-6kHz' },
-    brilliance: { label: 'Brilliance', freq: '6-20kHz' },
+    subBass:    { label: 'Sub-bass',   freq: '20-60 Hz',    plain: 'sub-bass' },
+    bass:       { label: 'Bass',       freq: '60-250 Hz',   plain: 'bass' },
+    lowMid:     { label: 'Low-mid',    freq: '250-500 Hz',  plain: 'low-mids' },
+    mid:        { label: 'Mid',        freq: '500Hz-2kHz',  plain: 'mids' },
+    highMid:    { label: 'High-mid',   freq: '2-4kHz',      plain: 'upper mids' },
+    presence:   { label: 'Presence',   freq: '4-6kHz',      plain: 'presence' },
+    brilliance: { label: 'Brilliance', freq: '6-20kHz',     plain: 'highs' },
   };
+
+  // #1625 — the coach must name a control (main EQ or a channel EQ), not just
+  // a frequency region, so a church FOH volunteer knows which knob to turn.
+  const MAX_SUGGESTED_CUT_DB = 10;
+  const MAIN_EQ_CONTROL = 'the main EQ';
+  // A single strip (the Analyze room mic) IS the mix, so it is never quoted
+  // as the culprit — attribution only fires with a real multi-channel board feed.
+  const MIN_CHANNELS_FOR_ATTRIBUTION = 2;
 
   // Per-band level vs. the mean of the other bands, in dB — measured on the
   // DEVIATION from `targets` when given (the active ideal curve's relative
@@ -295,6 +305,20 @@
     const name = ch && typeof ch.name === 'string' ? ch.name.trim() : '';
     if (name) return name;
     return `${RC_UNLABELED_CHANNEL_PREFIX}${index + 1}`;
+  }
+
+  // #1625 — the control name an EQ move is phrased against: a named channel's
+  // EQ when loudestBandContributor found one, otherwise the main EQ.
+  function eqControlFor(contributor) {
+    return contributor ? 'the "' + contributor.label + '" channel EQ' : MAIN_EQ_CONTROL;
+  }
+
+  // #1625 — one plain-English coach sentence: a direction, the region, an
+  // optional amount, and the named control. The single sentence shape every
+  // EQ recommendation goes through, so a church FOH volunteer always reads
+  // "do this, on this control" rather than just a diagnosis.
+  function formatEqMove(verb, region, amountText, control) {
+    return verb + ' ' + region + (amountText ? ' about ' + amountText : '') + ' on ' + control + '.';
   }
 
   // Whether a loudness field (#134) carries a real measurement. -Infinity is a
@@ -550,6 +574,10 @@
     return Math.round(Math.max(lo, Math.min(hi, score)));
   }
 
+  // #1625 — every EQ recommendation names a control (the main EQ, or a named
+  // channel's EQ on a multi-channel feed) so the operator knows what to turn,
+  // not just what sounds wrong. A single-strip source (the Analyze room mic)
+  // is never attributed to itself.
   function computeRecommendations(src) {
     const recs = [];
     const recType = analyzeRecordingType(src);
@@ -558,27 +586,32 @@
     else if (src.rms > -10) recs.push('Your recording is too hot. Reduce gain to avoid clipping.');
     else if (src.rms < -25 && recType.type !== 'low_gain') recs.push('Your recording is too quiet. Increase input gain or fader levels.');
     if (src.dynamicRange != null && src.dynamicRange < CONFIG.dynamicRange.check) recs.push('Dynamic range is very compressed. Mix may sound lifeless.');
-    if (src.bands.subBass > -10) recs.push('Too much sub-bass energy. Apply a high-pass filter below 80Hz.');
+    if (src.bands.subBass > -10) recs.push('Turn on the high-pass filter (low cut) at about 80 Hz on your vocal and instrument channels to clear sub-bass rumble.');
     for (const k of Object.keys(src.bands)) {
       const diff = srcBandDiff(src, k);
       if (diff > CONFIG.bandBalance.hotDiff) {
         const info = RC_BAND_INFO[k];
-        const base = `Too much energy in ${info.label} (${info.freq}). Cut ${Math.min(diff, 10).toFixed(1)} dB around this range.`;
-        const contributor = loudestBandContributor(src.channels, k);
-        recs.push(contributor ? `${base} Mostly coming from "${contributor.label}".` : base);
+        const contributor = Array.isArray(src.channels) && src.channels.length >= MIN_CHANNELS_FOR_ATTRIBUTION
+          ? loudestBandContributor(src.channels, k) : null;
+        const amount = Math.round(Math.min(diff, MAX_SUGGESTED_CUT_DB)) + ' dB';
+        recs.push(formatEqMove('Cut', 'the ' + info.plain + ' (' + info.freq + ')', amount, eqControlFor(contributor)));
       }
     }
     // "Lacks air" is a balance judgment, so it reads the same baseline-relative
     // diff as the band verdicts (the old absolute -40 dBFS cutoff fired on every
     // normally-levelled recording — brilliance density always sits far below
     // -40 dBFS in a real mix).
-    if (srcBandDiff(src, 'brilliance') < CONFIG.bandBalance.quietDiff) recs.push('Mix lacks air and brightness. Boost 2-3 dB above 8kHz.');
+    if (srcBandDiff(src, 'brilliance') < CONFIG.bandBalance.quietDiff) {
+      recs.push(formatEqMove('Boost', 'the highs (above 8 kHz)', '2-3 dB', MAIN_EQ_CONTROL));
+    }
     // #1246 — a named symptom must never sit beside "Great job! No major issues
     // detected". The fix text is the rule's own suggestion.instruction, so the
     // advice here and in the Troubleshooting section come from one table row.
+    // #1625: the control is appended to the instruction verbatim (ADR-0098
+    // keeps RULE_TABLE's instruction text itself untouched).
     const top = topSymptom(src);
     if (top) {
-      const fix = typeof top.instruction === 'string' && top.instruction !== '' ? ': ' + top.instruction : '';
+      const fix = typeof top.instruction === 'string' && top.instruction !== '' ? ': ' + top.instruction + ' on ' + MAIN_EQ_CONTROL + '.' : '';
       recs.push(top.symptom + fix);
     }
     if (recs.length === 0) recs.push('Great job! No major issues detected — levels and balance are solid.');
@@ -669,6 +702,8 @@
     getRubricOverrides: getRubricOverrides,
     bandDiffFromOthers: bandDiffFromOthers,
     loudestBandContributor: loudestBandContributor,
+    eqControlFor: eqControlFor,
+    formatEqMove: formatEqMove,
     analyzeRecordingType: analyzeRecordingType,
     computeGrade: computeGrade,
     explainGrade: explainGrade,
