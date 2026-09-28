@@ -164,7 +164,7 @@
       "grade": "B",
       "score": 86,
       "recommendations": [
-        "Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range."
+        "Cut the mids (500Hz-2kHz) about 10 dB on the main EQ."
       ],
       "deductions": [
         {
@@ -420,7 +420,7 @@
       "grade": "B",
       "score": 89,
       "recommendations": [
-        "Muddy: Highpass below ~100 Hz and cut ~250 Hz"
+        "Muddy: Highpass below ~100 Hz and cut ~250 Hz on the main EQ."
       ],
       "deductions": [
         {

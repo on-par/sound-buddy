@@ -80,7 +80,7 @@ describe('grade against an ideal-curve baseline', () => {
     expect(d.target).toBe('≤ +15 dB vs. Worship service');
     expect(d.letterImpact).toBe('Drops one letter');
     expect(grading.computeRecommendations(src)).toContain(
-      'Too much energy in Low-mid (250-500 Hz). Cut 10.0 dB around this range.',
+      'Cut the low-mids (250-500 Hz) about 10 dB on the main EQ.',
     );
   });
 
@@ -108,8 +108,8 @@ describe('grade against an ideal-curve baseline', () => {
     expect(grading.explainGrade(graded).deductions).toEqual([]);
     expect(grading.computeGrade(graded)).toBe('A');
     const recs = grading.computeRecommendations(graded);
-    expect(recs.some((r) => r.startsWith('Too much energy'))).toBe(false);
-    expect(recs).not.toContain('Mix lacks air and brightness. Boost 2-3 dB above 8kHz.');
+    expect(recs.some((r) => r.startsWith('Cut the'))).toBe(false);
+    expect(recs).not.toContain('Boost the highs (above 8 kHz) about 2-3 dB on the main EQ.');
   });
 });
 
@@ -118,11 +118,11 @@ describe('recommendations are baseline-relative', () => {
     // A quiet but balanced recording: every band far below -40 dBFS, all on target.
     const quiet = Object.fromEntries(Object.entries(PINK_BANDS).map(([k, v]) => [k, v - 30]));
     expect(grading.computeRecommendations(makeSrc({ bands: quiet, baseline: BASELINE })))
-      .not.toContain('Mix lacks air and brightness. Boost 2-3 dB above 8kHz.');
+      .not.toContain('Boost the highs (above 8 kHz) about 2-3 dB on the main EQ.');
     // Genuinely dull: brilliance 20 dB under the target shape.
     const dull = { ...PINK_BANDS, brilliance: PINK_BANDS.brilliance - 20 };
     expect(grading.computeRecommendations(makeSrc({ bands: dull, baseline: BASELINE })))
-      .toContain('Mix lacks air and brightness. Boost 2-3 dB above 8kHz.');
+      .toContain('Boost the highs (above 8 kHz) about 2-3 dB on the main EQ.');
   });
 
   it('attributes a baseline-relative hot band to the loudest live channel', () => {
@@ -135,7 +135,7 @@ describe('recommendations are baseline-relative', () => {
       ],
     });
     expect(grading.computeRecommendations(src)).toContain(
-      'Too much energy in Bass (60-250 Hz). Cut 10.0 dB around this range. Mostly coming from "Kick".',
+      'Cut the bass (60-250 Hz) about 10 dB on the "Kick" channel EQ.',
     );
   });
 });

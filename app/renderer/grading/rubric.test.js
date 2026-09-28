@@ -53,7 +53,7 @@ describe('setRubricOverrides', () => {
     grading.setRubricOverrides({ 'bandBalance.severeHotDiff': 25, 'bandBalance.hotDiff': 22 });
     expect(grading.computeGrade(src)).toBe('A');
     expect(grading.computeRecommendations(src)).not.toContain(
-      'Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range.',
+      'Cut the mids (500Hz-2kHz) about 10 dB on the main EQ.',
     );
   });
 
