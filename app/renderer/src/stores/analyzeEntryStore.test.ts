@@ -15,6 +15,13 @@ function createFakeDeps(overrides: Partial<AnalyzeEntryDeps> = {}) {
   const getSecondaryInputCount = vi.fn(() => 1);
   const getPersistedSecondaryDeviceName = vi.fn(() => '');
   const adoptSecondaryDeviceName = vi.fn();
+  const closeSettingsDialog = vi.fn();
+  let settingsClosedListener: (() => void) | null = null;
+  const onSettingsDialogClosed = vi.fn((l: () => void) => {
+    settingsClosedListener = l;
+    return () => {};
+  });
+  const fireSettingsClosed = () => settingsClosedListener?.();
   const deps: AnalyzeEntryDeps = {
     chooseAndAnalyzeFile,
     getSecondaryDeviceName,
@@ -26,12 +33,15 @@ function createFakeDeps(overrides: Partial<AnalyzeEntryDeps> = {}) {
     getSecondaryInputCount,
     getPersistedSecondaryDeviceName,
     adoptSecondaryDeviceName,
+    closeSettingsDialog,
+    onSettingsDialogClosed,
     ...overrides,
   };
   return {
     deps, chooseAndAnalyzeFile, getSecondaryDeviceName, getCadence,
     startSecondaryMeasurement, stopSecondaryMeasurement, openSettingsAudio, analyzeFilePath,
     getSecondaryInputCount, getPersistedSecondaryDeviceName, adoptSecondaryDeviceName,
+    closeSettingsDialog, onSettingsDialogClosed, fireSettingsClosed,
   };
 }
 
@@ -593,6 +603,143 @@ describe('createAnalyzeEntryStore (#1468)', () => {
 
       it('stopListening() clears the pending flag', async () => {
         await pendResume((store) => store.getState().stopListening());
+      });
+    });
+  });
+
+  describe('Settings round trip back to Analyze live RTA (#1605)', () => {
+    it('round trip: device absent bounces to Settings, then configuring it resumes and closes Settings before starting the measurement', async () => {
+      let deviceName = '';
+      const { deps, startSecondaryMeasurement, openSettingsAudio, closeSettingsDialog } = createFakeDeps({
+        getSecondaryDeviceName: () => deviceName,
+      });
+      const store = createAnalyzeEntryStore(deps);
+      await store.getState().listenLive();
+      expect(openSettingsAudio).toHaveBeenCalledTimes(1);
+      expect(store.getState().pendingListenAfterSettings).toBe(true);
+      deviceName = 'USB Mic';
+
+      const resumed = await store.getState().resumePendingListen();
+
+      expect(resumed).toBe(true);
+      expect(closeSettingsDialog).toHaveBeenCalledTimes(1);
+      expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
+      expect(store.getState().listening).toBe(true);
+      expect(store.getState().analyzeStage).toBe(true);
+      expect(store.getState().pendingListenAfterSettings).toBe(false);
+      const closeOrder = closeSettingsDialog.mock.invocationCallOrder[0];
+      const startOrder = startSecondaryMeasurement.mock.invocationCallOrder[0];
+      expect(closeOrder).toBeLessThan(startOrder);
+    });
+
+    it('persisted-only device counts (#1604 entry rule): resumePendingListen() adopts the persisted name and closes Settings', async () => {
+      let persistedName = '';
+      const { deps, adoptSecondaryDeviceName, closeSettingsDialog } = createFakeDeps({
+        getSecondaryDeviceName: () => '',
+        getPersistedSecondaryDeviceName: () => persistedName,
+      });
+      const store = createAnalyzeEntryStore(deps);
+      await store.getState().listenLive();
+      expect(store.getState().pendingListenAfterSettings).toBe(true);
+      persistedName = 'MOTU M2';
+
+      const resumed = await store.getState().resumePendingListen();
+
+      expect(resumed).toBe(true);
+      expect(adoptSecondaryDeviceName).toHaveBeenCalledWith('MOTU M2');
+      expect(closeSettingsDialog).toHaveBeenCalledTimes(1);
+    });
+
+    it('no pending: resolves false and never touches Settings, even with a device configured', async () => {
+      const { deps, closeSettingsDialog } = createFakeDeps({
+        getSecondaryDeviceName: () => 'USB Mic',
+      });
+      const store = createAnalyzeEntryStore(deps);
+
+      const resumed = await store.getState().resumePendingListen();
+
+      expect(resumed).toBe(false);
+      expect(closeSettingsDialog).not.toHaveBeenCalled();
+    });
+
+    it('still no device: resolves false, Settings stays open, pending stays true', async () => {
+      const { deps, closeSettingsDialog } = createFakeDeps({
+        getSecondaryDeviceName: () => '',
+      });
+      const store = createAnalyzeEntryStore(deps);
+      await store.getState().listenLive();
+
+      const resumed = await store.getState().resumePendingListen();
+
+      expect(resumed).toBe(false);
+      expect(closeSettingsDialog).not.toHaveBeenCalled();
+      expect(store.getState().pendingListenAfterSettings).toBe(true);
+    });
+
+    it('closing Settings without configuring clears the intent, so a later device pick starts nothing', async () => {
+      let deviceName = '';
+      const { deps, startSecondaryMeasurement, closeSettingsDialog, fireSettingsClosed } = createFakeDeps({
+        getSecondaryDeviceName: () => deviceName,
+      });
+      const store = createAnalyzeEntryStore(deps);
+      await store.getState().listenLive();
+      expect(store.getState().pendingListenAfterSettings).toBe(true);
+
+      fireSettingsClosed();
+      expect(store.getState().pendingListenAfterSettings).toBe(false);
+      deviceName = 'USB Mic';
+      const resumed = await store.getState().resumePendingListen();
+
+      expect(resumed).toBe(false);
+      expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+      expect(closeSettingsDialog).not.toHaveBeenCalled();
+    });
+
+    it('closing Settings never touches listen state', async () => {
+      const { deps, stopSecondaryMeasurement, fireSettingsClosed } = createFakeDeps({
+        getSecondaryDeviceName: () => 'MOTU M2',
+      });
+      const store = createAnalyzeEntryStore(deps);
+      await store.getState().listenLive();
+      expect(store.getState().listening).toBe(true);
+      expect(store.getState().analyzeStage).toBe(true);
+      const channelBefore = store.getState().listenChannel;
+
+      fireSettingsClosed();
+
+      expect(store.getState().listening).toBe(true);
+      expect(store.getState().analyzeStage).toBe(true);
+      expect(store.getState().listenChannel).toBe(channelBefore);
+      expect(stopSecondaryMeasurement).not.toHaveBeenCalled();
+    });
+
+    it('subscribes to Settings-closed exactly once per store', () => {
+      const { deps, onSettingsDialogClosed } = createFakeDeps();
+
+      createAnalyzeEntryStore(deps);
+
+      expect(onSettingsDialogClosed).toHaveBeenCalledTimes(1);
+    });
+
+    describe('production wiring', () => {
+      it("useSettingsStore's closeDialog() clears a pending Analyze bounce; an open transition leaves it untouched", async () => {
+        const { useAnalyzeEntryStore } = await import('./analyzeEntryStore');
+        const { useSettingsStore } = await import('./settingsStore');
+        const analyzeInitial = useAnalyzeEntryStore.getState();
+        const settingsInitial = useSettingsStore.getState();
+        try {
+          useSettingsStore.setState({ dialogOpen: false });
+          useAnalyzeEntryStore.setState({ pendingListenAfterSettings: true });
+          useSettingsStore.setState({ dialogOpen: true });
+          expect(useAnalyzeEntryStore.getState().pendingListenAfterSettings).toBe(true);
+
+          useSettingsStore.getState().closeDialog();
+
+          expect(useAnalyzeEntryStore.getState().pendingListenAfterSettings).toBe(false);
+        } finally {
+          useAnalyzeEntryStore.setState(analyzeInitial);
+          useSettingsStore.setState(settingsInitial);
+        }
       });
     });
   });

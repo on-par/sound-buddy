@@ -262,6 +262,8 @@ describe('ModeTabs Listen live wiring (#1485)', () => {
       getSecondaryInputCount: () => 1,
       getPersistedSecondaryDeviceName: () => '',
       adoptSecondaryDeviceName: vi.fn(),
+      closeSettingsDialog: vi.fn(),
+      onSettingsDialogClosed: () => () => {},
     };
     const store = createAnalyzeEntryStore(deps);
     await store.getState().enterAnalyze();
