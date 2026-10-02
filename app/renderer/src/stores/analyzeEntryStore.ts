@@ -28,6 +28,7 @@ import { chooseAndAnalyzeFile } from '../report-card-chrome';
 import { useLiveCaptureStore } from './liveCaptureStore';
 import { useSettingsStore } from './settingsStore';
 import { useAnalysisStore } from './analysisStore';
+import { useAnalyzeRecordStore } from './analyzeRecordStore';
 
 export interface AnalyzeEntryDeps {
   chooseAndAnalyzeFile(): Promise<void>;
@@ -53,6 +54,11 @@ export interface AnalyzeEntryDeps {
   // starts, so startSecondaryMeasurement resolves a real device index instead
   // of landing on 'disconnected' with an empty in-memory name.
   adoptSecondaryDeviceName(name: string): void;
+  // #1636: stops Analyze's record-to-file control's active recording, if
+  // any — a recording must never outlive the Analyze listen it was started
+  // from. Production wiring is analyzeRecordStore.stop(), already a no-op
+  // when nothing is recording.
+  stopRecording(): Promise<void>;
 }
 
 export interface AnalyzeEntryState {
@@ -176,6 +182,9 @@ export function createAnalyzeEntryStore(
     // Settings must not pull the user back into a listen they didn't ask for.
     exitAnalyze() {
       set({ analyzeStage: false, pendingListenAfterSettings: false });
+      // #1636: fire-and-forget — exitAnalyze() stays sync, matching its
+      // existing callers (mode-switch.ts's switchMode()).
+      void deps.stopRecording();
     },
 
     showStage() {
@@ -219,6 +228,9 @@ export function createAnalyzeEntryStore(
 
     async stopListening() {
       set({ listening: false, pendingListenAfterSettings: false });
+      // #1636: stop an active recording before tearing down the secondary
+      // measurement, so a recording never outlives the Analyze listen.
+      await deps.stopRecording();
       await deps.stopSecondaryMeasurement();
     },
 
@@ -275,4 +287,5 @@ export const useAnalyzeEntryStore = createAnalyzeEntryStore({
   },
   getPersistedSecondaryDeviceName: () => useSettingsStore.getState().settings?.measurementDeviceName ?? '',
   adoptSecondaryDeviceName: (name) => useLiveCaptureStore.getState().setSecondaryDeviceName(name),
+  stopRecording: () => useAnalyzeRecordStore.getState().stop(),
 });

@@ -7,6 +7,7 @@ import { renderToString } from 'react-dom/server';
 import AnalyzeLiveEqPanel from './AnalyzeLiveEqPanel';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useAnalyzeEntryStore } from './stores/analyzeEntryStore';
+import { useAnalyzeRecordStore } from './stores/analyzeRecordStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { ANALYZER_GRID_FREQS, type ChannelWindowData } from './live-capture-panel';
 import type { IdealProfileLike } from './spectrum-display';
@@ -45,6 +46,7 @@ beforeEach(() => {
 afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
   useAnalyzeEntryStore.setState({ listening: false, analyzeStage: false, listenChannel: 0 });
+  useAnalyzeRecordStore.setState({ phase: 'idle', startedAt: null, channel: null, lastSessionDir: null, error: null });
   useLiveCaptureStore.setState({
     appMode: 'reportcard',
     secondaryMeasurement: { status: 'off', deviceName: '' },
@@ -90,6 +92,7 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
 
     expect(html).toContain('eq-pane-primary');
     expect(html).toContain('Room — MacBook Pro Microphone');
+    expect(html).toContain('id="analyze-record"');
     expect(html).toContain('analyze-live-eq-stop');
     expect(html).toContain('Stop listening');
     expect(html).toContain('id="analyze-live-eq-choose-file"');
