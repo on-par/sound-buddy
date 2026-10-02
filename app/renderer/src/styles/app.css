@@ -856,6 +856,17 @@
     .analyze-live-eq .eq-pane-primary { flex:1; min-height:0; display:flex; flex-direction:column; justify-content:center; background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-xl); box-shadow:var(--elevation-canvas); padding:18px 24px; }
     .analyze-live-eq .eq-pane-empty { align-items:center; justify-content:center; }
     .analyze-live-eq-actions { display:flex; gap:8px; align-self:flex-start; flex-shrink:0; }
+    /* #1636: Analyze's record-to-file control — a pulsing red accent on the
+       button while recording, mirroring RecordButton's record-btn--recording
+       treatment, plus a status/saved-path/error row using the same
+       issue/muted text tokens as the rest of this stylesheet. */
+    .analyze-record { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .analyze-record[data-phase="recording"] .analyze-record-btn,
+    .analyze-record[data-phase="stopping"] .analyze-record-btn { background:var(--issue-500); border-color:var(--issue-500); color:#fff; }
+    .analyze-record[data-phase="recording"] .analyze-record-btn svg { animation:sbpulse var(--dur-pulse) var(--ease-in-out) infinite; }
+    .analyze-record-status { font:var(--fw-medium) var(--fs-label)/1 var(--font-mono); color:var(--issue-text); }
+    .analyze-record-saved { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
+    .analyze-record-error { font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--issue-text); }
     .analyze-live-eq .spectrum-legend { margin-top:8px; flex-shrink:0; }
     /* #1487: the results rail — grade ring/pill/handoff-note/recommendations
        folded into Analyze chrome. Fixed width (not flex:1) so the room EQ

@@ -15,6 +15,7 @@ function createFakeDeps(overrides: Partial<AnalyzeEntryDeps> = {}) {
   const getSecondaryInputCount = vi.fn(() => 1);
   const getPersistedSecondaryDeviceName = vi.fn(() => '');
   const adoptSecondaryDeviceName = vi.fn();
+  const stopRecording = vi.fn(async () => {});
   const deps: AnalyzeEntryDeps = {
     chooseAndAnalyzeFile,
     getSecondaryDeviceName,
@@ -26,12 +27,13 @@ function createFakeDeps(overrides: Partial<AnalyzeEntryDeps> = {}) {
     getSecondaryInputCount,
     getPersistedSecondaryDeviceName,
     adoptSecondaryDeviceName,
+    stopRecording,
     ...overrides,
   };
   return {
     deps, chooseAndAnalyzeFile, getSecondaryDeviceName, getCadence,
     startSecondaryMeasurement, stopSecondaryMeasurement, openSettingsAudio, analyzeFilePath,
-    getSecondaryInputCount, getPersistedSecondaryDeviceName, adoptSecondaryDeviceName,
+    getSecondaryInputCount, getPersistedSecondaryDeviceName, adoptSecondaryDeviceName, stopRecording,
   };
 }
 
@@ -217,6 +219,23 @@ describe('createAnalyzeEntryStore (#1468)', () => {
     expect(stopSecondaryMeasurement).toHaveBeenCalledTimes(1);
   });
 
+  // #1636: a recording must never outlive the Analyze listen — stopListening()
+  // stops an active recording before it tears down the secondary measurement.
+  it('stopListening() stops an active recording before stopping the secondary measurement (#1636)', async () => {
+    const callOrder: string[] = [];
+    const { deps } = createFakeDeps({
+      getSecondaryDeviceName: () => 'MOTU M2',
+      stopRecording: vi.fn(async () => { callOrder.push('stopRecording'); }),
+      stopSecondaryMeasurement: vi.fn(async () => { callOrder.push('stopSecondaryMeasurement'); }),
+    });
+    const store = createAnalyzeEntryStore(deps);
+    await store.getState().listenLive();
+
+    await store.getState().stopListening();
+
+    expect(callOrder).toEqual(['stopRecording', 'stopSecondaryMeasurement']);
+  });
+
   describe('listenChannel / selectListenChannel (#1524)', () => {
     it('starts with listenChannel 0', () => {
       const { deps } = createFakeDeps();
@@ -386,6 +405,18 @@ describe('createAnalyzeEntryStore (#1468)', () => {
       expect(store.getState().analyzeStage).toBe(false);
       expect(store.getState().listening).toBe(true);
       expect(stopSecondaryMeasurement).not.toHaveBeenCalled();
+    });
+
+    // #1636: leaving Analyze (switchMode) must stop an active recording even
+    // though the listen itself survives the tab switch (see the test above).
+    it('exitAnalyze() stops an active recording (#1636)', async () => {
+      const { deps, stopRecording } = createFakeDeps({ getSecondaryDeviceName: () => 'MOTU M2' });
+      const store = createAnalyzeEntryStore(deps);
+      await store.getState().enterAnalyze();
+
+      store.getState().exitAnalyze();
+
+      expect(stopRecording).toHaveBeenCalledTimes(1);
     });
 
     it('exitAnalyze() closes the stage after a file-derived analysis (listening already stopped)', async () => {
