@@ -92,6 +92,11 @@ export interface AnalyzeEntryState {
   close(): void;
   chooseFile(): Promise<void>;
   listenLive(): Promise<void>;
+  // #1637: the Analyze Live toggle's single action — a no-op while already
+  // listening (re-pressing Live must not restart the stream), otherwise
+  // exactly listenLive(): a configured device (in-memory or persisted, #1604)
+  // starts the listen in place and never opens Settings.
+  activateLive(): Promise<void>;
   // #1589: resumes a listenLive() that bounced to Settings > Audio once a
   // secondary device is configured. Its single caller is
   // SecondaryMeasurementPanel.selectSecondaryDevice(), after it sets the
@@ -211,6 +216,11 @@ export function createAnalyzeEntryStore(
       set({ listening: true, listenChannel: channel, pendingListenAfterSettings: false });
       const { windowSecs, meterIntervalMs } = deps.getCadence();
       await deps.startSecondaryMeasurement(captureOptsFromCadence(windowSecs, meterIntervalMs, channel));
+    },
+
+    async activateLive() {
+      if (get().listening) return;
+      await get().listenLive();
     },
 
     // #1589: called by SecondaryMeasurementPanel.selectSecondaryDevice() after

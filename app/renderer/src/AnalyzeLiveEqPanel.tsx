@@ -18,7 +18,11 @@
 // lastLiveChannels read and LiveEqPane.tsx's board-channel read
 // (ADR-0005/ADR-0135): the room curve reflects the newest tick whenever
 // something else causes this component to re-render, without itself forcing
-// a re-render at meter rate.
+// a re-render at meter rate. The selector's `hasRoomReading` boolean (#1637)
+// flips at most twice per stream (null -> first tick, array -> null on
+// stop/start/disconnect) purely to trigger that one extra re-render on the
+// first meter tick, so the room curve paints immediately instead of waiting
+// for the next window tick; nothing reads its value besides the selector.
 
 import { useEffect, useState, type JSX } from 'react';
 import { useElectron } from './useElectron';
@@ -48,6 +52,12 @@ export default function AnalyzeLiveEqPanel(): JSX.Element | null {
     secondaryMeasurement: st.secondaryMeasurement,
     secondaryWindows: st.secondaryWindows,
     devices: st.devices,
+    // #1637: flips once per stream (null -> first meter tick, and back on
+    // stop/start/disconnect) so the room RTA paints on the first meter tick
+    // instead of waiting for the first window tick — a boolean, never the
+    // meter-rate array itself, so this leaf still never re-renders at meter
+    // rate (ADR-0005/ADR-0135).
+    hasRoomReading: st.lastMeasurementChannels !== null,
   }));
   // #1524: option count for the single-select channel picker below.
   const inputCount = deviceInputCount(s.devices, s.secondaryMeasurement.deviceName);
@@ -88,11 +98,11 @@ export default function AnalyzeLiveEqPanel(): JSX.Element | null {
     <div className="analyze-stage">
       <div className="analyze-live-eq" aria-label="Room-mic EQ">
         {/* #1522: Live and File are equal-footing modes of one Analyze tab.
-            The Live button only starts a listen when not already listening —
-            listenLive() itself routes to Settings > Audio only when no device
-            is configured in memory or in settings (#1604). The File button
-            never opens the native picker; it only switches mode, matching
-            the dropzone/Load-file… buttons below. */}
+            The Live button calls activateLive() (#1637), a no-op while
+            already listening; otherwise listenLive() routes to Settings >
+            Audio only when no device is configured in memory or in settings
+            (#1604). The File button never opens the native picker; it only
+            switches mode, matching the dropzone/Load-file… buttons below. */}
         <div className="analyze-mode-toggle" role="group" aria-label="Analyze mode">
           <button
             type="button"
@@ -100,7 +110,7 @@ export default function AnalyzeLiveEqPanel(): JSX.Element | null {
             className={`btn btn-secondary sm${mode === 'live' ? ' active' : ''}`}
             aria-pressed={mode === 'live'}
             /* c8 ignore next -- click dispatch, no jsdom */
-            onClick={() => { if (!listening) void useAnalyzeEntryStore.getState().listenLive(); }}
+            onClick={() => { void useAnalyzeEntryStore.getState().activateLive(); }}
           >
             Live
           </button>

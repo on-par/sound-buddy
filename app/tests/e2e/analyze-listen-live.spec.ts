@@ -308,6 +308,48 @@ test.describe('Analyze tab entry point (#1485), Advanced features on', () => {
       expect(calls.slice(-2)).toEqual([{ kind: 'stop' }, { kind: 'start', channel: 5 }]);
     }).toPass();
   });
+
+  // AC (#1637): a configured room mic must start the Analyze live listen
+  // right from the toggle (no Settings detour), and the room RTA must paint
+  // from the very first meter tick — it must not wait for a window tick
+  // (secondaryWindows, DEFAULT_WINDOW_SECS-cadenced), which is what the
+  // pre-fix panel's render subscription was keyed on.
+  const ROOM_RTA_GRID_LEN = 48;
+  const ROOM_CH = {
+    index: 0, name: 'Room', rms: -30, peak: -12, clipping: false, centroid: 1000, rolloff: 0,
+    bands: { sub_bass: -40, bass: -34, low_mid: -28, mid: -24, high_mid: -32, presence: -44, brilliance: -60 },
+    curve: new Array(ROOM_RTA_GRID_LEN).fill(-30),
+  };
+
+  test('AC (#1637): with a room mic configured, the Live toggle starts listening on Analyze (no Settings) and the RTA paints from the first meter tick', async () => {
+    await stubMeasurementIpc(electronApp);
+
+    await window.locator('#settings-btn').click();
+    await window.locator('#settings-tab-btn-audio').click();
+    await window.locator('#secondary-measurement-device').selectOption('0');
+    await window.locator('#settings-dialog-done').click();
+    await expect(window.locator('#settings-dialog')).toBeHidden();
+
+    await window.locator('#nav-analyze').click();
+    await expect(window.locator('#analyze-live-eq-stop')).toBeVisible();
+    await window.locator('#analyze-live-eq-stop').click();
+    await expect(window.locator('#analyze-mode-file')).toHaveAttribute('aria-pressed', 'true');
+
+    await window.locator('#analyze-mode-live').click();
+
+    await expect(window.locator('#settings-dialog')).toBeHidden();
+    await expect(window.locator('#analyze-entry-dialog')).toBeHidden();
+    await expect(window.locator('#analyze-mode-live')).toHaveAttribute('aria-pressed', 'true');
+    await expect(window.locator('#analyze-live-eq-stop')).toBeVisible();
+    await expect(window.locator('body')).toHaveClass(/analyze-listening/);
+
+    await electronApp.evaluate(({ BrowserWindow }, ch) => {
+      BrowserWindow.getAllWindows()[0].webContents.send('measurement-event', { type: 'meter', ts: 0, channels: [ch] });
+    }, ROOM_CH);
+
+    await expect(window.locator('#analyze-live-island .eq-pane-primary')).toContainText('Room —');
+    await expect(window.locator('#live-eq-pane')).toBeHidden();
+  });
 });
 
 // #1590: Session → Analyze → Live round trip. The appMode/routing work in
