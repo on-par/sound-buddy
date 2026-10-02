@@ -13,6 +13,7 @@ import { useIdealProfilesStore } from './idealProfilesStore';
 import { useRigStore } from './rigStore';
 import { useSoundcheckStore } from './soundcheckStore';
 import { useRingoutStore } from './ringoutStore';
+import { useAnalyzeEntryStore } from './analyzeEntryStore';
 import { createMockSoundBuddy } from '../mock-sound-buddy';import { spectrumTransport, type SpectrumTransport } from '../spectrum-transport';
 import type { IdealCurvesApi } from '../ideal-profiles';
 import type { AppSettings } from '../../../electron/ipc/api';
@@ -76,6 +77,7 @@ afterEach(() => {
     sceneError: null,
   });
   useSettingsStore.setState({ settings: null, settingsError: null, dialogOpen: false });
+  useAnalyzeEntryStore.setState({ pendingListenAfterSettings: false });
   useIdealProfilesStore.setState({
     selectedId: '',
     customProfiles: [],
@@ -442,5 +444,36 @@ describe('installStoreBridge', () => {
 
     expect(useSpectrumStore.getState().idealProfile).toEqual(expect.objectContaining({ id: 'worship-service' }));
     expect(useSpectrumStore.getState().isAutoProfile).toBe(false);
+  });
+
+  describe('Settings-close abandons a pending Analyze listen (#1639)', () => {
+    it('opening Settings never clears a pending intent', () => {
+      installStoreBridge({});
+      useAnalyzeEntryStore.setState({ pendingListenAfterSettings: true });
+
+      useSettingsStore.setState({ dialogOpen: true });
+
+      expect(useAnalyzeEntryStore.getState().pendingListenAfterSettings).toBe(true);
+    });
+
+    it('closing Settings via closeDialog() clears a pending intent', () => {
+      installStoreBridge({});
+      useAnalyzeEntryStore.setState({ pendingListenAfterSettings: true });
+      useSettingsStore.setState({ dialogOpen: true });
+
+      useSettingsStore.getState().closeDialog();
+
+      expect(useAnalyzeEntryStore.getState().pendingListenAfterSettings).toBe(false);
+      expect(useSettingsStore.getState().dialogOpen).toBe(false);
+    });
+
+    it('a settings update that leaves dialogOpen false does not clear a pending intent', () => {
+      installStoreBridge({});
+      useAnalyzeEntryStore.setState({ pendingListenAfterSettings: true });
+
+      useSettingsStore.setState({ settings: APP_SETTINGS });
+
+      expect(useAnalyzeEntryStore.getState().pendingListenAfterSettings).toBe(true);
+    });
   });
 });

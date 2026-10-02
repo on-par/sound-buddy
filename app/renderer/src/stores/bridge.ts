@@ -8,6 +8,7 @@
 
 import { useLicensingStore } from './licensingStore';
 import { useSettingsStore } from './settingsStore';
+import { useAnalyzeEntryStore } from './analyzeEntryStore';
 import { useAnalysisStore } from './analysisStore';
 import { useSpectrumStore } from './spectrumStore';
 import { useLiveCaptureStore } from './liveCaptureStore';
@@ -207,6 +208,15 @@ export function installStoreBridge(
       const cur = useLiveCaptureStore.getState().secondaryMeasurement;
       if (cur.status === 'off' && cur.deviceName !== name) {
         useLiveCaptureStore.setState({ secondaryMeasurement: { status: 'off', deviceName: name } });
+      }
+    });
+
+    // #1639: closing Settings (any path — Escape, backdrop, close, Done all
+    // go through closeDialog()) abandons a pending Analyze listen-live bounce
+    // (#1589), so a later unrelated room-mic pick never redirects to Analyze.
+    useSettingsStore.subscribe((state, prevState) => {
+      if (prevState.dialogOpen && !state.dialogOpen) {
+        useAnalyzeEntryStore.getState().abandonPendingListen();
       }
     });
   }

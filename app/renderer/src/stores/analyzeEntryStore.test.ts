@@ -625,6 +625,59 @@ describe('createAnalyzeEntryStore (#1468)', () => {
       it('stopListening() clears the pending flag', async () => {
         await pendResume((store) => store.getState().stopListening());
       });
+
+      it('abandonPendingListen() clears the pending flag', async () => {
+        await pendResume((store) => store.getState().abandonPendingListen());
+      });
+    });
+
+    describe('abandonPendingListen() (#1639)', () => {
+      it('clears a pending intent so a later device pick no longer resumes the listen', async () => {
+        let deviceName = '';
+        const { deps, startSecondaryMeasurement } = createFakeDeps({
+          getSecondaryDeviceName: () => deviceName,
+        });
+        const store = createAnalyzeEntryStore(deps);
+        await store.getState().listenLive();
+        expect(store.getState().pendingListenAfterSettings).toBe(true);
+
+        store.getState().abandonPendingListen();
+        deviceName = 'USB Mic';
+        const resumed = await store.getState().resumePendingListen();
+
+        expect(store.getState().pendingListenAfterSettings).toBe(false);
+        expect(resumed).toBe(false);
+        expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+      });
+
+      it('touches only pendingListenAfterSettings, leaving analyzeStage, listening, dialogOpen and listenChannel unchanged', async () => {
+        const {
+          deps, stopSecondaryMeasurement, stopRecording, openSettingsAudio,
+        } = createFakeDeps({ getSecondaryDeviceName: () => '' });
+        const store = createAnalyzeEntryStore(deps);
+        await store.getState().listenLive();
+        const before = store.getState();
+
+        store.getState().abandonPendingListen();
+
+        expect(store.getState().pendingListenAfterSettings).toBe(false);
+        expect(store.getState().analyzeStage).toBe(before.analyzeStage);
+        expect(store.getState().listening).toBe(before.listening);
+        expect(store.getState().dialogOpen).toBe(before.dialogOpen);
+        expect(store.getState().listenChannel).toBe(before.listenChannel);
+        expect(stopSecondaryMeasurement).not.toHaveBeenCalled();
+        expect(stopRecording).not.toHaveBeenCalled();
+        expect(openSettingsAudio).toHaveBeenCalledTimes(1); // only from listenLive()'s own bounce
+      });
+
+      it('with no pending intent, is a no-op', () => {
+        const { deps } = createFakeDeps();
+        const store = createAnalyzeEntryStore(deps);
+
+        store.getState().abandonPendingListen();
+
+        expect(store.getState().pendingListenAfterSettings).toBe(false);
+      });
     });
   });
 

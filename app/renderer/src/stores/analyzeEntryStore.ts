@@ -103,6 +103,11 @@ export interface AnalyzeEntryState {
   // device name — a `true` result means Analyze owns the stream start, so
   // the caller must not also call startSecondaryMeasurement().
   resumePendingListen(): Promise<boolean>;
+  // #1639: the Settings-abandon hook — bridge.ts calls this whenever the
+  // Settings dialog closes. A listenLive() bounce that is still pending at
+  // that point was abandoned (a device pick would already have cleared it
+  // via resumePendingListen()), so a later unrelated pick must not resume it.
+  abandonPendingListen(): void;
   stopListening(): Promise<void>;
   enterAnalyze(): Promise<void>;
   exitAnalyze(): void;
@@ -234,6 +239,10 @@ export function createAnalyzeEntryStore(
       set({ pendingListenAfterSettings: false });
       await get().listenLive();
       return true;
+    },
+
+    abandonPendingListen() {
+      if (get().pendingListenAfterSettings) set({ pendingListenAfterSettings: false });
     },
 
     async stopListening() {
