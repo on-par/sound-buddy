@@ -132,6 +132,21 @@ describe('AnalyzeLiveEqPanel (#1469, lc-06)', () => {
     expect(html).not.toContain('class="veq"');
   });
 
+  it('renders the room RTA from a meter tick alone, before any window tick (#1637)', () => {
+    useAnalyzeEntryStore.setState({ listening: true, analyzeStage: true });
+    useLiveCaptureStore.setState({
+      appMode: 'analyze',
+      secondaryMeasurement: { status: 'active', deviceName: 'Room Mic' },
+      secondaryWindows: [],
+      lastMeasurementChannels: [GRID_ROOM_CH],
+    });
+
+    const html = renderMarkup();
+
+    expect(html).toContain('Room — Room Mic');
+    expect(html).not.toContain('Measuring room via');
+  });
+
   it('still offers a Stop listening control while showing a notice', () => {
     useAnalyzeEntryStore.setState({ listening: true });
     useLiveCaptureStore.setState({
