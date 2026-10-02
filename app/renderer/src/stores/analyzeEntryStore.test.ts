@@ -11,6 +11,7 @@ function createFakeDeps(overrides: Partial<AnalyzeEntryDeps> = {}) {
   const startSecondaryMeasurement = vi.fn(async () => {});
   const stopSecondaryMeasurement = vi.fn(async () => {});
   const openSettingsAudio = vi.fn();
+  const closeSettings = vi.fn();
   const analyzeFilePath = vi.fn(async () => {});
   const getSecondaryInputCount = vi.fn(() => 1);
   const getPersistedSecondaryDeviceName = vi.fn(() => '');
@@ -23,6 +24,7 @@ function createFakeDeps(overrides: Partial<AnalyzeEntryDeps> = {}) {
     startSecondaryMeasurement,
     stopSecondaryMeasurement,
     openSettingsAudio,
+    closeSettings,
     analyzeFilePath,
     getSecondaryInputCount,
     getPersistedSecondaryDeviceName,
@@ -32,7 +34,7 @@ function createFakeDeps(overrides: Partial<AnalyzeEntryDeps> = {}) {
   };
   return {
     deps, chooseAndAnalyzeFile, getSecondaryDeviceName, getCadence,
-    startSecondaryMeasurement, stopSecondaryMeasurement, openSettingsAudio, analyzeFilePath,
+    startSecondaryMeasurement, stopSecondaryMeasurement, openSettingsAudio, closeSettings, analyzeFilePath,
     getSecondaryInputCount, getPersistedSecondaryDeviceName, adoptSecondaryDeviceName, stopRecording,
   };
 }
@@ -625,6 +627,86 @@ describe('createAnalyzeEntryStore (#1468)', () => {
       it('stopListening() clears the pending flag', async () => {
         await pendResume((store) => store.getState().stopListening());
       });
+    });
+  });
+
+  describe('Settings round trip from the Live toggle (#1638)', () => {
+    it('missing device routes to Settings: opens Settings, sets pending, never closes Settings', async () => {
+      const { deps, startSecondaryMeasurement, openSettingsAudio, closeSettings } = createFakeDeps({
+        getSecondaryDeviceName: () => '',
+        getPersistedSecondaryDeviceName: () => '',
+      });
+      const store = createAnalyzeEntryStore(deps);
+
+      await store.getState().activateLive();
+
+      expect(openSettingsAudio).toHaveBeenCalledTimes(1);
+      expect(store.getState().pendingListenAfterSettings).toBe(true);
+      expect(store.getState().listening).toBe(false);
+      expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+      expect(closeSettings).not.toHaveBeenCalled();
+    });
+
+    it('configuring a device returns to the Analyze live RTA: closes Settings before starting the listen', async () => {
+      let deviceName = '';
+      const { deps, startSecondaryMeasurement, closeSettings } = createFakeDeps({
+        getSecondaryDeviceName: () => deviceName,
+        getCadence: () => ({ windowSecs: 3, meterIntervalMs: 100 }),
+      });
+      const store = createAnalyzeEntryStore(deps);
+      await store.getState().activateLive();
+      deviceName = 'USB Mic';
+
+      const resumed = await store.getState().resumePendingListen();
+
+      expect(resumed).toBe(true);
+      expect(closeSettings).toHaveBeenCalledTimes(1);
+      expect(store.getState().listening).toBe(true);
+      expect(store.getState().analyzeStage).toBe(true);
+      expect(store.getState().pendingListenAfterSettings).toBe(false);
+      expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
+      expect(startSecondaryMeasurement).toHaveBeenCalledWith({ windowSecs: 3, intervalSecs: 0.1, channel: 0 });
+      const closeOrder = closeSettings.mock.invocationCallOrder[0];
+      const startOrder = startSecondaryMeasurement.mock.invocationCallOrder[0];
+      expect(closeOrder).toBeLessThan(startOrder);
+    });
+
+    it('no pending intent leaves Settings alone', async () => {
+      const { deps, closeSettings } = createFakeDeps({
+        getSecondaryDeviceName: () => 'USB Mic',
+      });
+      const store = createAnalyzeEntryStore(deps);
+
+      const resumed = await store.getState().resumePendingListen();
+
+      expect(resumed).toBe(false);
+      expect(closeSettings).not.toHaveBeenCalled();
+    });
+
+    it('pending but still no device keeps Settings open', async () => {
+      const { deps, closeSettings } = createFakeDeps({
+        getSecondaryDeviceName: () => '',
+      });
+      const store = createAnalyzeEntryStore(deps);
+      await store.getState().activateLive();
+
+      const resumed = await store.getState().resumePendingListen();
+
+      expect(resumed).toBe(false);
+      expect(closeSettings).not.toHaveBeenCalled();
+      expect(store.getState().pendingListenAfterSettings).toBe(true);
+    });
+
+    it('device-present direct Live never touches Settings', async () => {
+      const { deps, closeSettings, openSettingsAudio } = createFakeDeps({
+        getSecondaryDeviceName: () => 'Room Mic',
+      });
+      const store = createAnalyzeEntryStore(deps);
+
+      await store.getState().activateLive();
+
+      expect(closeSettings).not.toHaveBeenCalled();
+      expect(openSettingsAudio).not.toHaveBeenCalled();
     });
   });
 

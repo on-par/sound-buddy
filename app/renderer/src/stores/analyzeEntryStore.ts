@@ -37,6 +37,12 @@ export interface AnalyzeEntryDeps {
   startSecondaryMeasurement(opts: StartCaptureOpts): Promise<void>;
   stopSecondaryMeasurement(): Promise<void>;
   openSettingsAudio(): void;
+  // #1638: closes the Settings dialog — the far end of a listenLive() bounce
+  // to Settings > Audio. Called only by resumePendingListen() once it commits
+  // to resuming, so the round trip lands on the Analyze live RTA instead of
+  // leaving the engineer on Settings. Production wiring is
+  // settingsStore.closeDialog().
+  closeSettings(): void;
   // #1522: analyzes an already-resolved disk path (a File-drop path, never a
   // native-dialog result) — the single production wiring is
   // analysisStore.selectFile(fp) followed by startAnalysis(fp).
@@ -101,7 +107,9 @@ export interface AnalyzeEntryState {
   // secondary device is configured. Its single caller is
   // SecondaryMeasurementPanel.selectSecondaryDevice(), after it sets the
   // device name — a `true` result means Analyze owns the stream start, so
-  // the caller must not also call startSecondaryMeasurement().
+  // the caller must not also call startSecondaryMeasurement(). #1638: also
+  // closes Settings on a successful resume, so the round trip lands back on
+  // the Analyze live RTA instead of leaving the engineer on Settings.
   resumePendingListen(): Promise<boolean>;
   stopListening(): Promise<void>;
   enterAnalyze(): Promise<void>;
@@ -228,10 +236,13 @@ export function createAnalyzeEntryStore(
     // listenLive() bounce to Settings is still pending and a device is now
     // configured — a device pick with no pending bounce, or a pick while a
     // device is still absent (e.g. None), must not start anything here.
+    // #1638: on a successful resume, closes Settings before starting the
+    // listen so the engineer lands back on the Analyze live RTA.
     async resumePendingListen() {
       if (!get().pendingListenAfterSettings) return false;
       if (resolveListenLiveChoice(deps.getSecondaryDeviceName()) !== 'startListening') return false;
       set({ pendingListenAfterSettings: false });
+      deps.closeSettings();
       await get().listenLive();
       return true;
     },
@@ -287,6 +298,7 @@ export const useAnalyzeEntryStore = createAnalyzeEntryStore({
   startSecondaryMeasurement: (opts) => useLiveCaptureStore.getState().startSecondaryMeasurement(opts),
   stopSecondaryMeasurement: () => useLiveCaptureStore.getState().stopSecondaryMeasurement(),
   openSettingsAudio: () => useSettingsStore.getState().openDialog('audio'),
+  closeSettings: () => useSettingsStore.getState().closeDialog(),
   analyzeFilePath: async (fp) => {
     useAnalysisStore.getState().selectFile(fp);
     await useAnalysisStore.getState().startAnalysis(fp);

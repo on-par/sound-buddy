@@ -258,6 +258,7 @@ describe('ModeTabs Listen live wiring (#1485)', () => {
       startSecondaryMeasurement,
       stopSecondaryMeasurement: vi.fn(async () => {}),
       openSettingsAudio,
+      closeSettings: vi.fn(),
       analyzeFilePath: vi.fn(async () => {}),
       getSecondaryInputCount: () => 1,
       getPersistedSecondaryDeviceName: () => '',

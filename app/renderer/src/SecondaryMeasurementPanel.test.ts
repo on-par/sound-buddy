@@ -11,6 +11,7 @@ import SecondaryMeasurementPanel, {
 } from './SecondaryMeasurementPanel';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useAnalyzeEntryStore } from './stores/analyzeEntryStore';
+import { useSettingsStore } from './stores/settingsStore';
 import type { LiveDevice } from './live-capture-panel';
 
 const INITIAL_LIVE_CAPTURE_STATE = useLiveCaptureStore.getInitialState();
@@ -38,7 +39,10 @@ afterEach(() => {
   useAnalyzeEntryStore.setState({
     resumePendingListen: INITIAL_ANALYZE_ENTRY_STATE.resumePendingListen,
     pendingListenAfterSettings: false,
+    listening: false,
+    analyzeStage: false,
   });
+  useSettingsStore.setState({ dialogOpen: false });
 });
 
 const DEVICES: LiveDevice[] = [
@@ -275,6 +279,20 @@ describe('SecondaryMeasurementPanel', () => {
         await selectSecondaryDevice('', DEVICES, { windowSecs: 3, intervalSecs: 0.1 });
 
         expect(resumePendingListen).not.toHaveBeenCalled();
+      });
+
+      it('#1638: resuming a pending Live bounce closes Settings', async () => {
+        const startSecondaryMeasurement = vi.fn().mockResolvedValue(undefined);
+        useLiveCaptureStore.setState({ startSecondaryMeasurement, devices: DEVICES });
+        useAnalyzeEntryStore.setState({ pendingListenAfterSettings: true });
+        useSettingsStore.getState().openDialog('audio');
+        const opts = { windowSecs: 3, intervalSecs: 0.1 };
+
+        await selectSecondaryDevice('2', DEVICES, opts);
+
+        expect(useSettingsStore.getState().dialogOpen).toBe(false);
+        expect(useAnalyzeEntryStore.getState().listening).toBe(true);
+        expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
       });
     });
   });
