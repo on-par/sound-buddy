@@ -136,6 +136,45 @@ const ISOLATED: SurfaceIsolation = {
   paneContainsIsland: false, islandContainsPane: false, islandHasSessionMarkup: false,
 };
 
+// #1640: Session DAW chrome as rendered on the Session tab, captured before an
+// Analyze Live trip and compared after returning, so Analyze Live routing can
+// never leave Session's transport/shell changed. Only fields that are static
+// while idle (no capture running). `shellParentId` reads 'live-island' via
+// closest(), not parentElement.id directly — .daw-shell is dangerouslySetInnerHTML
+// two wrapper divs deep inside #live-island (div.live-board-root >
+// div.live-board-shell > .daw-shell, see LiveCapturePanel.tsx:1325 and
+// live-workspace-view.ts:999), so its direct parentElement never carries an id.
+interface DawChromeSnapshot {
+  shellCount: number; shellParentId: string | null; shellVisible: boolean;
+  recordPresent: boolean; recordDisabled: boolean | null; recordLabel: string | null;
+  bpmValue: string | null; transportTime: string | null;
+  liveIslandInsideAnalyzeIsland: boolean; analyzeIslandInsideLiveIsland: boolean;
+}
+
+async function dawChromeSnapshot(window: Page): Promise<DawChromeSnapshot> {
+  return window.evaluate(() => {
+    const shells = document.querySelectorAll('.daw-shell');
+    const shell = shells[0] ?? null;
+    const rec = document.getElementById('daw-session-record');
+    const bpm = document.getElementById('daw-session-bpm') as HTMLInputElement | null;
+    const transport = document.querySelector('.daw-transport-time');
+    const liveIsland = document.getElementById('live-island');
+    const analyzeIsland = document.getElementById('analyze-live-island');
+    return {
+      shellCount: shells.length,
+      shellParentId: shell && shell.closest('#live-island') ? 'live-island' : null,
+      shellVisible: !!shell && shell.getClientRects().length > 0,
+      recordPresent: !!rec,
+      recordDisabled: rec ? (rec as HTMLButtonElement).disabled : null,
+      recordLabel: rec ? (rec.getAttribute('aria-label') ?? rec.textContent ?? '').trim() : null,
+      bpmValue: bpm?.value ?? null,
+      transportTime: transport?.textContent ?? null,
+      liveIslandInsideAnalyzeIsland: !!(liveIsland && analyzeIsland && analyzeIsland.contains(liveIsland)),
+      analyzeIslandInsideLiveIsland: !!(liveIsland && analyzeIsland && liveIsland.contains(analyzeIsland)),
+    };
+  });
+}
+
 test.describe('Analyze tab entry point (#1485), Advanced features on', () => {
   let electronApp: ElectronApplication;
   let window: Page;
@@ -367,6 +406,7 @@ test.describe('Analyze tab entry point (#1485), Advanced features on', () => {
 test.describe('Session → Analyze → Live round trip (#1590)', () => {
   let electronApp: ElectronApplication;
   let window: Page;
+  let sessionDawChrome: DawChromeSnapshot;
 
   test.beforeAll(async () => {
     ({ electronApp, window } = await launchApp());
@@ -382,6 +422,13 @@ test.describe('Session → Analyze → Live round trip (#1590)', () => {
     await expect(window.locator('#live-eq-pane')).toBeVisible();
     await expect(window.locator('#analyze-live-island')).toBeHidden();
     await captureSurfaceNodes(window);
+
+    // #1640: snapshot Session's DAW chrome before the Analyze Live trip.
+    await expect(window.locator('.daw-shell')).toBeVisible();
+    sessionDawChrome = await dawChromeSnapshot(window);
+    expect(sessionDawChrome.shellCount).toBe(1);
+    expect(sessionDawChrome.shellParentId).toBe('live-island');
+    expect(sessionDawChrome.recordPresent).toBe(true);
 
     // Analyze: no room mic yet → entry dialog with Listen live.
     await window.locator('#nav-analyze').click();
@@ -437,6 +484,17 @@ test.describe('Session → Analyze → Live round trip (#1590)', () => {
     await expect(window.locator('.mode-tab[data-mode="live"]')).toHaveClass(/\bactive\b/);
     await expect(window.locator('body')).toHaveClass(/live-active/);
     await expect(async () => {
+      expect(await surfaceIsolation(window)).toEqual(ISOLATED);
+    }).toPass();
+  });
+
+  test('AC (#1640): Session DAW chrome renders unchanged after the Analyze Live round trip', async () => {
+    await window.locator('.mode-tab[data-mode="live"]').click();
+    await expect(window.locator('body')).toHaveClass(/live-active/);
+    await expect(window.locator('body')).not.toHaveClass(/analyze-listening/);
+    await expect(window.locator('.daw-shell')).toBeVisible();
+    await expect(async () => {
+      expect(await dawChromeSnapshot(window)).toEqual(sessionDawChrome);
       expect(await surfaceIsolation(window)).toEqual(ISOLATED);
     }).toPass();
   });
