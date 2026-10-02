@@ -87,11 +87,11 @@ export default function AnalyzeLiveEqPanel(): JSX.Element | null {
     <div className="analyze-stage">
       <div className="analyze-live-eq" aria-label="Room-mic EQ">
         {/* #1522: Live and File are equal-footing modes of one Analyze tab.
-            The Live button only starts a listen when not already listening —
-            listenLive() itself routes to Settings > Audio only when no device
-            is configured in memory or in settings (#1604). The File button
-            never opens the native picker; it only switches mode, matching
-            the dropzone/Load-file… buttons below. */}
+            The Live button calls activateLive() (#1637), a no-op while
+            already listening; otherwise listenLive() routes to Settings >
+            Audio only when no device is configured in memory or in settings
+            (#1604). The File button never opens the native picker; it only
+            switches mode, matching the dropzone/Load-file… buttons below. */}
         <div className="analyze-mode-toggle" role="group" aria-label="Analyze mode">
           <button
             type="button"
@@ -99,7 +99,7 @@ export default function AnalyzeLiveEqPanel(): JSX.Element | null {
             className={`btn btn-secondary sm${mode === 'live' ? ' active' : ''}`}
             aria-pressed={mode === 'live'}
             /* c8 ignore next -- click dispatch, no jsdom */
-            onClick={() => { if (!listening) void useAnalyzeEntryStore.getState().listenLive(); }}
+            onClick={() => { void useAnalyzeEntryStore.getState().activateLive(); }}
           >
             Live
           </button>
