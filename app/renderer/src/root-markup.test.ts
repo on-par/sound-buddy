@@ -347,10 +347,12 @@ describe('Header pins Record in a fixed center slot (#1650)', () => {
     expect(css).toMatch(/#header-left \{[^}]*padding-left:calc\(var\(--titlebar-safe-left\) - 16px\)/);
   });
 
-  it('takes the status text out of flow so it can never shove the button', () => {
+  it('does not lay out status text or Show in Finder beside the button', () => {
     expect(css).toMatch(/#record-button-island \{[^}]*position:relative/);
-    expect(css).toMatch(/\.record-meta \{[^}]*position:absolute/);
-    expect(css).toMatch(/\.record-meta \{[^}]*left:calc\(100% \+ /);
+    expect(css).not.toContain('.record-meta');
+    expect(css).not.toContain('.record-status');
+    expect(css).not.toContain('.record-saved');
+    expect(css).not.toContain('.record-error');
   });
 
   it('fills the stop square so recording reads as the standard stop glyph', () => {

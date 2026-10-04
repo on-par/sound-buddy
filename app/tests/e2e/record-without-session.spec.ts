@@ -114,9 +114,9 @@ async function expectRtaLive(electronApp: ElectronApplication, window: Page, rms
   await expect(window.locator('#analyze-live-island .veq-chart svg')).toBeVisible();
 }
 
-// #1650: Record sits in the header's fixed center slot and never moves when
-// the elapsed / Saved / error text appears beside it. Same x/y/size within a
-// pixel in every state, and centered in the header.
+// #1650: Record sits in the header's fixed center slot. It is the circle
+// or the square only — no elapsed / Saved / error text and no Show in Finder.
+// Same x/y/size within a pixel in every state, and centered in the header.
 const PIN_TOLERANCE_PX = 1;
 type Box = { x: number; y: number; width: number; height: number };
 
@@ -130,13 +130,6 @@ function expectSameBox(actual: Box, pinned: Box): void {
   for (const k of ['x', 'y', 'width', 'height'] as const) {
     expect(Math.abs(actual[k] - pinned[k]), `#record-button ${k} moved`).toBeLessThanOrEqual(PIN_TOLERANCE_PX);
   }
-}
-
-// The status beside the pinned button stays clear of the settings / Pro chrome.
-async function expectMetaClearOfRightChrome(window: Page): Promise<void> {
-  const meta = (await window.locator('#record-button-island .record-meta').boundingBox())!;
-  const right = (await window.locator('#header-right').boundingBox())!;
-  expect(meta.x + meta.width, '.record-meta overlaps #header-right').toBeLessThan(right.x);
 }
 
 // The inner glyph: the record circle at rest, the stop square while pressed.
@@ -226,8 +219,9 @@ test.describe('Record Main + Measurement without the Session tab (#1648)', () =>
 
     await window.locator('#record-button').click();
 
-    await expect(window.locator('#record-status')).toHaveText(/^Recording · \d+:\d\d$/);
     await expect(window.locator('#record-button')).toHaveAttribute('aria-pressed', 'true');
+    await expect(window.locator('#record-status')).toHaveCount(0);
+    await expect(window.locator('#record-reveal')).toHaveCount(0);
     const started = await recordIpc(electronApp);
     expect(started.takeStarts).toHaveLength(1);
     // Exactly two sources, one channel token each — never a track list.
@@ -237,7 +231,6 @@ test.describe('Record Main + Measurement without the Session tab (#1648)', () =>
     });
     expect(started.takeStarts[0]).not.toHaveProperty('channels');
     expect(started.takeStarts[0]).not.toHaveProperty('arm');
-    await expect(window.locator('#record-status')).toHaveAttribute('title', 'Main: Board USB · Ch 7–8 (stereo)\nMeasurement: UMIK-1 · Ch 1 (mono)');
     // Still the Analyze shell: no Session tab, no DAW, no channel grid.
     await sessionAbsent(window);
     await expect(window.locator('#live-island')).toBeHidden();
@@ -246,26 +239,22 @@ test.describe('Record Main + Measurement without the Session tab (#1648)', () =>
     // measurement stream was neither stopped nor restarted by Record.
     await expectRtaLive(electronApp, window, -18);
     expect(await measurementCalls(electronApp)).toEqual(listenBefore);
-    await expect(window.locator('#record-status')).toHaveText(/^Recording · 0:0[1-9]$/, { timeout: 4_000 });
     await expectGlyph(window, 'square');
+    await expect(window.locator('#record-status')).toHaveCount(0);
+    await expect(window.locator('#record-reveal')).toHaveCount(0);
     expectSameBox(await recordBox(window), pinned);
-    await expectMetaClearOfRightChrome(window);
     await proof(window, '03-recording-in-progress');
 
     await window.locator('#record-button').click();
 
-    await expect(window.locator('#record-saved')).toHaveText('Saved · sound-buddy-20261004-101500-000');
-    await expect(window.locator('#record-saved')).toHaveAttribute('title', TAKE_DIR);
-    await expect(window.locator('#record-saved-files')).toHaveText('01-main.wav · 01-measurement.wav');
-    await expect(window.locator('#record-saved-files')).toHaveAttribute(
-      'title', `${path.join(TAKE_DIR, 'main', '01-main.wav')}\n${path.join(TAKE_DIR, 'measurement', '01-measurement.wav')}`);
+    await expect(window.locator('#record-saved')).toHaveCount(0);
+    await expect(window.locator('#record-reveal')).toHaveCount(0);
     await expect(window.locator('#record-status')).toHaveCount(0);
     await expect(window.locator('#record-error')).toHaveCount(0);
     await expect(window.locator('#record-button')).toHaveAttribute('aria-pressed', 'false');
     await expect(window.locator('#record-button')).toBeEnabled();
     await expectGlyph(window, 'circle');
     expectSameBox(await recordBox(window), pinned);
-    await expectMetaClearOfRightChrome(window);
     await proof(window, '04-stopped-files-saved');
 
     // Both stems are on disk where the UI says.
@@ -293,13 +282,14 @@ test.describe('Record Main + Measurement without the Session tab (#1648)', () =>
 
     await window.locator('#record-button').click();
 
-    await expect(window.locator('#record-error')).toHaveText(/^Measurement input not found — .*Settings ▸ Audio/);
+    // The header stays the idle circle: no error line and no Show in Finder.
     await expect(window.locator('#record-button')).toHaveAttribute('aria-pressed', 'false');
-    expectSameBox(await recordBox(window), pinned);
-    // The error replaces the previous take's name; Show in Finder stays.
+    await expect(window.locator('#record-error')).toHaveCount(0);
+    await expect(window.locator('#record-status')).toHaveCount(0);
     await expect(window.locator('#record-saved')).toHaveCount(0);
-    await expect(window.locator('#record-reveal')).toBeVisible();
-    await expectMetaClearOfRightChrome(window);
+    await expect(window.locator('#record-reveal')).toHaveCount(0);
+    await expectGlyph(window, 'circle');
+    expectSameBox(await recordBox(window), pinned);
     await proof(window, '05-error');
     expect((await recordIpc(electronApp)).takeStarts).toHaveLength(1);
     expect(await measurementCalls(electronApp)).toEqual(listenBefore);

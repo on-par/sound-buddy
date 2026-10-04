@@ -59,13 +59,18 @@ function expectStopIcon(html: string) {
   expect(html).not.toContain(iconSvg('circle', 16));
 }
 
-// #1650: everything beside the circle (elapsed / Saving / saved take /
-// error) renders inside .record-meta, which app.css takes out of flow so it
-// can never shove the pinned button.
-function metaInner(html: string): string {
-  const m = html.match(/<div class="record-meta">([\s\S]*)<\/div>$/);
-  expect(m, 'status renders inside .record-meta after the button').not.toBeNull();
-  return m![1];
+// Record/stop only: the header button never grows a status line, a saved-take
+// name, an error, or Show in Finder.
+function expectRecordStopOnly(html: string) {
+  expect(html).not.toContain('record-meta');
+  expect(html).not.toContain('record-status');
+  expect(html).not.toContain('record-saved');
+  expect(html).not.toContain('record-reveal');
+  expect(html).not.toContain('record-error');
+  expect(html).not.toContain('Show in Finder');
+  expect(html).not.toContain('Recording ·');
+  expect(html).not.toContain('Saving');
+  expect(html).not.toContain('Starting…');
 }
 
 describe('RecordButton — Main + Measurement take (#1648)', () => {
@@ -79,6 +84,7 @@ describe('RecordButton — Main + Measurement take (#1648)', () => {
     expect(html).toContain('aria-pressed="false"');
     expectNoVisibleText(html);
     expectCircleIcon(html);
+    expectRecordStopOnly(html);
   });
 
   it('stays the take Record while a Session monitor runs in the background (never promotes Session)', () => {
@@ -89,14 +95,15 @@ describe('RecordButton — Main + Measurement take (#1648)', () => {
     expect(html).toContain('aria-label="Record Main + Measurement — press to start"');
   });
 
-  it('is a disabled Starting state with a status line', () => {
+  it('is a disabled Starting state with no status text', () => {
     useRecordTakeStore.setState({ phase: 'starting' });
     const html = renderMarkup();
     expect(html).toMatch(/id="record-button"[^>]*disabled=""/);
-    expect(html).toMatch(/id="record-status"[^>]*>Starting…</);
+    expectCircleIcon(html);
+    expectRecordStopOnly(html);
   });
 
-  it('shows the pressed recording state, elapsed time, and what each source records', () => {
+  it('shows the pressed recording state as a square and nothing else', () => {
     useRecordTakeStore.setState({
       phase: 'recording',
       startedAt: Date.now(),
@@ -107,64 +114,39 @@ describe('RecordButton — Main + Measurement take (#1648)', () => {
     expect(html).toContain('aria-pressed="true"');
     expect(html).toContain('aria-label="Recording Main + Measurement — press to stop"');
     expect(html).not.toMatch(/id="record-button"[^>]*disabled=""/);
-    expect(html).toMatch(/id="record-status"[^>]*title="Main: X32 USB · Ch 17–18 \(stereo\)\nMeasurement: UMIK-1 · Ch 1 \(mono\)"[^>]*>Recording · 0:0\d</);
     expectStopIcon(html);
-    expect(metaInner(html)).toContain('id="record-status"');
+    expectRecordStopOnly(html);
   });
 
-  it('is a disabled Saving state while the files finalize', () => {
+  it('is a disabled Stopping state with no Saving text', () => {
     useRecordTakeStore.setState({ phase: 'stopping' });
     const html = renderMarkup();
     expect(html).toMatch(/record-btn--stopping[^>]*disabled=""/);
-    expect(html).toMatch(/id="record-status"[^>]*>Saving…</);
     expectStopIcon(html);
+    expectRecordStopOnly(html);
   });
 
-  it('names the saved take and both stems, with a Show in Finder button', () => {
+  it('returns to the idle circle after a take, with no saved name and no Show in Finder', () => {
     const dir = '/Music/Sound Buddy/sound-buddy-20261004-101500-000';
     useRecordTakeStore.setState({
       lastTake: { dir, files: { main: `${dir}/main/01-main.wav`, measurement: `${dir}/measurement/01-measurement.wav` } },
     });
     const html = renderMarkup();
-    expect(html).toMatch(/id="record-saved"[^>]*title="\/Music\/Sound Buddy\/sound-buddy-20261004-101500-000"[^>]*>Saved · sound-buddy-20261004-101500-000</);
-    expect(html).toMatch(/id="record-saved-files"[^>]*>01-main\.wav · 01-measurement\.wav</);
-    // Two stacked, width-capped lines so the header never overflows; the
-    // full file list is also in the title.
-    expect(html).toMatch(/class="record-take-info"><span id="record-saved"/);
-    expect(html).toMatch(/id="record-saved-files"[^>]*title="\/Music\/Sound Buddy\/sound-buddy-20261004-101500-000\/main\/01-main\.wav\n\/Music\/Sound Buddy\/sound-buddy-20261004-101500-000\/measurement\/01-measurement\.wav"/);
-    expect(html).toContain('id="record-reveal"');
-    expect(html).not.toContain('id="record-status"');
     expectCircleIcon(html);
-    const meta = metaInner(html);
-    expect(meta).toContain('id="record-saved"');
-    expect(meta).toContain('id="record-reveal"');
+    expect(html).toContain('aria-label="Record Main + Measurement — press to start"');
+    expectRecordStopOnly(html);
   });
 
-  it('renders the actionable error as an alert', () => {
-    useRecordTakeStore.setState({ error: 'Measurement input not found — pick it in Settings ▸ Audio, then press Record.' });
-    const html = renderMarkup();
-    expect(html).toMatch(/id="record-error"[^>]*role="alert"[^>]*>Measurement input not found/);
-    expect(metaInner(html)).toContain('id="record-error"');
-  });
-
-  // #1650: the pinned button leaves half the header for the status, which
-  // can't fit the two-line take name AND the error — the error wins, and Show
-  // in Finder stays so a partial take (one stem missing) is still reachable.
-  it('drops the take name lines in favour of the error, keeping Show in Finder', () => {
+  it('does not render an error or Show in Finder when a source is missing', () => {
     const dir = '/Music/Sound Buddy/sound-buddy-20261004-101500-000';
     useRecordTakeStore.setState({
       lastTake: { dir, files: { main: `${dir}/main/01-main.wav`, measurement: null } },
       error: 'Measurement file was not written — check the room mic in Settings ▸ Audio, then record again.',
     });
-    const meta = metaInner(renderMarkup());
-    expect(meta).toContain('id="record-error"');
-    expect(meta).toContain('id="record-reveal"');
-    expect(meta).not.toContain('id="record-saved"');
-    expect(meta).not.toContain('record-take-info');
-  });
-
-  it('renders no .record-meta when there is nothing to say beside the button', () => {
-    expect(renderMarkup()).not.toContain('record-meta');
+    const html = renderMarkup();
+    expectCircleIcon(html);
+    expectRecordStopOnly(html);
+    expect(html).not.toContain('Measurement file was not written');
   });
 });
 
