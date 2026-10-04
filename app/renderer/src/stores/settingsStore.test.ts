@@ -221,8 +221,7 @@ describe('createSettingsStore', () => {
     expect(store.getState().dialogSection).toBeNull();
   });
 
-  // #1468 (lc-05): AnalyzeEntryDialog's "Listen live" choice routes here with
-  // 'audio' when no secondary measurement device is configured yet.
+  // #1468 (lc-05): a targeted open (e.g. 'audio') lands on that section.
   it('openDialog(section) records the requested landing section', () => {
     const mock = createMockSoundBuddy();
     const store = createSettingsStore(() => mock.api);

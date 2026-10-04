@@ -108,6 +108,25 @@ export function deviceIndexForName(devices: LiveDevice[], name: string): string 
   return dev ? String(dev.index) : null;
 }
 
+// #1646: what a never-configured room mic ('' device name) measures through —
+// stream.py meters sounddevice's system default input for an empty device.
+export const SYSTEM_DEFAULT_INPUT_LABEL = 'System default input';
+
+/**
+ * The start-measurement `device` arg for a remembered NAME (#1646): '' (none
+ * ever chosen) is the system default input, which stream.py resolves itself;
+ * a named device resolves to its current index, or null when it is absent —
+ * still surfaced as disconnected upstream, never swapped for another device.
+ */
+export function measurementDeviceArg(devices: LiveDevice[], name: string): string | null {
+  return name === '' ? '' : deviceIndexForName(devices, name);
+}
+
+/** Display name for the room source: the device name, or the system default input (#1646). */
+export function secondaryDeviceLabel(name: string): string {
+  return name === '' ? SYSTEM_DEFAULT_INPUT_LABEL : name;
+}
+
 /**
  * Fold a start-measurement IPC result into the next state:
  *  - success            → 'active'
@@ -187,7 +206,7 @@ export function secondaryDeviceOptionsHTML(devices: LiveDevice[], preferredName:
  * active names the room device. Off/starting produce a neutral line.
  */
 export function secondaryStatusHTML(state: SecondaryMeasurementState): string {
-  const name = escapeHtml(state.deviceName);
+  const name = escapeHtml(secondaryDeviceLabel(state.deviceName));
   switch (state.status) {
     case 'blocked':
       return 'Microphone access is blocked. Enable it in System Settings ▸ Privacy &amp; Security ▸ Microphone, then choose the device again.';
@@ -276,7 +295,7 @@ export function roomPaneOverride(
   const lastWindow = secondaryWindows[secondaryWindows.length - 1];
   const ch = lastMeasurementChannels?.[0] ?? lastWindow?.channels?.[0] ?? null;
   if (!ch) return null;
-  return { ch, label: deviceName };
+  return { ch, label: secondaryDeviceLabel(deviceName) };
 }
 
 // The live header's measurement-badge text (TD-001 slice 6h, #711): port of

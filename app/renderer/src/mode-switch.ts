@@ -24,7 +24,7 @@ import { decideLiveAutoStart } from './live-auto-start';
 import { startLiveCapture, runtime } from './LiveControls';
 import { captureOptsFromCadence } from './measurement-device-state';
 import { clampBootMode, isModeFlagEnabled, isSimpleMode } from './simple-mode';
-import { decideAnalyzeHomeAutoListen, effectiveSecondaryDeviceName } from './analyze-entry';
+import { decideAnalyzeHomeAutoListen } from './analyze-entry';
 import type { AppSettings } from '../../electron/ipc/api';
 
 export type WorkspaceMode = 'dir' | 'live' | 'console' | 'recent' | 'guide' | 'ringout' | 'reportcard';
@@ -47,8 +47,7 @@ export type ModeSwitchDecision =
 // listener (inline-app.js) — pure, no DOM.
 // #1485: the Analyze tab always resolves to the entry point — never a direct
 // file-chooser — in both Simple and Advanced mode. enterAnalyzeFromTab(), which
-// calls analyzeEntryStore.enterAnalyze(), applies analyze-entry.ts's
-// device-based resolveAnalyzeEntry rule from there.
+// calls analyzeEntryStore.enterAnalyze(), lands on Live from there (#1646).
 export function resolveModeSwitch(requestedMode: string, currentMode: string): ModeSwitchDecision {
   if (requestedMode === 'analyze') return { type: 'analyzeEntry' };
   if (requestedMode === 'history') return { type: 'redirect', mode: 'recent' };
@@ -150,23 +149,17 @@ export function maybeAutoStartLive(): void {
 // #1577: the ADR-0146 amendment's one permitted auto-listen — invoked only
 // from restoreBootMode's tail, only while still on the boot-painted Analyze
 // home (never from showAnalyzeStage). Calls only listenLive() — never
-// enterAnalyze(), so a no-device cold boot never opens AnalyzeEntryDialog.
-// Always logs one 'analyze-auto-listen' line with the verdict, mirroring
-// maybeAutoStartLive's 'live-auto-start' diagnosability.
-// #1578: 'noDevice' deliberately makes no call at all — not listenLive()
-// (which would route to openSettingsAudio, seizing a Settings dialog) and
-// not enterAnalyze() (which would open AnalyzeEntryDialog). The File-mode
-// stage that showAnalyzeStage already painted is left exactly as-is.
-// #1620: "configured" is #1604's effective name (in-memory OR persisted), matching listenLive(), so a not-yet-seeded persisted room mic still auto-listens.
+// enterAnalyze(). Always logs one 'analyze-auto-listen' line with the
+// verdict, mirroring maybeAutoStartLive's 'live-auto-start' diagnosability.
+// #1646: Analyze defaults to Live with the RTA showing, so the verdict no
+// longer depends on a configured device — with none, listenLive() listens on
+// the system default input (#1620's in-memory-OR-persisted name is resolved
+// inside listenLive itself). It never opens Settings or a dialog.
 export function maybeAutoListenAnalyzeHome(): void {
   const live = useLiveCaptureStore.getState();
   const entry = useAnalyzeEntryStore.getState();
   const decision = decideAnalyzeHomeAutoListen({
     currentMode: live.appMode,
-    deviceName: effectiveSecondaryDeviceName(
-      live.secondaryMeasurement.deviceName,
-      useSettingsStore.getState().settings?.measurementDeviceName,
-    ),
     listening: entry.listening,
   });
   console.log('analyze-auto-listen', { decision });
@@ -195,8 +188,8 @@ function landAnalyzeWorkspace(opts?: { boot?: boolean }): void {
 // #1510: the non-interactive Analyze-stage opener used by boot's default
 // mode, clampBootMode's Simple-mode fallback (via switchMode's redirect
 // below and restoreBootMode) and every other route that must land on the
-// Analyze results rail without starting a room-mic listen or opening the
-// entry dialog. Deliberately never calls exitAnalyze(), enterAnalyze(),
+// Analyze results rail without starting a room-mic listen by itself.
+// Deliberately never calls exitAnalyze(), enterAnalyze(),
 // listenLive() or maybeAutoStartLive() — see the plan's rejected
 // alternatives for why enterAnalyze() is unsafe to reuse here.
 export function showAnalyzeStage(opts?: { boot?: boolean }): void {
@@ -206,8 +199,8 @@ export function showAnalyzeStage(opts?: { boot?: boolean }): void {
 
 // #1588 (ADR-0146 #1587 amendment): the Analyze tab click's action. Unlike
 // showAnalyzeStage() it is user-initiated, so after leaving the prior
-// workspace it applies enterAnalyze()'s existing entry rule (listen live with
-// a configured room mic, otherwise the entry dialog). Already on Analyze it
+// workspace it applies enterAnalyze()'s entry rule (always Live: the
+// configured room mic, else the system default input — #1646). Already on Analyze it
 // is exactly enterAnalyze() — no re-teardown, no settings write.
 export async function enterAnalyzeFromTab(): Promise<void> {
   if (useLiveCaptureStore.getState().appMode !== 'analyze') landAnalyzeWorkspace();

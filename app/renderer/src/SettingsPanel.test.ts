@@ -744,7 +744,7 @@ describe('SettingsSection', () => {
 
 // #1468 (lc-05): narrows settingsStore.dialogSection for the dialog-open
 // effect — a plain open (no request) keeps the existing 'general' default; a
-// targeted open (e.g. AnalyzeEntryDialog routing to Audio) lands there.
+// targeted open (e.g. openDialog('audio')) lands there.
 describe('initialSettingsSection', () => {
   it('falls back to general when no section was requested', () => {
     expect(initialSettingsSection(null)).toBe('general');

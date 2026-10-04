@@ -155,7 +155,7 @@ test.describe.serial('First-run onboarding (#69)', () => {
     for (const mode of ADVANCED_MODES) await expectTabHiddenAttr(mode, true);
   });
 
-  test('Simple mode Analyze reaches results through the entry dialog without a Report Card tab', async () => {
+  test('Simple mode Analyze reaches results through Load file… without a Report Card tab', async () => {
     fs.rmSync(USER_DATA, { recursive: true, force: true });
     fs.mkdirSync(USER_DATA, { recursive: true });
     fs.writeFileSync(path.join(USER_DATA, 'settings.json'), JSON.stringify({ advancedFeaturesEnabled: false }, null, 2));
@@ -184,8 +184,9 @@ test.describe.serial('First-run onboarding (#69)', () => {
     await expect(win.locator('#analyze-source-picker')).toHaveCount(0);
     await win.locator('#nav-analyze').click();
 
-    await expect(win.locator('#analyze-entry-dialog')).toBeVisible();
-    await win.locator('#analyze-entry-choose-file').click();
+    // #1646: Analyze lands on Live; loading a file is the explicit secondary path.
+    await expect(win.locator('#analyze-mode-live')).toHaveAttribute('aria-pressed', 'true');
+    await win.locator('#analyze-live-eq-choose-file').click();
 
     await expect(win.locator('#rc-filename')).toHaveText('silence.wav');
     await expect(win.locator('body')).toHaveClass(/analyze-listening/);

@@ -14,9 +14,12 @@ import { useRigStore } from './rigStore';
 import { useSoundcheckStore } from './soundcheckStore';
 import { useRingoutStore } from './ringoutStore';
 import { useAnalyzeEntryStore } from './analyzeEntryStore';
-import { createMockSoundBuddy } from '../mock-sound-buddy';import { spectrumTransport, type SpectrumTransport } from '../spectrum-transport';
+import { createMockSoundBuddy } from '../mock-sound-buddy';
+import { spectrumTransport, type SpectrumTransport } from '../spectrum-transport';
 import type { IdealCurvesApi } from '../ideal-profiles';
 import type { AppSettings } from '../../../electron/ipc/api';
+
+const ORIGINAL_STOP_LISTENING = useAnalyzeEntryStore.getState().stopListening;
 
 // ideal-curves is a plain classic script (window.idealCurves / module.exports)
 // — idealProfilesStore's default deps read it off window, same as the running app.
@@ -77,7 +80,8 @@ afterEach(() => {
     sceneError: null,
   });
   useSettingsStore.setState({ settings: null, settingsError: null, dialogOpen: false });
-  useAnalyzeEntryStore.setState({ pendingListenAfterSettings: false });
+  useAnalyzeEntryStore.setState({ listening: false, stopListening: ORIGINAL_STOP_LISTENING });
+  useAnalysisStore.setState({ isAnalyzing: false, historySummary: null });
   useIdealProfilesStore.setState({
     selectedId: '',
     customProfiles: [],
@@ -446,34 +450,54 @@ describe('installStoreBridge', () => {
     expect(useSpectrumStore.getState().isAutoProfile).toBe(false);
   });
 
-  describe('Settings-close abandons a pending Analyze listen (#1639)', () => {
-    it('opening Settings never clears a pending intent', () => {
+  // #1646: Analyze defaults to Live, and its mode is derived from listening —
+  // so any file-derived result (a started analysis or a loaded history entry)
+  // must hand the stage to File, or the Live rail would hide it.
+  describe('a file-derived result yields the Analyze stage to File (#1646)', () => {
+    function spyStopListening() {
+      const stopListening = vi.fn(async () => {});
+      useAnalyzeEntryStore.setState({ stopListening });
+      return stopListening;
+    }
+
+    it('a file analysis starting while Analyze is listening stops the listen', () => {
       installStoreBridge({});
-      useAnalyzeEntryStore.setState({ pendingListenAfterSettings: true });
+      const stopListening = spyStopListening();
+      useAnalyzeEntryStore.setState({ listening: true });
 
-      useSettingsStore.setState({ dialogOpen: true });
+      useAnalysisStore.setState({ isAnalyzing: true });
 
-      expect(useAnalyzeEntryStore.getState().pendingListenAfterSettings).toBe(true);
+      expect(stopListening).toHaveBeenCalledTimes(1);
     });
 
-    it('closing Settings via closeDialog() clears a pending intent', () => {
+    it('a history entry loading while Analyze is listening stops the listen', () => {
       installStoreBridge({});
-      useAnalyzeEntryStore.setState({ pendingListenAfterSettings: true });
-      useSettingsStore.setState({ dialogOpen: true });
+      const stopListening = spyStopListening();
+      useAnalyzeEntryStore.setState({ listening: true });
 
-      useSettingsStore.getState().closeDialog();
+      useAnalysisStore.getState().setHistorySummary({ file: 'a.json' } as never);
 
-      expect(useAnalyzeEntryStore.getState().pendingListenAfterSettings).toBe(false);
-      expect(useSettingsStore.getState().dialogOpen).toBe(false);
+      expect(stopListening).toHaveBeenCalledTimes(1);
     });
 
-    it('a settings update that leaves dialogOpen false does not clear a pending intent', () => {
+    it('a file result while not listening stops nothing', () => {
       installStoreBridge({});
-      useAnalyzeEntryStore.setState({ pendingListenAfterSettings: true });
+      const stopListening = spyStopListening();
+      useAnalyzeEntryStore.setState({ listening: false });
 
-      useSettingsStore.setState({ settings: APP_SETTINGS });
+      useAnalysisStore.setState({ isAnalyzing: true });
 
-      expect(useAnalyzeEntryStore.getState().pendingListenAfterSettings).toBe(true);
+      expect(stopListening).not.toHaveBeenCalled();
+    });
+
+    it('an unrelated analysis-store update while listening stops nothing', () => {
+      installStoreBridge({});
+      const stopListening = spyStopListening();
+      useAnalyzeEntryStore.setState({ listening: true });
+
+      useAnalysisStore.setState({ analysisProgress: null, selectedFilePath: '/x.wav' });
+
+      expect(stopListening).not.toHaveBeenCalled();
     });
   });
 });

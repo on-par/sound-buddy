@@ -362,6 +362,25 @@ export async function launchApp(
       sessionDir: '/tmp/sound-buddy-20260702-101500',
     }));
 
+    // #1646: Analyze defaults to a live room-mic listen at boot (on the
+    // system default input when no room mic is configured), so the measurement
+    // stream must be stubbed before hydration settles — no spec may ever reach
+    // a real mic/TCC prompt. Every call is logged to globalThis.__sbMeasurementCalls
+    // (device included) so a spec can assert what boot actually started.
+    (globalThis as unknown as { __sbMeasurementCalls: unknown[] }).__sbMeasurementCalls = [];
+    ipcMain.removeHandler('start-measurement');
+    ipcMain.handle('start-measurement', (_event, opts: { device?: string; channel?: number }) => {
+      (globalThis as unknown as { __sbMeasurementCalls: unknown[] }).__sbMeasurementCalls.push({
+        kind: 'start', device: opts?.device, channel: opts?.channel,
+      });
+      return { success: true, micAccess: 'granted' };
+    });
+    ipcMain.removeHandler('stop-measurement');
+    ipcMain.handle('stop-measurement', () => {
+      (globalThis as unknown as { __sbMeasurementCalls: unknown[] }).__sbMeasurementCalls.push({ kind: 'stop' });
+      return { success: true };
+    });
+
     // save-analysis-summary (#146) writes under the platform Music folder,
     // which --user-data-dir does NOT isolate — stub it so e2e runs (which fire
     // this on every loadAndAnalyze) never touch the developer's real disk.
