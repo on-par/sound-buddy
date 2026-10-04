@@ -37,7 +37,6 @@ import { analyzeLiveEqView } from './analyze-live-eq';
 import { analyzeModeOf, droppedAudioPath } from './analyze-entry';
 import { iconSvg } from './report-card';
 import AnalyzeResultsPanel from './AnalyzeResultsPanel';
-import AnalyzeRecordControl from './AnalyzeRecordControl';
 
 export default function AnalyzeLiveEqPanel(): JSX.Element | null {
   const sb = useElectron();
@@ -222,7 +221,6 @@ export default function AnalyzeLiveEqPanel(): JSX.Element | null {
             <div className="eq-pane-empty-hint">{view.text}</div>
           </div>}
         <div className="analyze-live-eq-actions">
-          <AnalyzeRecordControl />
           {/* #1487: listening is what Stop listening tears down — once the
               stage stays open via analyzeStage alone (listening already
               stopped), a Stop button would have nothing left to stop. */}
