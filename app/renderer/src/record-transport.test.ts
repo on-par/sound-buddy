@@ -2,7 +2,7 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { describe, it, expect } from 'vitest';
-import { recordButtonView, recordButtonAction, sessionTabCaptureHTML } from './record-transport';
+import { recordButtonView, recordButtonAction, recordButtonGlyph, sessionTabCaptureHTML } from './record-transport';
 
 describe('recordButtonView', () => {
   it('maps idle and monitoring to enabled Record controls', () => {
@@ -62,6 +62,22 @@ describe('recordButtonAction', () => {
   it('returns null for transitional phases', () => {
     expect(recordButtonAction('starting-record')).toBeNull();
     expect(recordButtonAction('stopping')).toBeNull();
+  });
+});
+
+// #1650: the same control swaps its inner circle for a square (the standard
+// stop glyph) while a take is pressed — recording, and the Saving/Stopping
+// beat that follows it.
+describe('recordButtonGlyph', () => {
+  it('is the record circle when idle, monitoring, or starting', () => {
+    expect(recordButtonGlyph('idle')).toBe('circle');
+    expect(recordButtonGlyph('monitoring')).toBe('circle');
+    expect(recordButtonGlyph('starting-record')).toBe('circle');
+  });
+
+  it('is the stop square while recording or stopping', () => {
+    expect(recordButtonGlyph('recording')).toBe('square');
+    expect(recordButtonGlyph('stopping')).toBe('square');
   });
 });
 

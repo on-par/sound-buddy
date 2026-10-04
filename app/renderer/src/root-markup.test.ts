@@ -314,3 +314,48 @@ describe('Existing tabs stay intact under the unified Analyze picker (#543)', ()
     expect(markup).toContain('id="tab-dir"');
   });
 });
+
+// #1650: Record lives in a fixed center slot of the header — not in
+// #header-right, where the elapsed / Saving / Saved / error text appearing
+// beside it pushed the settings + Pro chrome and slid the button around.
+describe('Header pins Record in a fixed center slot (#1650)', () => {
+  const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
+  const between = (from: string, to: string) => markup.slice(markup.indexOf(from), markup.indexOf(to));
+
+  it('mounts the Record island in #header-center, between the tabs and the right-hand chrome', () => {
+    const left = between('id="header-left"', 'id="header-center"');
+    const center = between('id="header-center"', 'id="header-right"');
+    const right = between('id="header-right"', '<!-- ══ Stage');
+    expect(left).toContain('id="logo"');
+    expect(left).toContain('id="mode-tabs"');
+    expect(center).toContain('id="record-button-island"');
+    expect(right).not.toContain('id="record-button-island"');
+    expect(right).toContain('id="settings-btn"');
+    expect(right).toContain('id="license-badge-island"');
+  });
+
+  it('lays the header out as left / center / right columns so the center slot holds still', () => {
+    expect(css).toContain('grid-template-columns:1fr auto 1fr;');
+    expect(css).toMatch(/#header-center \{[^}]*-webkit-app-region:no-drag/);
+  });
+
+  it('keeps the header padding symmetric so the center slot is the middle of the window', () => {
+    // The traffic-light clearance moved from #header onto #header-left; on
+    // #header it would offset the grid's center by half of it.
+    expect(css).toMatch(/#header \{[^}]*padding:0 16px;/);
+    expect(css).not.toMatch(/#header \{[^}]*padding-left:var\(--titlebar-safe-left\)/);
+    expect(css).toMatch(/#header-left \{[^}]*padding-left:calc\(var\(--titlebar-safe-left\) - 16px\)/);
+  });
+
+  it('does not lay out status text or Show in Finder beside the button', () => {
+    expect(css).toMatch(/#record-button-island \{[^}]*position:relative/);
+    expect(css).not.toContain('.record-meta');
+    expect(css).not.toContain('.record-status');
+    expect(css).not.toContain('.record-saved');
+    expect(css).not.toContain('.record-error');
+  });
+
+  it('fills the stop square so recording reads as the standard stop glyph', () => {
+    expect(css).toMatch(/\.record-btn\[aria-pressed="true"\] svg path \{[^}]*fill:currentColor/);
+  });
+});

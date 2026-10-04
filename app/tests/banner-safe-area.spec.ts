@@ -22,22 +22,29 @@ test.describe.serial('macOS titlebar safe area (#362)', () => {
   test('header and remaining top banners share the same left inset', async () => {
     await launch();
 
-    const paddings = await win.evaluate(() => {
-      const ids = ['header', 'license-banner', 'trial-banner'];
-      for (const id of ids.slice(1)) {
+    // #1650: the header's inset is split between #header's own symmetric
+    // padding and #header-left's traffic-light clearance (so the center slot
+    // is the window's middle) — measure where the header content actually
+    // starts, the logo's left edge, against each banner's padding.
+    const insets = await win.evaluate(() => {
+      const ids = ['license-banner', 'trial-banner'];
+      for (const id of ids) {
         document.getElementById(id)?.classList.add('show');
       }
-
-      return Object.fromEntries(
-        ids.map((id) => {
-          const node = document.getElementById(id);
-          return [id, node ? getComputedStyle(node).paddingLeft : null];
-        }),
-      );
+      const logo = document.getElementById('logo');
+      return {
+        header: logo ? `${logo.getBoundingClientRect().left}px` : null,
+        ...Object.fromEntries(
+          ids.map((id) => {
+            const node = document.getElementById(id);
+            return [id, node ? getComputedStyle(node).paddingLeft : null];
+          }),
+        ),
+      };
     });
 
-    expect(paddings.header).toBeTruthy();
-    expect(paddings['license-banner']).toBe(paddings.header);
-    expect(paddings['trial-banner']).toBe(paddings.header);
+    expect(insets.header).toBeTruthy();
+    expect(insets['license-banner']).toBe(insets.header);
+    expect(insets['trial-banner']).toBe(insets.header);
   });
 });
