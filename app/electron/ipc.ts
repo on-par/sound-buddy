@@ -21,6 +21,7 @@
 import { registerAnalysisHandlers } from './ipc/analysis';
 import { registerLiveCaptureHandlers } from './ipc/live-capture';
 import { registerMeasurementSourceHandlers } from './ipc/measurement-source';
+import { registerRecordTakeHandlers } from './ipc/record-take';
 import { registerPlaybackHandlers } from './ipc/playback';
 import { registerLicensingHandlers } from './ipc/licensing';
 import { registerSettingsHandlers } from './ipc/settings';
@@ -33,6 +34,7 @@ export function registerIpcHandlers(): void {
   registerAnalysisHandlers();
   registerLiveCaptureHandlers();
   registerMeasurementSourceHandlers();
+  registerRecordTakeHandlers();
   registerPlaybackHandlers();
   registerLicensingHandlers();
   registerSettingsHandlers();

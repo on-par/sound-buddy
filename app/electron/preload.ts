@@ -8,6 +8,7 @@ import type {
   AnalyzeFileOpts,
   StartLiveOpts,
   StartMeasurementOpts,
+  StartRecordTakeOpts,
   StartPlaybackOpts,
   SetPlaybackRoutesOpts,
   UpdateSettingsPatch,
@@ -202,6 +203,12 @@ export function createBridge(ipc: IpcRendererLike, fileUtils: FilePathResolver) 
 
     onMeasurementEvent: (cb: (data: unknown) => void) =>
       ipc.on('measurement-event', (_event, d) => cb(d)),
+
+    // Header Record take (#1648): Main + Measurement on their own record
+    // processes — independent of start-live and the measurement stream.
+    startRecordTake: (opts: StartRecordTakeOpts) => ipc.invoke('start-record-take', opts),
+
+    stopRecordTake: () => ipc.invoke('stop-record-take'),
 
     // Reveal a captured session folder in the OS file manager (#43). Paves the way
     // for "Open in Virtual Soundcheck" (epic #35); for now it opens the folder.
