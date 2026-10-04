@@ -116,7 +116,8 @@
        elapsed / saving, the saved take + stems (full path in its title), and
        an actionable error. Mirrors .analyze-record-* below. */
     .record-status { font:var(--fw-medium) var(--fs-label)/1 var(--font-mono); color:var(--issue-text); white-space:nowrap; }
-    .record-saved { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); white-space:nowrap; }
+    .record-take-info { display:flex; flex-direction:column; gap:3px; max-width:280px; min-width:0; }
+    .record-saved { font:var(--fw-regular) var(--fs-micro)/1.2 var(--font-mono); color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .record-error { max-width:320px; font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--issue-text); }
     #live-indicator { display:none; align-items:center; gap:8px; font:var(--fw-semibold) 11px/1 var(--font-sans); letter-spacing:0.06em; color:var(--text-secondary); }
     #live-indicator .pulse { width:8px; height:8px; border-radius:50%; background:var(--issue-500); box-shadow:0 0 8px rgba(229,72,77,0.6); }

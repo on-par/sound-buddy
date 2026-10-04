@@ -173,6 +173,8 @@ test.describe('Record Main + Measurement without the Session tab (#1648)', () =>
     await expect(window.locator('#record-measurement-channels option')).toHaveCount(1);
     // The board's mix out sits on its last pair.
     await window.locator('#record-main-channels').selectOption('6-7');
+    await window.locator('#record-main-channels').scrollIntoViewIfNeeded();
+    await proof(window, '02b-settings-main-and-measurement-sources');
 
     await window.locator('#settings-dialog-done').click();
     await expect(window.locator('#settings-dialog')).toBeHidden();
@@ -212,7 +214,9 @@ test.describe('Record Main + Measurement without the Session tab (#1648)', () =>
 
     await expect(window.locator('#record-saved')).toHaveText('Saved · sound-buddy-20261004-101500-000');
     await expect(window.locator('#record-saved')).toHaveAttribute('title', TAKE_DIR);
-    await expect(window.locator('#record-saved-files')).toHaveText('main/01-main.wav · measurement/01-measurement.wav');
+    await expect(window.locator('#record-saved-files')).toHaveText('01-main.wav · 01-measurement.wav');
+    await expect(window.locator('#record-saved-files')).toHaveAttribute(
+      'title', `${path.join(TAKE_DIR, 'main', '01-main.wav')}\n${path.join(TAKE_DIR, 'measurement', '01-measurement.wav')}`);
     await expect(window.locator('#record-status')).toHaveCount(0);
     await expect(window.locator('#record-error')).toHaveCount(0);
     await expect(window.locator('#record-button')).toHaveAttribute('aria-pressed', 'false');

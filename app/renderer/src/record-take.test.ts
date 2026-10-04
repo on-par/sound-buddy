@@ -10,6 +10,7 @@ import {
   recordSourceRows,
   recordTakeView,
   savedFileNames,
+  savedFilePaths,
   takeName,
   RECORD_MAIN_NOT_FOUND_ERROR,
   RECORD_MEASUREMENT_NOT_FOUND_ERROR,
@@ -170,12 +171,13 @@ describe('takeName / savedFileNames (#1648)', () => {
     expect(takeName('/')).toBe('/');
   });
 
-  it('lists the saved stems relative to the take, Main first', () => {
+  it('names the saved stems, Main first, and lists their full paths for the tooltip', () => {
     const dir = '/m/take';
-    expect(savedFileNames({ dir, files: { main: '/m/take/main/01-main.wav', measurement: '/m/take/measurement/01-measurement.wav' } }))
-      .toBe('main/01-main.wav · measurement/01-measurement.wav');
+    const both = { dir, files: { main: '/m/take/main/01-main.wav', measurement: '/m/take/measurement/01-measurement.wav' } };
+    expect(savedFileNames(both)).toBe('01-main.wav · 01-measurement.wav');
+    expect(savedFilePaths(both)).toBe('/m/take/main/01-main.wav\n/m/take/measurement/01-measurement.wav');
     expect(savedFileNames({ dir, files: { main: null, measurement: '/m/take/measurement/01-measurement.wav' } }))
-      .toBe('measurement/01-measurement.wav');
+      .toBe('01-measurement.wav');
   });
 });
 

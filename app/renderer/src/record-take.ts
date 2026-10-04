@@ -186,11 +186,16 @@ export function takeName(dir: string): string {
   return parts.length > 0 ? parts[parts.length - 1] : dir;
 }
 
-// The saved stems relative to the take folder, Main first.
+function savedFiles(take: RecordTake): string[] {
+  return [take.files.main, take.files.measurement].filter((f): f is string => f !== null);
+}
+
+// The saved stems' file names, Main first — short enough for the header.
 export function savedFileNames(take: RecordTake): string {
-  const prefix = take.dir.endsWith('/') ? take.dir : `${take.dir}/`;
-  return [take.files.main, take.files.measurement]
-    .filter((f): f is string => f !== null)
-    .map((f) => (f.startsWith(prefix) ? f.slice(prefix.length) : f))
-    .join(' · ');
+  return savedFiles(take).map(takeName).join(' · ');
+}
+
+// The saved stems' full paths, one per line (the header line's title).
+export function savedFilePaths(take: RecordTake): string {
+  return savedFiles(take).join('\n');
 }

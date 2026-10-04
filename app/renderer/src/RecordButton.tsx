@@ -20,7 +20,7 @@ import { useRecordTakeStore } from './stores/recordTakeStore';
 import { iconSvg } from './report-card';
 import { runtime, stopLiveCapture } from './LiveControls';
 import { recordButtonView, recordButtonAction } from './record-transport';
-import { recordTakeView, savedFileNames, takeName } from './record-take';
+import { recordTakeView, savedFileNames, savedFilePaths, takeName } from './record-take';
 
 const RECORD_TICK_MS = 1000;
 // Session capture phases that own the header button (a recording to stop).
@@ -107,10 +107,14 @@ export default function RecordButton(): JSX.Element {
       )}
       {view.saved && (
         <>
-          <span id="record-saved" className="record-saved" title={view.saved.dir}>
-            {`Saved · ${takeName(view.saved.dir)}`}
+          <span className="record-take-info">
+            <span id="record-saved" className="record-saved" title={view.saved.dir}>
+              {`Saved · ${takeName(view.saved.dir)}`}
+            </span>
+            <span id="record-saved-files" className="record-saved" title={savedFilePaths(view.saved)}>
+              {savedFileNames(view.saved)}
+            </span>
           </span>
-          <span id="record-saved-files" className="record-saved">{savedFileNames(view.saved)}</span>
           <button
             type="button"
             id="record-reveal"

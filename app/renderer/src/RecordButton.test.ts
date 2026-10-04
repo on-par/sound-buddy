@@ -106,7 +106,11 @@ describe('RecordButton — Main + Measurement take (#1648)', () => {
     });
     const html = renderMarkup();
     expect(html).toMatch(/id="record-saved"[^>]*title="\/Music\/Sound Buddy\/sound-buddy-20261004-101500-000"[^>]*>Saved · sound-buddy-20261004-101500-000</);
-    expect(html).toMatch(/id="record-saved-files"[^>]*>main\/01-main\.wav · measurement\/01-measurement\.wav</);
+    expect(html).toMatch(/id="record-saved-files"[^>]*>01-main\.wav · 01-measurement\.wav</);
+    // Two stacked, width-capped lines so the header never overflows; the
+    // full file list is also in the title.
+    expect(html).toMatch(/class="record-take-info"><span id="record-saved"/);
+    expect(html).toMatch(/id="record-saved-files"[^>]*title="\/Music\/Sound Buddy\/sound-buddy-20261004-101500-000\/main\/01-main\.wav\n\/Music\/Sound Buddy\/sound-buddy-20261004-101500-000\/measurement\/01-measurement\.wav"/);
     expect(html).toContain('id="record-reveal"');
     expect(html).not.toContain('id="record-status"');
   });
