@@ -34,6 +34,7 @@ import {
   eqPaneInspectorHTML,
   eqPaneSignature,
   eqPanePatchPlan,
+  eqPaneRoomSectionPatch,
   EQ_PANE_ROOM_OVERRIDE_IDX,
   deviceOptionLabel,
   deviceListView,
@@ -1443,6 +1444,32 @@ describe('eqPaneRoomSectionHTML (#1469, lc-06)', () => {
     // label — eqPaneRoomSectionHTML omits only the pane-a uid and the
     // eq-pane-section/eq-pane-primary wrapper div eqPaneHTML adds around it.
     expect(primarySection).toContain(eqPaneRoomSectionHTML(override).replace(/liveanalyze-room/g, 'livepane-a'));
+  });
+});
+
+
+describe('eqPaneRoomSectionPatch (#1652)', () => {
+  it('returns analyze-room path data that moves when the grid curve moves', () => {
+    const quiet = { ...LIVE_CHANNELS[0], curve: Array.from({ length: 48 }, () => -60) };
+    const hot = { ...LIVE_CHANNELS[0], curve: Array.from({ length: 48 }, () => -12) };
+    const a = eqPaneRoomSectionPatch(quiet);
+    const b = eqPaneRoomSectionPatch(hot);
+    expect(a.gridDb).toEqual(quiet.curve);
+    expect(b.gridDb).toEqual(hot.curve);
+    if (typeof a.arc === 'string' || typeof b.arc === 'string') throw new Error('expected path data');
+    expect(a.arc.line).not.toBe(b.arc.line);
+    expect(a.arc.line.length).toBeGreaterThan(0);
+    // Same path object the room HTML's uid would patch: analyze-room, not the Session pane slots.
+    expect(a.arc).toEqual(veqArcSVG(a.curve, quiet.centroid, 'analyze-room', true));
+    expect(a.arc).not.toEqual(veqArcSVG(a.curve, quiet.centroid, 'pane-a', true));
+  });
+
+  it('falls back to the 7-band curve when the channel has no 48-point grid', () => {
+    const patch = eqPaneRoomSectionPatch(LIVE_CHANNELS[0]);
+    expect(patch.gridDb).toBeNull();
+    expect(patch.curve.db).toHaveLength(7);
+    if (typeof patch.arc === 'string') throw new Error('expected path data');
+    expect(patch.arc.line.length).toBeGreaterThan(0);
   });
 });
 

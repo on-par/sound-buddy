@@ -12,17 +12,17 @@
 //
 // secondaryWindows (window-rate, appended once per analysis window) is the
 // only tick-ish field in the useStoreShallow selector below — it re-renders
-// this leaf on a cadence slow enough to safely rebuild its small markup.
-// lastMeasurementChannels (true meter-rate, ~10/s) is read imperatively at
-// render time instead, exactly like LiveAdjustmentsPanel.tsx's
-// lastLiveChannels read and LiveEqPane.tsx's board-channel read
-// (ADR-0005/ADR-0135): the room curve reflects the newest tick whenever
-// something else causes this component to re-render, without itself forcing
-// a re-render at meter rate. The selector's `hasRoomReading` boolean (#1637)
-// flips at most twice per stream (null -> first tick, array -> null on
-// stop/start/disconnect) purely to trigger that one extra re-render on the
-// first meter tick, so the room curve paints immediately instead of waiting
-// for the next window tick; nothing reads its value besides the selector.
+// this leaf on a cadence slow enough to safely rebuild its small markup
+// (coaching still rides that window). lastMeasurementChannels (true
+// meter-rate, default 100 ms) is NOT on the selector (ADR-0005/ADR-0135/
+// ADR-0141). #1652: waiting for the next window re-render left the room
+// curve frozen for the whole analysis window (default 3 s). A mount-once
+// effect below subscribes to the store and patches the existing arc in
+// place, one animation frame per burst of meter ticks — the same
+// patchEqPaneSection path the Session pane uses. The selector's
+// `hasRoomReading` boolean (#1637) still flips at most twice per stream
+// (null -> first tick, array -> null on stop/start/disconnect) so the
+// section exists for that patch to land on the first meter tick.
 
 import { useEffect, useState, type JSX } from 'react';
 import { useElectron } from './useElectron';
@@ -31,7 +31,7 @@ import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useAnalyzeEntryStore } from './stores/analyzeEntryStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { roomPaneOverride, deviceInputCount } from './measurement-device-state';
-import { eqPaneRoomSectionHTML } from './live-capture-panel';
+import { eqPaneRoomSectionHTML, eqPaneRoomSectionPatch, patchEqPaneSection } from './live-capture-panel';
 import { spectrumLegendHTML } from './spectrum-display';
 import { analyzeLiveEqView } from './analyze-live-eq';
 import { analyzeModeOf, droppedAudioPath } from './analyze-entry';
@@ -84,6 +84,40 @@ export default function AnalyzeLiveEqPanel(): JSX.Element | null {
     document.body.classList.toggle('analyze-listening', view.kind !== 'hidden');
     return () => document.body.classList.remove('analyze-listening');
   }, [view.kind]);
+
+  // #1652: move the room curve on meter ticks. Coalesced to one frame so a
+  // burst of store writes (meter + the following window tick) paints once.
+  // Does not read lastMeasurementChannels into React state. Skips the patch
+  // until .veq-chart exists, so a tick that arrives before the first paint
+  // is retried on the next one instead of being latched and dropped.
+  useEffect(() => {
+    let scheduled = false;
+    let handle = 0;
+    let seen: unknown = null;
+    const frame = () => {
+      scheduled = false;
+      const live = useLiveCaptureStore.getState();
+      const entry = useAnalyzeEntryStore.getState();
+      if (!entry.listening || live.appMode !== 'analyze') return;
+      if (live.secondaryMeasurement.status !== 'active') return;
+      const channels = live.lastMeasurementChannels;
+      if (!channels || channels.length === 0 || channels === seen) return;
+      const section = document.getElementById('analyze-live-island')?.querySelector('.eq-pane-primary') ?? null;
+      if (!section?.querySelector('.veq-chart')) return;
+      seen = channels;
+      patchEqPaneSection(section, eqPaneRoomSectionPatch(channels[0]));
+    };
+    const arm = () => {
+      if (scheduled) return;
+      scheduled = true;
+      handle = requestAnimationFrame(frame);
+    };
+    const unsubscribe = useLiveCaptureStore.subscribe(arm);
+    return () => {
+      unsubscribe();
+      cancelAnimationFrame(handle);
+    };
+  }, []);
   /* c8 ignore stop */
 
   if (view.kind === 'hidden') return null;
