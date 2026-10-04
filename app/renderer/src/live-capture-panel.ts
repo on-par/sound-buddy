@@ -569,6 +569,26 @@ export function eqPanePatchPlan(view: EqPaneView): EqPanePatchPlan {
   };
 }
 
+// Meter-rate patch for Analyze's room arc (#1652). Same curve/bars reduction
+// as eqPanePatchPlan, scoped to the single room channel and the
+// 'analyze-room' uid eqPaneRoomSectionHTML paints. Path data (wantPaths)
+// so patchEqPaneSection can set the existing .sb-curve-line `d` instead of
+// rebuilding the SVG. The ideal-curve overlay stays on the React render
+// (a profile change is a discrete re-render, not a meter tick); this patch
+// only replaces the measured line, fill, centroid, and bars.
+export function eqPaneRoomSectionPatch(ch: LiveMeterChannel): EqPaneSectionPatch {
+  const section: EqPaneSection = { idx: EQ_PANE_ROOM_OVERRIDE_IDX, label: '', ch };
+  const bandCurve = liveBandCurve(section.ch.bands);
+  const gridCurve = liveAnalyzerCurve(section.ch);
+  const curve = gridCurve ?? bandCurve;
+  return {
+    curve,
+    loudestIdx: veqLoudestIdx(bandCurve.db),
+    gridDb: gridCurve ? gridCurve.db : null,
+    arc: veqArcSVG(curve, section.ch.centroid, 'analyze-room', true),
+  };
+}
+
 /* c8 ignore start -- DOM-patching appliers, no jsdom in this harness
    (renderToString only) — same precedent as the old strip DOM applier;
    exercised by tests/e2e/live-capture.spec.ts's "a new tick updates bars and
