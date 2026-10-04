@@ -1,4 +1,4 @@
 <!-- Edit before each release; contents become the "## What's new" section of the release notes. -->
 
-- **Visual ideal-curve editing:** The ideal curve editor is now the EQ itself: drag curve nodes directly on the spectrum instead of adjusting horizontal faders.
-- **Session-style EQ display:** Ideal curves, report-card spectra, band breakdowns, and thumbnails now share the same dark Session/measurement EQ language.
+- **Record is Main plus Measurement only:** Record captures Main Input and Measurement Input (board mix and crowd/room mic), not multitrack.
+- **Pinned Record button:** The Record button stays pinned in the header center. Idle is a circle. While recording it becomes a square stop. No status text and no Show in Finder.
