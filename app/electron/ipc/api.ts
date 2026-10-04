@@ -153,6 +153,51 @@ export interface StartMeasurementOpts {
   channel?: number;
 }
 
+/**
+ * One input of a Record take (#1648): a device plus ONE channel-config token —
+ * "N" (mono) or "N-M" (stereo pair), the same grammar as StartLiveOpts.channels.
+ */
+export interface RecordTakeSource {
+  // Input device index-as-string; '' or omitted = the system default input.
+  device?: string;
+  channels: string;
+}
+
+/**
+ * Options for the header Record take (#1648): exactly two sources — the
+ * board's Main mix and the Measurement (room) input — each recorded by its own
+ * stream.py record process into `<take>/main` and `<take>/measurement`. Runs on
+ * dedicated slots, independent of start-live (Session) and start-measurement
+ * (the Live RTA listen).
+ */
+export interface StartRecordTakeOpts {
+  main: RecordTakeSource;
+  measurement: RecordTakeSource;
+  windowSecs: number;
+  intervalSecs?: number;
+  // Parent folder for the take (defaults to ~/Music/Sound Buddy, like start-live).
+  recordDir?: string;
+}
+
+export interface StartRecordTakeResult {
+  success: boolean;
+  error?: string;
+  micAccess?: string;
+}
+
+/** Absolute stem WAV paths of a finalized take; null = that source wrote nothing. */
+export interface RecordTakeFiles {
+  main: string | null;
+  measurement: string | null;
+}
+
+export interface StopRecordTakeResult {
+  success: boolean;
+  // The take folder, or null when neither source finalized a stem.
+  takeDir: string | null;
+  files: RecordTakeFiles;
+}
+
 export interface StartPlaybackOpts {
   // Session folder holding session.json + stem WAVs (from a Record capture).
   sessionDir: string;
@@ -899,6 +944,10 @@ export interface LiveApi {
   startMeasurement(opts: StartMeasurementOpts): Promise<unknown>;
   stopMeasurement(): Promise<OperationResult>;
   onMeasurementEvent(cb: (data: unknown) => void): void;
+  // Header Record take (#1648): Main + Measurement only, on its own record
+  // slots — never touches start-live or the measurement (Live RTA) stream.
+  startRecordTake(opts: StartRecordTakeOpts): Promise<StartRecordTakeResult>;
+  stopRecordTake(): Promise<StopRecordTakeResult>;
 }
 
 // ─── Soundcheck waveform-peak DTOs (new — #734) ──────────────────────────────

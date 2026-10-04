@@ -3,7 +3,7 @@
 
 // registerIpcHandlers is a thin fan-out: it must call every domain's
 // register*Handlers exactly once, and in a fixed order. This test mocks the
-// seven ipc/ modules so a dropped handler registration fails loudly instead
+// eight ipc/ modules so a dropped handler registration fails loudly instead
 // of silently leaving a channel unwired.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   registerAnalysisHandlers: vi.fn(),
   registerLiveCaptureHandlers: vi.fn(),
   registerMeasurementSourceHandlers: vi.fn(),
+  registerRecordTakeHandlers: vi.fn(),
   registerPlaybackHandlers: vi.fn(),
   registerLicensingHandlers: vi.fn(),
   registerSettingsHandlers: vi.fn(),
@@ -31,6 +32,9 @@ vi.mock('./ipc/live-capture', () => ({
 }));
 vi.mock('./ipc/measurement-source', () => ({
   registerMeasurementSourceHandlers: mocks.registerMeasurementSourceHandlers,
+}));
+vi.mock('./ipc/record-take', () => ({
+  registerRecordTakeHandlers: mocks.registerRecordTakeHandlers,
 }));
 vi.mock('./ipc/playback', () => ({
   registerPlaybackHandlers: mocks.registerPlaybackHandlers,
@@ -60,7 +64,7 @@ describe('registerIpcHandlers', () => {
     }
   });
 
-  it('registers the seven domains in the same order the source lists them', () => {
+  it('registers the eight domains in the same order the source lists them', () => {
     const callOrder: string[] = [];
     for (const mock of Object.values(mocks)) {
       mock.mockImplementation(() => callOrder.push(mock.getMockName()));
@@ -69,6 +73,7 @@ describe('registerIpcHandlers', () => {
     mocks.registerAnalysisHandlers.mockName('registerAnalysisHandlers');
     mocks.registerLiveCaptureHandlers.mockName('registerLiveCaptureHandlers');
     mocks.registerMeasurementSourceHandlers.mockName('registerMeasurementSourceHandlers');
+    mocks.registerRecordTakeHandlers.mockName('registerRecordTakeHandlers');
     mocks.registerPlaybackHandlers.mockName('registerPlaybackHandlers');
     mocks.registerLicensingHandlers.mockName('registerLicensingHandlers');
     mocks.registerSettingsHandlers.mockName('registerSettingsHandlers');
@@ -80,6 +85,7 @@ describe('registerIpcHandlers', () => {
       'registerAnalysisHandlers',
       'registerLiveCaptureHandlers',
       'registerMeasurementSourceHandlers',
+      'registerRecordTakeHandlers',
       'registerPlaybackHandlers',
       'registerLicensingHandlers',
       'registerSettingsHandlers',

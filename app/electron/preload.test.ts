@@ -21,6 +21,7 @@ import type {
   SetSummaryNoteInput,
   StartLiveOpts,
   StartMeasurementOpts,
+  StartRecordTakeOpts,
   StartPlaybackOpts,
   SetPlaybackRoutesOpts,
   FeedbackSubmission,
@@ -140,6 +141,12 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
     args: [{ device: '2', windowSecs: 5 } satisfies StartMeasurementOpts],
   },
   { method: 'stopMeasurement', channel: 'stop-measurement', args: [] },
+  {
+    method: 'startRecordTake',
+    channel: 'start-record-take',
+    args: [{ main: { device: '3', channels: '0-1' }, measurement: { channels: '0' }, windowSecs: 5 } satisfies StartRecordTakeOpts],
+  },
+  { method: 'stopRecordTake', channel: 'stop-record-take', args: [] },
   { method: 'revealPath', channel: 'reveal-path', args: ['/tmp/session'] },
   {
     method: 'startPlayback',

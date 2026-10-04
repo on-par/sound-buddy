@@ -8,10 +8,12 @@ import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import RecordButton from './RecordButton';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useRecordTakeStore } from './stores/recordTakeStore';
 
 const liveTransitionState = require('../live-transition-state.js');
 
 const INITIAL_LIVE_CAPTURE_STATE = useLiveCaptureStore.getInitialState();
+const INITIAL_RECORD_TAKE_STATE = useRecordTakeStore.getInitialState();
 
 afterEach(() => {
   useLiveCaptureStore.setState({
@@ -22,6 +24,7 @@ afterEach(() => {
     stopping: INITIAL_LIVE_CAPTURE_STATE.stopping,
     demoting: INITIAL_LIVE_CAPTURE_STATE.demoting,
   });
+  useRecordTakeStore.setState(INITIAL_RECORD_TAKE_STATE);
 });
 
 beforeEach(() => {
@@ -47,28 +50,83 @@ function expectCircleIcon(html: string) {
   expect(html).toMatch(/id="record-button"[^>]*>\s*<svg/);
 }
 
-describe('RecordButton (#729)', () => {
-  it('renders nothing off Live while the shared view is idle', () => {
-    useLiveCaptureStore.setState({ appMode: 'reportcard' });
-    expect(renderMarkup()).toBe('');
-  });
-
-  it('keeps an active recording Stop control visible across tabs', () => {
-    useLiveCaptureStore.setState({ appMode: 'console', isCapturing: true, liveMode: 'record' });
+describe('RecordButton — Main + Measurement take (#1648)', () => {
+  it('renders an enabled idle Record on the Analyze-first shell with no Session capture', () => {
+    useLiveCaptureStore.setState({ appMode: 'analyze', isCapturing: false });
     const html = renderMarkup();
     expect(html).toContain('id="record-button"');
-    expect(html).toContain('record-btn--recording');
+    expect(html).toContain('record-btn--idle');
+    expect(html).not.toMatch(/id="record-button"[^>]*disabled=""/);
+    expect(html).toContain('aria-label="Record Main + Measurement — press to start"');
+    expect(html).toContain('aria-pressed="false"');
+    expectNoVisibleText(html);
+    expectCircleIcon(html);
   });
 
-  it('keeps the enabled monitoring Record control visible across tabs', () => {
+  it('stays the take Record while a Session monitor runs in the background (never promotes Session)', () => {
     useLiveCaptureStore.setState({ appMode: 'console', isCapturing: true, liveMode: 'monitor' });
     const html = renderMarkup();
-    expect(html).toContain('id="record-button"');
-    expect(html).toContain('record-btn--monitoring');
-    expect(html).not.toMatch(/id="record-button"[^>]*disabled=""/);
+    expect(html).toContain('record-btn--idle');
+    expect(html).not.toContain('record-btn--monitoring');
+    expect(html).toContain('aria-label="Record Main + Measurement — press to start"');
   });
 
-  it('keeps starting and stopping transitions visible across tabs', () => {
+  it('is a disabled Starting state with a status line', () => {
+    useRecordTakeStore.setState({ phase: 'starting' });
+    const html = renderMarkup();
+    expect(html).toMatch(/id="record-button"[^>]*disabled=""/);
+    expect(html).toMatch(/id="record-status"[^>]*>Starting…</);
+  });
+
+  it('shows the pressed recording state, elapsed time, and what each source records', () => {
+    useRecordTakeStore.setState({
+      phase: 'recording',
+      startedAt: Date.now(),
+      sources: { main: 'X32 USB · Ch 17–18 (stereo)', measurement: 'UMIK-1 · Ch 1 (mono)' },
+    });
+    const html = renderMarkup();
+    expect(html).toMatch(/class="record-btn record-btn--recording"/);
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain('aria-label="Recording Main + Measurement — press to stop"');
+    expect(html).not.toMatch(/id="record-button"[^>]*disabled=""/);
+    expect(html).toMatch(/id="record-status"[^>]*title="Main: X32 USB · Ch 17–18 \(stereo\)\nMeasurement: UMIK-1 · Ch 1 \(mono\)"[^>]*>Recording · 0:0\d</);
+  });
+
+  it('is a disabled Saving state while the files finalize', () => {
+    useRecordTakeStore.setState({ phase: 'stopping' });
+    const html = renderMarkup();
+    expect(html).toMatch(/record-btn--stopping[^>]*disabled=""/);
+    expect(html).toMatch(/id="record-status"[^>]*>Saving…</);
+  });
+
+  it('names the saved take and both stems, with a Show in Finder button', () => {
+    const dir = '/Music/Sound Buddy/sound-buddy-20261004-101500-000';
+    useRecordTakeStore.setState({
+      lastTake: { dir, files: { main: `${dir}/main/01-main.wav`, measurement: `${dir}/measurement/01-measurement.wav` } },
+    });
+    const html = renderMarkup();
+    expect(html).toMatch(/id="record-saved"[^>]*title="\/Music\/Sound Buddy\/sound-buddy-20261004-101500-000"[^>]*>Saved · sound-buddy-20261004-101500-000</);
+    expect(html).toMatch(/id="record-saved-files"[^>]*>main\/01-main\.wav · measurement\/01-measurement\.wav</);
+    expect(html).toContain('id="record-reveal"');
+    expect(html).not.toContain('id="record-status"');
+  });
+
+  it('renders the actionable error as an alert', () => {
+    useRecordTakeStore.setState({ error: 'Measurement input not found — pick it in Settings ▸ Audio, then press Record.' });
+    expect(renderMarkup()).toMatch(/id="record-error"[^>]*role="alert"[^>]*>Measurement input not found/);
+  });
+});
+
+describe('RecordButton — a running Session recording keeps its Stop reachable (#729)', () => {
+  it('shows the Session Recording/Stop control across tabs', () => {
+    useLiveCaptureStore.setState({ appMode: 'console', isCapturing: true, liveMode: 'record' });
+    const html = renderMarkup();
+    expect(html).toMatch(/class="record-btn record-btn--recording"/);
+    expect(html).toContain('aria-label="Recording — press to stop"');
+    expect(html).not.toContain('record-status');
+  });
+
+  it('keeps starting and stopping Session transitions visible and disabled', () => {
     useLiveCaptureStore.setState({ appMode: 'console', isCapturing: true, liveMode: 'monitor', promoting: true });
     expect(renderMarkup()).toMatch(/record-btn--starting-record[^>]*disabled=""/);
 
@@ -78,74 +136,17 @@ describe('RecordButton (#729)', () => {
     expect(html).toContain('aria-pressed="true"');
   });
 
-  it('renders an enabled Record button when idle with no monitor session running (press starts capture) (#757)', () => {
-    useLiveCaptureStore.setState({ appMode: 'live', isCapturing: false });
-    const html = renderMarkup();
-    expect(html).toContain('id="record-button"');
-    expect(html).not.toMatch(/id="record-button"[^>]*disabled=""/);
-    expectNoVisibleText(html);
-    expectCircleIcon(html);
-    expect(html).toContain('aria-label="Record — press to start recording"');
-  });
-
-  it('renders an enabled Record button while monitoring', () => {
-    useLiveCaptureStore.setState({ appMode: 'live', isCapturing: true, liveMode: 'monitor' });
-    const html = renderMarkup();
-    expect(html).toContain('id="record-button"');
-    expect(html).not.toMatch(/id="record-button"[^>]*disabled=""/);
-    expectNoVisibleText(html);
-    expectCircleIcon(html);
-    expect(html).toContain('aria-label="Record — press to start recording"');
-  });
-
-  it('renders a disabled button while promoting, with no visible text', () => {
-    useLiveCaptureStore.setState({ appMode: 'live', isCapturing: true, liveMode: 'monitor', promoting: true });
-    const html = renderMarkup();
-    expect(html).toMatch(/id="record-button"[^>]*disabled=""/);
-    expectNoVisibleText(html);
-    expectCircleIcon(html);
-    expect(html).toContain('aria-label="Starting recording"');
-  });
-
-  it('renders an enabled Recording button with aria-pressed=true and the persisted record-btn--recording pressed state while recording', () => {
-    useLiveCaptureStore.setState({ appMode: 'live', isCapturing: true, liveMode: 'record' });
-    const html = renderMarkup();
-    expect(html).not.toMatch(/id="record-button"[^>]*disabled=""/);
-    expect(html).toMatch(/class="record-btn record-btn--recording"/);
-    expectNoVisibleText(html);
-    expectCircleIcon(html);
-    expect(html).toContain('aria-pressed="true"');
-    expect(html).toContain('aria-label="Recording — press to stop"');
-  });
-
-  it('renders a disabled Stopping… button while stopping, with no visible text', () => {
-    useLiveCaptureStore.setState({ appMode: 'live', isCapturing: true, liveMode: 'record', stopping: true });
-    const html = renderMarkup();
-    expect(html).toMatch(/id="record-button"[^>]*disabled=""/);
-    expectNoVisibleText(html);
-    expectCircleIcon(html);
-    expect(html).toContain('aria-pressed="true"');
-    expect(html).toContain('aria-label="Stopping recording"');
-  });
-
-  it('renders the monitor-only Record control, not Recording, across the post-stop demote (#1384)', () => {
-    useLiveCaptureStore.setState({ appMode: 'live', isCapturing: false, liveMode: 'record', stopping: false, demoting: true });
-    const html = renderMarkup();
-    expect(html).toContain('record-btn--monitoring');
-    expect(html).not.toContain('record-btn--recording');
-    expect(html).not.toContain('record-btn--idle');
-    expect(html).not.toMatch(/id="record-button"[^>]*disabled=""/);
-    expect(html).toContain('aria-pressed="false"');
-    expect(html).toContain('aria-label="Record — press to start recording"');
-    expectNoVisibleText(html);
-    expectCircleIcon(html);
-  });
-
-  it('keeps the Record control mounted off Live across the post-stop demote', () => {
+  it('returns to the take Record across the post-stop demote (#1384)', () => {
     useLiveCaptureStore.setState({ appMode: 'console', isCapturing: false, liveMode: 'record', demoting: true });
     const html = renderMarkup();
-    expect(html).not.toBe('');
-    expect(html).toContain('id="record-button"');
+    expect(html).toContain('record-btn--idle');
+    expect(html).not.toContain('record-btn--recording');
+  });
+
+  it('lets a running take keep the button even if a Session capture is also recording', () => {
+    useLiveCaptureStore.setState({ appMode: 'console', isCapturing: true, liveMode: 'record' });
+    useRecordTakeStore.setState({ phase: 'recording', startedAt: Date.now() });
+    expect(renderMarkup()).toContain('aria-label="Recording Main + Measurement — press to stop"');
   });
 });
 

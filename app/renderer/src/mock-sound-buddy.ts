@@ -220,6 +220,8 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     stopLive: invoke('stopLive', { success: true, sessionDir: null }),
     startMeasurement: invoke('startMeasurement', { success: true }),
     stopMeasurement: invoke('stopMeasurement', { success: true }),
+    startRecordTake: invoke('startRecordTake', { success: true }),
+    stopRecordTake: invoke('stopRecordTake', { success: true, takeDir: null, files: { main: null, measurement: null } }),
     onMeasurementEvent: listen<[unknown]>('onMeasurementEvent'),
     revealPath: invoke('revealPath', { success: true }),
     startPlayback: invoke('startPlayback', undefined),

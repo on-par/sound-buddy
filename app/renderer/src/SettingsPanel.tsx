@@ -77,6 +77,7 @@ import { iconSvg } from './report-card';
 import RigControls from './RigControls';
 import LiveSourceSettings from './LiveSourceSettings';
 import SecondaryMeasurementPanel from './SecondaryMeasurementPanel';
+import RecordSourceSettings from './RecordSourceSettings';
 import CaptureCadenceControls from './CaptureCadenceControls';
 import SplCalibrationPanel from './SplCalibrationPanel';
 import PreflightSettings from './PreflightSettings';
@@ -593,6 +594,11 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
             )}
             <SettingsNote control="secondaryMeasurementDevice" />
           </SettingsGroup>
+          {booted && (
+            <SettingsGroup title="Record">
+              <RecordSourceSettings />
+            </SettingsGroup>
+          )}
           {booted && (
             <SettingsGroup title="Metering">
               <CaptureCadenceControls />
