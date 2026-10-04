@@ -3,30 +3,12 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import {
-  resolveAnalyzeEntry,
-  resolveListenLiveChoice,
   analyzeModeOf,
   droppedAudioPath,
   decideAnalyzeHomeAutoListen,
   effectiveSecondaryDeviceName,
+  shouldYieldLiveToFileResult,
 } from './analyze-entry';
-
-describe('resolveAnalyzeEntry (#1485)', () => {
-  it('opens the dialog when no secondary measurement device is configured', () => {
-    expect(resolveAnalyzeEntry('')).toBe('openDialog');
-  });
-
-  it('starts listening when a secondary measurement device is configured', () => {
-    expect(resolveAnalyzeEntry('MOTU M2')).toBe('startListening');
-  });
-
-  it('depends only on the device name — no settings/feature-tier input exists to vary', () => {
-    // resolveAnalyzeEntry's signature takes a single deviceName string; these
-    // are the only two device values that matter (configured vs not), and
-    // both are asserted above with no settings object involved anywhere.
-    expect(resolveAnalyzeEntry('')).not.toBe(resolveAnalyzeEntry('MOTU M2'));
-  });
-});
 
 describe('effectiveSecondaryDeviceName (#1604)', () => {
   it('prefers the live in-memory name when it is non-empty', () => {
@@ -50,16 +32,6 @@ describe('effectiveSecondaryDeviceName (#1604)', () => {
   });
 });
 
-describe('resolveListenLiveChoice', () => {
-  it('routes to Settings > Audio when no secondary device is configured', () => {
-    expect(resolveListenLiveChoice('')).toBe('needsSecondarySource');
-  });
-
-  it('starts listening when a secondary device name is remembered', () => {
-    expect(resolveListenLiveChoice('MOTU M2')).toBe('startListening');
-  });
-});
-
 describe('analyzeModeOf (#1522)', () => {
   it('is live while listening', () => {
     expect(analyzeModeOf(true)).toBe('live');
@@ -70,29 +42,51 @@ describe('analyzeModeOf (#1522)', () => {
   });
 });
 
-describe('decideAnalyzeHomeAutoListen (#1577, #1578)', () => {
-  it('starts listening on the Analyze home with a configured device and not already listening', () => {
-    expect(decideAnalyzeHomeAutoListen({ currentMode: 'analyze', deviceName: 'UMIK-1', listening: false })).toBe('startListening');
-  });
-
-  it('returns the explicit noDevice branch when no secondary device is configured (#1578)', () => {
-    expect(decideAnalyzeHomeAutoListen({ currentMode: 'analyze', deviceName: '', listening: false })).toBe('noDevice');
+// #1646: Analyze defaults to Live on every landing — a configured room mic
+// or not (no device listens on the system default input) — so the device no
+// longer factors into the boot verdict at all.
+describe('decideAnalyzeHomeAutoListen (#1577, #1646)', () => {
+  it('starts listening on the Analyze home when not already listening', () => {
+    expect(decideAnalyzeHomeAutoListen({ currentMode: 'analyze', listening: false })).toBe('startListening');
   });
 
   it('does not start when already listening', () => {
-    expect(decideAnalyzeHomeAutoListen({ currentMode: 'analyze', deviceName: 'UMIK-1', listening: true })).toBe('skip');
+    expect(decideAnalyzeHomeAutoListen({ currentMode: 'analyze', listening: true })).toBe('skip');
   });
 
   it.each(['live', 'reportcard'])('does not start when the current mode is %s, not analyze', (currentMode) => {
-    expect(decideAnalyzeHomeAutoListen({ currentMode, deviceName: 'UMIK-1', listening: false })).toBe('skip');
+    expect(decideAnalyzeHomeAutoListen({ currentMode, listening: false })).toBe('skip');
+  });
+});
+
+// #1646: a file-derived result (a new analysis, or a history entry) must hand
+// the Analyze stage to File mode, or the Live rail would hide it.
+describe('shouldYieldLiveToFileResult (#1646)', () => {
+  const idle = { isAnalyzing: false, historySummary: null };
+
+  it('yields when a file analysis starts', () => {
+    expect(shouldYieldLiveToFileResult(idle, { isAnalyzing: true, historySummary: null })).toBe(true);
   });
 
-  it('the mode check wins over the device check: a non-analyze mode with no device is still skip, not noDevice', () => {
-    expect(decideAnalyzeHomeAutoListen({ currentMode: 'live', deviceName: '', listening: false })).toBe('skip');
+  it('does not yield while an analysis keeps running or when it finishes', () => {
+    const running = { isAnalyzing: true, historySummary: null };
+    expect(shouldYieldLiveToFileResult(running, running)).toBe(false);
+    expect(shouldYieldLiveToFileResult(running, idle)).toBe(false);
   });
 
-  it('already listening with no device configured is still skip, not noDevice', () => {
-    expect(decideAnalyzeHomeAutoListen({ currentMode: 'analyze', deviceName: '', listening: true })).toBe('skip');
+  it('yields when a history entry is loaded', () => {
+    const summary = { file: 'a.json' };
+    expect(shouldYieldLiveToFileResult(idle, { isAnalyzing: false, historySummary: summary })).toBe(true);
+  });
+
+  it('does not yield when the same history entry stays loaded or is cleared', () => {
+    const loaded = { isAnalyzing: false, historySummary: { file: 'a.json' } };
+    expect(shouldYieldLiveToFileResult(loaded, loaded)).toBe(false);
+    expect(shouldYieldLiveToFileResult(loaded, idle)).toBe(false);
+  });
+
+  it('does not yield on an unrelated change', () => {
+    expect(shouldYieldLiveToFileResult(idle, { ...idle })).toBe(false);
   });
 });
 

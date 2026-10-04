@@ -20,7 +20,7 @@ export interface SettingsState {
   // Requested landing section for the next open (#1468, lc-05) — null means
   // "no request", which SettingsPanel.tsx's initialSettingsSection narrows to
   // 'general'. Set fresh on every openDialog() call so a targeted open (e.g.
-  // AnalyzeEntryDialog routing to Audio) never leaks into the next plain
+  // openDialog('audio')) never leaks into the next plain
   // open (the gear icon, which calls openDialog() with no argument).
   dialogSection: SettingsSection | null;
   loadSettings(): Promise<void>;

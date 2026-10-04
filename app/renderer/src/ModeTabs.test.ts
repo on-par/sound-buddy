@@ -242,13 +242,13 @@ describe('ModeTabs Listen live wiring (#1485)', () => {
     expect(modeTabsSource).not.toContain('chooseAndAnalyzeFile');
   });
 
-  type AnalyzeTarget = 'dialog' | 'live-eq';
-
-  async function analyzeTabTarget(roomMic: string): Promise<AnalyzeTarget> {
+  // #1646: the Analyze tab always lands on the live-EQ view — the room mic
+  // when one is configured, the system default input when not. There is no
+  // dialog fork any more, so a tab click can never land on File or Settings.
+  async function analyzeTabTarget(roomMic: string): Promise<'live-eq'> {
     const decision = resolveModeSwitch('analyze', 'reportcard');
     expect(decision).toEqual({ type: 'analyzeEntry' });
 
-    const openSettingsAudio = vi.fn();
     const startSecondaryMeasurement = vi.fn(async () => {});
     const chooseAndAnalyzeFile = vi.fn(async () => {});
     const deps: AnalyzeEntryDeps = {
@@ -257,7 +257,6 @@ describe('ModeTabs Listen live wiring (#1485)', () => {
       getCadence: () => ({ windowSecs: 3, meterIntervalMs: 100 }),
       startSecondaryMeasurement,
       stopSecondaryMeasurement: vi.fn(async () => {}),
-      openSettingsAudio,
       analyzeFilePath: vi.fn(async () => {}),
       getSecondaryInputCount: () => 1,
       getPersistedSecondaryDeviceName: () => '',
@@ -268,30 +267,24 @@ describe('ModeTabs Listen live wiring (#1485)', () => {
     await store.getState().enterAnalyze();
 
     expect(chooseAndAnalyzeFile).not.toHaveBeenCalled();
-    if (store.getState().dialogOpen) {
-      expect(startSecondaryMeasurement).not.toHaveBeenCalled();
-      expect(store.getState().listening).toBe(false);
-      return 'dialog';
-    }
     expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
     expect(store.getState().listening).toBe(true);
     return 'live-eq';
   }
 
-  const MATRIX: ReadonlyArray<{ advanced: boolean; roomMic: string; expected: AnalyzeTarget }> = [
-    { advanced: false, roomMic: NO_ROOM_MIC, expected: 'dialog' },
-    { advanced: false, roomMic: ROOM_MIC, expected: 'live-eq' },
-    { advanced: true, roomMic: NO_ROOM_MIC, expected: 'dialog' },
-    { advanced: true, roomMic: ROOM_MIC, expected: 'live-eq' },
+  const MATRIX: ReadonlyArray<{ advanced: boolean; roomMic: string }> = [
+    { advanced: false, roomMic: NO_ROOM_MIC },
+    { advanced: false, roomMic: ROOM_MIC },
+    { advanced: true, roomMic: NO_ROOM_MIC },
+    { advanced: true, roomMic: ROOM_MIC },
   ];
 
-  // Proves the tier no longer changes the outcome: the same (roomMic) input
-  // yields the same target whether advancedFeaturesEnabled is true or false —
+  // Proves neither the tier nor the room mic changes the outcome (#1646):
   // resolveModeSwitch/enterAnalyze take no settings argument at all.
   it.each(MATRIX)(
-    'Advanced=$advanced roomMic="$roomMic" -> $expected',
-    async ({ roomMic, expected }) => {
-      expect(await analyzeTabTarget(roomMic)).toBe(expected);
+    'Advanced=$advanced roomMic="$roomMic" -> live-eq',
+    async ({ roomMic }) => {
+      expect(await analyzeTabTarget(roomMic)).toBe('live-eq');
     },
   );
 

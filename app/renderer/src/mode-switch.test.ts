@@ -148,7 +148,7 @@ afterEach(() => {
     currentAnalysis: null, startAnalysis: REAL_START_ANALYSIS, historySummary: null,
     selectedFilePath: null, prevSummary: null,
   });
-  useAnalyzeEntryStore.setState({ analyzeStage: false, listening: false, dialogOpen: false });
+  useAnalyzeEntryStore.setState({ analyzeStage: false, listening: false });
 });
 
 function settings(overrides: Partial<AppSettings> = {}): AppSettings {
@@ -653,7 +653,6 @@ describe('showAnalyzeStage (#1510)', () => {
     expect(eventSpy).toHaveBeenCalledWith('screen.analyze');
     expect(settingsSpy).toHaveBeenCalledWith({ lastAppMode: 'analyze' });
     expect(useAnalyzeEntryStore.getState().listening).toBe(false);
-    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
   });
 
   it('boot: true does not persist the mode', () => {
@@ -690,7 +689,6 @@ describe('enterAnalyzeFromTab (#1588)', () => {
     expect(bodyClassList.contains('live-active')).toBe(false);
     expect(entry.analyzeStage).toBe(true);
     expect(entry.listening).toBe(true);
-    expect(entry.dialogOpen).toBe(false);
     expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
     expect(analyzeLiveEqView({
       listening: entry.listening,
@@ -701,20 +699,22 @@ describe('enterAnalyzeFromTab (#1588)', () => {
     })).not.toEqual({ kind: 'hidden' });
   });
 
-  it('Session -> Analyze with no room mic opens the entry dialog instead (AC2 dialog fork)', async () => {
+  it('Session -> Analyze with no room mic still lands on Live, listening on the system default input (#1646)', async () => {
     useLiveCaptureStore.setState({
       appMode: 'live',
       secondaryMeasurement: { status: 'off', deviceName: '' },
     });
     bodyClassList.add('live-active');
+    const openDialog = vi.spyOn(useSettingsStore.getState(), 'openDialog');
 
     await enterAnalyzeFromTab();
 
     expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
     expect(bodyClassList.contains('live-active')).toBe(false);
-    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(true);
-    expect(useAnalyzeEntryStore.getState().listening).toBe(false);
-    expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+    expect(useAnalyzeEntryStore.getState().listening).toBe(true);
+    expect(analyzeModeOf(useAnalyzeEntryStore.getState().listening)).toBe('live');
+    expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
+    expect(openDialog).not.toHaveBeenCalled();
   });
 
   it('clears Report Card / tab-content chrome too, and records + persists the landing', async () => {
@@ -751,7 +751,7 @@ describe('enterAnalyzeFromTab (#1588)', () => {
     expect(eventSpy).not.toHaveBeenCalled();
     expect(settingsSpy).not.toHaveBeenCalled();
     expect(bodyClassList.contains('live-active')).toBe(true);
-    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(true);
+    expect(useAnalyzeEntryStore.getState().listening).toBe(true);
   });
 
   it('an already-listening capture is a no-op for the room mic', async () => {
@@ -875,23 +875,28 @@ describe('ADR-0141 isolation across Session <-> Analyze (#1606)', () => {
     expect(surfaces()).toEqual({ sessionPane: true, analyzeIsland: false });
   });
 
-  it('the entry-dialog fork (no room mic) also leaves Session with the pane and no island', async () => {
+  // #1646: no room mic → Analyze listens on the system default input, and
+  // leaving for Session stops that Analyze-only listen so Session's room feed
+  // keeps metering the board channel.
+  it('the no-room-mic system-default listen also leaves Session with the pane and no island, and stops on exit', async () => {
     useLiveCaptureStore.setState({
       appMode: 'live',
       secondaryMeasurement: { status: 'off', deviceName: '' },
     });
+    const stopSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'stopSecondaryMeasurement')
+      .mockResolvedValue(undefined);
 
     switchMode('live');
     await enterAnalyzeFromTab();
 
-    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(true);
-    // analyzeStage true + !listening -> analyzeLiveEqView's { kind: 'file' }
-    // branch, so the island itself is visible even before a device is set.
+    expect(useAnalyzeEntryStore.getState().listening).toBe(true);
     expect(surfaces()).toEqual({ sessionPane: false, analyzeIsland: true });
 
     switchMode('live');
 
     expect(surfaces()).toEqual({ sessionPane: true, analyzeIsland: false });
+    await vi.waitFor(() => expect(stopSecondaryMeasurement).toHaveBeenCalledTimes(1));
+    expect(useAnalyzeEntryStore.getState().listening).toBe(false);
   });
 });
 
@@ -951,7 +956,6 @@ describe('silent showAnalyzeStage redirects (#1579)', () => {
     expect(vi.mocked(decideAnalyzeHomeAutoListen)).not.toHaveBeenCalled();
     expect(logSpy).not.toHaveBeenCalledWith('analyze-auto-listen', expect.anything());
     expect(useAnalyzeEntryStore.getState().listening).toBe(false);
-    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
     expect(startSecondaryMeasurement).not.toHaveBeenCalled();
   }
 
@@ -1194,26 +1198,22 @@ describe('maybeAutoListenAnalyzeHome (#1577, #1578)', () => {
 
     expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'startListening' });
     expect(useAnalyzeEntryStore.getState().listening).toBe(true);
-    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
     expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
   });
 
-  it('logs noDevice and never opens a dialog or the Settings > Audio surface when no device is configured (#1578)', () => {
+  it('with no device configured, logs startListening and listens on the system default input, never Settings (#1646)', () => {
     useLiveCaptureStore.setState({ appMode: 'analyze', secondaryMeasurement: { status: 'off', deviceName: '' } });
     const startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
       .mockResolvedValue(undefined);
     const openDialog = vi.spyOn(useSettingsStore.getState(), 'openDialog');
-    const listenLive = vi.spyOn(useAnalyzeEntryStore.getState(), 'listenLive');
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     maybeAutoListenAnalyzeHome();
 
-    expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'noDevice' });
-    expect(useAnalyzeEntryStore.getState().listening).toBe(false);
-    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
-    expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'startListening' });
+    expect(useAnalyzeEntryStore.getState().listening).toBe(true);
+    expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
     expect(openDialog).not.toHaveBeenCalled();
-    expect(listenLive).not.toHaveBeenCalled();
   });
 
   it('does not start a second listen when already listening', () => {
@@ -1450,19 +1450,17 @@ describe('restoreBootMode', () => {
       });
 
       expect(useAnalyzeEntryStore.getState().listening).toBe(true);
-      expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
       expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
       expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'startListening' });
     });
 
-    it('does not start listening or open any dialog with no device configured, and leaves the File-mode stage up (#1578)', async () => {
+    it('starts listening on the system default input with no device configured, never Settings (#1646)', async () => {
       useLiveCaptureStore.setState({ appMode: 'analyze', secondaryMeasurement: { status: 'off', deviceName: '' } });
       useSettingsStore.setState({ settings: settings({ lastAppMode: 'analyze' }) });
       useAnalyzeEntryStore.setState({ analyzeStage: true });
       const startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
         .mockResolvedValue(undefined);
       const openDialog = vi.spyOn(useSettingsStore.getState(), 'openDialog');
-      const listenLive = vi.spyOn(useAnalyzeEntryStore.getState(), 'listenLive');
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
       await restoreBootMode({
@@ -1472,13 +1470,11 @@ describe('restoreBootMode', () => {
         getSettings: () => useSettingsStore.getState().settings,
       });
 
-      expect(useAnalyzeEntryStore.getState().listening).toBe(false);
-      expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
+      expect(useAnalyzeEntryStore.getState().listening).toBe(true);
       expect(useAnalyzeEntryStore.getState().analyzeStage).toBe(true);
-      expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+      expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
       expect(openDialog).not.toHaveBeenCalled();
-      expect(listenLive).not.toHaveBeenCalled();
-      expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'noDevice' });
+      expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'startListening' });
     });
 
     it('does not start a second listen when Analyze is already listening', async () => {
@@ -1538,16 +1534,14 @@ describe('restoreBootMode', () => {
   });
 });
 
-// #1618: pins the real two-phase cold boot (applyInitialMode('analyze') then
-// restoreBootMode) with no secondary device configured — the exact path
-// #1577/#1578 already guard piecemeal, but nothing before this ran the two
-// calls together while spying on every dialog/listen entry point
-// (enterAnalyze, open, listenLive, startSecondaryMeasurement,
-// settingsStore.openDialog). Every `it` title contains "no secondary device"
-// to match the issue's own `-t "no secondary device"` verification filter.
-describe('cold Analyze home with no secondary device (#1618)', () => {
+// #1618 pinned the real two-phase cold boot (applyInitialMode('analyze') then
+// restoreBootMode) with no secondary device configured. #1646 inverts its
+// verdict — that boot used to land on the File-mode stage, which was the bug:
+// it now lands on Live, listening on the system default input, without the
+// Analyze tab's enterAnalyze() and without ever opening Settings. Every `it`
+// title contains "no secondary device".
+describe('cold Analyze home with no secondary device defaults to Live (#1618, #1646)', () => {
   let enterAnalyze: ReturnType<typeof vi.fn>;
-  let open: ReturnType<typeof vi.fn>;
   let listenLive: ReturnType<typeof vi.fn>;
   let startSecondaryMeasurement: ReturnType<typeof vi.fn>;
   let openDialog: ReturnType<typeof vi.fn>;
@@ -1555,8 +1549,11 @@ describe('cold Analyze home with no secondary device (#1618)', () => {
 
   beforeEach(() => {
     enterAnalyze = vi.spyOn(useAnalyzeEntryStore.getState(), 'enterAnalyze');
-    open = vi.spyOn(useAnalyzeEntryStore.getState(), 'open');
     listenLive = vi.spyOn(useAnalyzeEntryStore.getState(), 'listenLive');
+    // Spies persist across tests in this file (no restoreAllMocks) — clear so
+    // exact call counts are per-test.
+    enterAnalyze.mockClear();
+    listenLive.mockClear();
     startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
       .mockResolvedValue(undefined);
     openDialog = vi.spyOn(useSettingsStore.getState(), 'openDialog');
@@ -1575,38 +1572,41 @@ describe('cold Analyze home with no secondary device (#1618)', () => {
     });
   }
 
-  function expectNoDialogAndNoListen() {
+  function expectLiveOnSystemDefaultInput() {
     expect(enterAnalyze).not.toHaveBeenCalled();
-    expect(open).not.toHaveBeenCalled();
-    expect(listenLive).not.toHaveBeenCalled();
-    expect(startSecondaryMeasurement).not.toHaveBeenCalled();
+    expect(listenLive).toHaveBeenCalledTimes(1);
+    expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
     expect(openDialog).not.toHaveBeenCalled();
-    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
-    expect(useAnalyzeEntryStore.getState().listening).toBe(false);
+    expect(useLiveCaptureStore.getState().secondaryMeasurement.deviceName).toBe('');
+    expect(useAnalyzeEntryStore.getState().listening).toBe(true);
+    expect(analyzeModeOf(useAnalyzeEntryStore.getState().listening)).toBe('live');
+    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
   }
 
-  it('fresh install (no lastAppMode) with no secondary device: cold boot opens no dialog and starts no listen', async () => {
+  it('fresh install (no lastAppMode) with no secondary device: cold boot lands on Live, never Settings', async () => {
     await coldBoot(undefined);
 
-    expectNoDialogAndNoListen();
-    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+    expectLiveOnSystemDefaultInput();
   });
 
-  it('persisted analyze lastAppMode with no secondary device: cold boot opens no dialog and starts no listen', async () => {
+  it('persisted analyze lastAppMode with no secondary device: cold boot lands on Live, never Settings', async () => {
     await coldBoot('analyze');
 
-    expectNoDialogAndNoListen();
-    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+    expectLiveOnSystemDefaultInput();
   });
 
-  it('no secondary device: cold boot preserves the non-modal File-mode stage', async () => {
+  it('no secondary device: the cold-boot Analyze stage is the Live RTA, not the File dropzone', async () => {
     await coldBoot('analyze');
 
-    expect(useAnalyzeEntryStore.getState().analyzeStage).toBe(true);
-    expect(useAnalyzeEntryStore.getState().listening).toBe(false);
-    expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
-    expect(analyzeModeOf(useAnalyzeEntryStore.getState().listening)).toBe('file');
-    expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'noDevice' });
+    const live = useLiveCaptureStore.getState();
+    const entry = useAnalyzeEntryStore.getState();
+    expect(entry.analyzeStage).toBe(true);
+    expect(analyzeLiveEqView({
+      listening: entry.listening, analyzeStage: entry.analyzeStage, appMode: live.appMode,
+      secondary: { status: 'active', deviceName: '' },
+      override: { ch: { index: 0 } as never, label: 'System default input' },
+    }).kind).toBe('room');
+    expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'startListening' });
   });
 });
 
@@ -1617,7 +1617,6 @@ describe('cold Analyze home with no secondary device (#1618)', () => {
 // Every `it` title contains "auto-listen".
 describe('cold Analyze home auto-listen with a configured device (#1620)', () => {
   let enterAnalyze: ReturnType<typeof vi.fn>;
-  let open: ReturnType<typeof vi.fn>;
   let listenLive: ReturnType<typeof vi.fn>;
   let startSecondaryMeasurement: ReturnType<typeof vi.fn>;
   let openDialog: ReturnType<typeof vi.fn>;
@@ -1625,8 +1624,11 @@ describe('cold Analyze home auto-listen with a configured device (#1620)', () =>
 
   beforeEach(() => {
     enterAnalyze = vi.spyOn(useAnalyzeEntryStore.getState(), 'enterAnalyze');
-    open = vi.spyOn(useAnalyzeEntryStore.getState(), 'open');
     listenLive = vi.spyOn(useAnalyzeEntryStore.getState(), 'listenLive');
+    // Spies persist across tests in this file (no restoreAllMocks) — clear so
+    // exact call counts are per-test.
+    enterAnalyze.mockClear();
+    listenLive.mockClear();
     startSecondaryMeasurement = vi.spyOn(useLiveCaptureStore.getState(), 'startSecondaryMeasurement')
       .mockResolvedValue(undefined);
     openDialog = vi.spyOn(useSettingsStore.getState(), 'openDialog');
@@ -1655,9 +1657,7 @@ describe('cold Analyze home auto-listen with a configured device (#1620)', () =>
     expect(listenLive).toHaveBeenCalledTimes(1);
     expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
     expect(enterAnalyze).not.toHaveBeenCalled();
-    expect(open).not.toHaveBeenCalled();
     expect(openDialog).not.toHaveBeenCalled();
-    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
     expect(useAnalyzeEntryStore.getState().listening).toBe(true);
     expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
     expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'startListening' });
@@ -1668,7 +1668,6 @@ describe('cold Analyze home auto-listen with a configured device (#1620)', () =>
 
     expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
     expect(useAnalyzeEntryStore.getState().listening).toBe(true);
-    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
     expect(openDialog).not.toHaveBeenCalled();
     expect(useLiveCaptureStore.getState().secondaryMeasurement.deviceName).toBe('UMIK-1');
     expect(logSpy).toHaveBeenCalledWith('analyze-auto-listen', { decision: 'startListening' });
@@ -1705,6 +1704,5 @@ describe('cold Analyze home auto-listen with a configured device (#1620)', () =>
     await coldBoot(undefined, 'UMIK-1', 'UMIK-1');
 
     expect(startSecondaryMeasurement).toHaveBeenCalledTimes(1);
-    expect(useAnalyzeEntryStore.getState().dialogOpen).toBe(false);
   });
 });

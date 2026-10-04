@@ -97,7 +97,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 
 // Narrows settingsStore's nullable dialogSection request (#1468, lc-05) to a
 // concrete landing section for the dialog-open effect below: a caller that
-// asked for a specific section (e.g. AnalyzeEntryDialog routing to Audio)
+// asked for a specific section (e.g. openDialog('audio'))
 // lands there; a plain openDialog() (dialogSection === null, e.g. the gear
 // icon) keeps the existing 'general' default.
 export function initialSettingsSection(requested: SettingsSection | null): SettingsSection {

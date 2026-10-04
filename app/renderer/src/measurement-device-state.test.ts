@@ -4,6 +4,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   deviceIndexForName,
+  measurementDeviceArg,
+  secondaryDeviceLabel,
+  SYSTEM_DEFAULT_INPUT_LABEL,
   applyStartResult,
   applyStreamEnded,
   reconnectDecision,
@@ -42,6 +45,37 @@ describe('deviceIndexForName', () => {
 
   it('returns null for an empty preferred name', () => {
     expect(deviceIndexForName(DEVICES, '')).toBeNull();
+  });
+});
+
+// #1646: Analyze listens on the system default input when no room mic has
+// ever been chosen — stream.py's empty-device default — never Settings.
+describe('measurementDeviceArg (#1646)', () => {
+  it('resolves a present device name to its index string', () => {
+    expect(measurementDeviceArg(DEVICES, 'USB Measurement Mic')).toBe('2');
+  });
+
+  it('resolves an empty name to the empty system-default-input device arg', () => {
+    expect(measurementDeviceArg(DEVICES, '')).toBe('');
+  });
+
+  it('resolves an empty name to the system default even with no enumerated devices', () => {
+    expect(measurementDeviceArg([], '')).toBe('');
+  });
+
+  it('returns null for a named device that is absent (still no fallback, ADR 0003)', () => {
+    expect(measurementDeviceArg(DEVICES, 'Ghost Interface')).toBeNull();
+  });
+});
+
+describe('secondaryDeviceLabel (#1646)', () => {
+  it('is the device name when one is configured', () => {
+    expect(secondaryDeviceLabel('USB Mic')).toBe('USB Mic');
+  });
+
+  it('names the system default input when none is configured', () => {
+    expect(secondaryDeviceLabel('')).toBe(SYSTEM_DEFAULT_INPUT_LABEL);
+    expect(SYSTEM_DEFAULT_INPUT_LABEL).toBe('System default input');
   });
 });
 
@@ -173,6 +207,12 @@ describe('secondaryStatusHTML', () => {
     );
   });
 
+  it('active with no configured device names the system default input (#1646)', () => {
+    expect(secondaryStatusHTML(state({ status: 'active', deviceName: '' }))).toContain(
+      'Measuring room via ‘System default input’',
+    );
+  });
+
   it('escapes the device name in status text', () => {
     const html = secondaryStatusHTML(state({ status: 'active', deviceName: '<x>' }));
     expect(html).toContain('&lt;x&gt;');
@@ -283,6 +323,10 @@ describe('roomPaneOverride (#460 EQ-pane visual swap)', () => {
     const override = roomPaneOverride(true, [windowTick], null, 'USB Mic');
     expect(override?.ch).toBe((windowTick as { channels: ChannelWindowData[] }).channels[0]);
     expect(override?.label).toBe('USB Mic');
+  });
+
+  it('labels the system default input when no device is configured (#1646)', () => {
+    expect(roomPaneOverride(true, [windowTick], [ch(-20)], '')?.label).toBe('System default input');
   });
 
   it('returns null when active but no reading exists yet (defensive)', () => {

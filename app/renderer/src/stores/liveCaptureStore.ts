@@ -34,7 +34,7 @@ import {
   type ListDevicesResult,
 } from '../live-capture-panel';
 import {
-  deviceIndexForName,
+  measurementDeviceArg,
   applyStartResult,
   applyStreamEnded,
   reconnectDecision,
@@ -1019,10 +1019,11 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
     // Start the secondary stream for the currently-remembered device. Resolving
     // the persisted NAME to a live index can fail (device absent) — that is a
     // surfaced 'disconnected' state with NO API call and NO fallback to the
-    // board source, per ADR 0003.
+    // board source, per ADR 0003. #1646: an empty name (no device ever chosen)
+    // starts the system default input instead — Analyze's Live default.
     async startSecondaryMeasurement(opts) {
       const { deviceName } = get().secondaryMeasurement;
-      const device = deviceIndexForName(get().devices, deviceName);
+      const device = measurementDeviceArg(get().devices, deviceName);
       if (device === null) {
         set({
           secondaryMeasurement: { status: 'disconnected', deviceName },

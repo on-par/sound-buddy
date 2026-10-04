@@ -10,11 +10,9 @@ import SecondaryMeasurementPanel, {
   secondaryCaptureOpts,
 } from './SecondaryMeasurementPanel';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
-import { useAnalyzeEntryStore } from './stores/analyzeEntryStore';
 import type { LiveDevice } from './live-capture-panel';
 
 const INITIAL_LIVE_CAPTURE_STATE = useLiveCaptureStore.getInitialState();
-const INITIAL_ANALYZE_ENTRY_STATE = useAnalyzeEntryStore.getInitialState();
 
 beforeEach(() => {
   // window.liveCaptureRuntime.afterSecondaryMeasurementChange is optional
@@ -34,10 +32,6 @@ afterEach(() => {
     stopSecondaryMeasurement: INITIAL_LIVE_CAPTURE_STATE.stopSecondaryMeasurement,
     setSecondaryDeviceName: INITIAL_LIVE_CAPTURE_STATE.setSecondaryDeviceName,
     pollSecondaryReconnect: INITIAL_LIVE_CAPTURE_STATE.pollSecondaryReconnect,
-  });
-  useAnalyzeEntryStore.setState({
-    resumePendingListen: INITIAL_ANALYZE_ENTRY_STATE.resumePendingListen,
-    pendingListenAfterSettings: false,
   });
 });
 
@@ -233,49 +227,6 @@ describe('SecondaryMeasurementPanel', () => {
 
       expect(setSecondaryDeviceName).toHaveBeenCalledWith('USB Mic');
       expect(startSecondaryMeasurement).toHaveBeenCalledWith(opts);
-    });
-
-    describe('Analyze hand-off (#1589)', () => {
-      it('when a Listen-live bounce is pending, Analyze owns the start and the stream is not started here', async () => {
-        const startSecondaryMeasurement = vi.fn().mockResolvedValue(undefined);
-        const setSecondaryDeviceName = vi.fn();
-        const resumePendingListen = vi.fn(async () => true);
-        useLiveCaptureStore.setState({ startSecondaryMeasurement, setSecondaryDeviceName });
-        useAnalyzeEntryStore.setState({ resumePendingListen });
-        const opts = { windowSecs: 5, intervalSecs: 0.2 };
-
-        await selectSecondaryDevice('2', DEVICES, opts);
-
-        expect(setSecondaryDeviceName).toHaveBeenCalledWith('USB Mic');
-        expect(resumePendingListen).toHaveBeenCalledTimes(1);
-        expect(startSecondaryMeasurement).not.toHaveBeenCalled();
-      });
-
-      it('when no Listen-live bounce is pending, the stream starts here as before', async () => {
-        const startSecondaryMeasurement = vi.fn().mockResolvedValue(undefined);
-        const setSecondaryDeviceName = vi.fn();
-        const resumePendingListen = vi.fn(async () => false);
-        useLiveCaptureStore.setState({ startSecondaryMeasurement, setSecondaryDeviceName });
-        useAnalyzeEntryStore.setState({ resumePendingListen });
-        const opts = { windowSecs: 5, intervalSecs: 0.2 };
-
-        await selectSecondaryDevice('2', DEVICES, opts);
-
-        expect(resumePendingListen).toHaveBeenCalledTimes(1);
-        expect(startSecondaryMeasurement).toHaveBeenCalledWith(opts);
-      });
-
-      it('picking None never calls resumePendingListen', async () => {
-        const stopSecondaryMeasurement = vi.fn().mockResolvedValue(undefined);
-        const setSecondaryDeviceName = vi.fn();
-        const resumePendingListen = vi.fn(async () => false);
-        useLiveCaptureStore.setState({ stopSecondaryMeasurement, setSecondaryDeviceName });
-        useAnalyzeEntryStore.setState({ resumePendingListen });
-
-        await selectSecondaryDevice('', DEVICES, { windowSecs: 3, intervalSecs: 0.1 });
-
-        expect(resumePendingListen).not.toHaveBeenCalled();
-      });
     });
   });
 });

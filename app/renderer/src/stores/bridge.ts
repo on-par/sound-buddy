@@ -22,6 +22,7 @@ import { useSkillTreeStore } from './skillTreeStore';
 import { useDirectoryStore } from './directoryStore';
 import { liveReportCardSource } from '../live-capture-panel';
 import { roomFeed } from '../measurement-device-state';
+import { shouldYieldLiveToFileResult } from '../analyze-entry';
 import { spectrumTransport, type SpectrumTransport } from '../spectrum-transport';
 import { gradeContext } from './gradeContext';
 import type { GradingRubricOverrides } from '../../../electron/ipc/api';
@@ -211,13 +212,15 @@ export function installStoreBridge(
       }
     });
 
-    // #1639: closing Settings (any path — Escape, backdrop, close, Done all
-    // go through closeDialog()) abandons a pending Analyze listen-live bounce
-    // (#1589), so a later unrelated room-mic pick never redirects to Analyze.
-    useSettingsStore.subscribe((state, prevState) => {
-      if (prevState.dialogOpen && !state.dialogOpen) {
-        useAnalyzeEntryStore.getState().abandonPendingListen();
-      }
+    // #1646: Analyze defaults to Live, and its Live/File mode is derived from
+    // `listening` — so a file-derived result arriving from any entry point
+    // (File > Open, onboarding's demo, a history entry, ...) hands the stage
+    // to File by stopping the listen, instead of landing hidden behind the
+    // Live rail. The Load file…/dropzone buttons already stop it first.
+    useAnalysisStore.subscribe((state, prevState) => {
+      if (!shouldYieldLiveToFileResult(prevState, state)) return;
+      const entry = useAnalyzeEntryStore.getState();
+      if (entry.listening) void entry.stopListening();
     });
   }
 

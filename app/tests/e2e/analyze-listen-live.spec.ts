@@ -3,15 +3,16 @@ import * as path from 'path';
 import { launchApp } from './e2e-helpers';
 
 // The Analyze tab's entry point, driven end to end (#1480, updated for
-// #1485's inverted default). #1485 made a configured secondary measurement
-// device the Analyze tab's sole precondition for live listening — in both
-// Simple and Advanced mode — with the two-choice AnalyzeEntryDialog as the
-// no-device fallback and Listen live as its primary, focused affordance. No
-// nav click may ever open the native file dialog by itself; file load stays
-// available as an explicit second action (the dialog's "Choose file…", the
-// live-EQ island's "Load file…", the Report Card toolbar's load button) that
-// tears an active listen down first. This is the named e2e gate
-// ModeTabs.tsx's handleClick c8-ignore points at.
+// #1485's inverted default and #1646's unconditional one). #1646: Analyze
+// always lands on Live — on the configured room mic, or the system default
+// input when none is configured — in both Simple and Advanced mode; there is
+// no entry dialog and no bounce to Settings > Audio any more (see
+// analyze-live-default.spec.ts for the dedicated Live-default lock). No nav
+// click may ever open the native file dialog by itself; file load stays
+// available as an explicit second action (the live-EQ island's "Load file…"
+// and File-mode dropzone, the Report Card toolbar's load button) that tears
+// an active listen down first. This is the named e2e gate ModeTabs.tsx's
+// handleClick c8-ignore points at.
 //
 // Fully IPC-stubbed (start-measurement/stop-measurement here, everything
 // else via e2e-helpers' launchApp defaults) — deliberately NOT added to
@@ -188,22 +189,16 @@ test.describe('Analyze tab entry point (#1485), Advanced features on', () => {
     await electronApp.close();
   });
 
-  test('AC: no room mic configured — offers the entry dialog with Listen live focused, routes to Settings > Audio', async () => {
+  test('AC (#1646): no room mic configured — the Analyze tab lands on Live on the system default input, no dialog, no Settings, no file picker', async () => {
     await stubOpenFileDialogTracked(electronApp, null);
 
     await window.locator('#nav-analyze').click();
-    await expect(window.locator('#analyze-entry-dialog')).toBeVisible();
-    await expect(window.locator('#analyze-entry-listen-live')).toBeFocused();
-
-    await window.locator('#analyze-entry-listen-live').click();
-    await expect(window.locator('#analyze-entry-dialog')).toBeHidden();
-    await expect(window.locator('#settings-dialog')).toBeVisible();
-    await expect(window.locator('#settings-pane-audio')).toBeVisible();
+    await expect(window.locator('#settings-dialog')).toBeHidden();
+    await expect(window.locator('#analyze-mode-live')).toHaveAttribute('aria-pressed', 'true');
+    await expect(window.locator('#analyze-live-eq-stop')).toBeVisible();
+    await expect(window.locator('body')).toHaveClass(/analyze-listening/);
 
     expect(await openFileDialogCallCount(electronApp)).toBe(0);
-
-    await window.locator('#settings-dialog-done').click();
-    await expect(window.locator('#settings-dialog')).toBeHidden();
   });
 
   test('AC: room mic selected — goes straight to the live-EQ view, no dialog, no file picker (AC1)', async () => {
@@ -217,7 +212,7 @@ test.describe('Analyze tab entry point (#1485), Advanced features on', () => {
     await expect(window.locator('#settings-dialog')).toBeHidden();
 
     await window.locator('#nav-analyze').click();
-    await expect(window.locator('#analyze-entry-dialog')).toBeHidden();
+    await expect(window.locator('#settings-dialog')).toBeHidden();
     await expect(window.locator('#analyze-live-eq-stop')).toBeVisible();
     await expect(window.locator('body')).toHaveClass(/analyze-listening/);
 
@@ -377,7 +372,6 @@ test.describe('Analyze tab entry point (#1485), Advanced features on', () => {
     await window.locator('#analyze-mode-live').click();
 
     await expect(window.locator('#settings-dialog')).toBeHidden();
-    await expect(window.locator('#analyze-entry-dialog')).toBeHidden();
     await expect(window.locator('#analyze-mode-live')).toHaveAttribute('aria-pressed', 'true');
     await expect(window.locator('#analyze-live-eq-stop')).toBeVisible();
     await expect(window.locator('body')).toHaveClass(/analyze-listening/);
@@ -430,16 +424,10 @@ test.describe('Session → Analyze → Live round trip (#1590)', () => {
     expect(sessionDawChrome.shellParentId).toBe('live-island');
     expect(sessionDawChrome.recordPresent).toBe(true);
 
-    // Analyze: no room mic yet → entry dialog with Listen live.
+    // Analyze: no room mic configured → straight to Live on the system
+    // default input (#1646), never a dialog or Settings.
     await window.locator('#nav-analyze').click();
-    await expect(window.locator('#analyze-entry-dialog')).toBeVisible();
     await expect(window.locator('#live-eq-pane')).toBeHidden(); // Session chrome cleared (#1595)
-
-    // Live: bounces to Settings > Audio; the device pick resumes the listen (#1598).
-    await window.locator('#analyze-entry-listen-live').click();
-    await expect(window.locator('#settings-pane-audio')).toBeVisible();
-    await window.locator('#secondary-measurement-device').selectOption('0');
-    await window.locator('#settings-dialog-done').click();
     await expect(window.locator('#settings-dialog')).toBeHidden();
 
     await expect(window.locator('body')).toHaveClass(/analyze-listening/);
@@ -471,8 +459,8 @@ test.describe('Session → Analyze → Live round trip (#1590)', () => {
       expect(await surfaceIsolation(window)).toEqual(ISOLATED);
     }).toPass();
 
-    // Repeat: device is configured now, so the Analyze tab goes straight to
-    // the live RTA, and Session still takes the screen back afterwards.
+    // Repeat: the Analyze tab goes straight to the live RTA again, and
+    // Session still takes the screen back afterwards.
     await window.locator('#nav-analyze').click();
     await expect(window.locator('#analyze-live-island')).toBeVisible();
     await expect(window.locator('#analyze-mode-live')).toHaveAttribute('aria-pressed', 'true');
@@ -516,16 +504,13 @@ test.describe('Analyze → Session → Analyze → Live journey (#1606)', () => 
   test.afterAll(async () => { await electronApp.close(); });
 
   test('AC: Analyze-first journey never shows both surfaces and keeps node identity across every step', async () => {
-    // 1. Boot lands on Analyze (default appMode). No room mic yet.
+    // 1. Boot lands on Analyze (default appMode) on Live (#1646). No room mic.
     await expect(window.locator('#nav-analyze')).toBeVisible();
     await captureSurfaceNodes(window);
 
     await window.locator('#nav-analyze').click();
-    await expect(window.locator('#analyze-entry-dialog')).toBeVisible();
+    await expect(window.locator('#analyze-mode-live')).toHaveAttribute('aria-pressed', 'true');
     await expect(window.locator('#live-eq-pane')).toBeHidden();
-
-    await window.keyboard.press('Escape');
-    await expect(window.locator('#analyze-entry-dialog')).toBeHidden();
 
     // 2. Session: the docked pane shows, the island stays hidden.
     await window.locator('.mode-tab[data-mode="live"]').click();
@@ -537,16 +522,9 @@ test.describe('Analyze → Session → Analyze → Live journey (#1606)', () => 
       expect(await surfaceIsolation(window)).toEqual(ISOLATED);
     }).toPass();
 
-    // 3. Analyze → Live (the File-or-live choice): configure a device via
-    // the entry dialog's Listen live bounce to Settings > Audio.
+    // 3. Analyze again: straight back to Live (#1646), no dialog, no Settings.
     await window.locator('#nav-analyze').click();
-    await expect(window.locator('#analyze-entry-dialog')).toBeVisible();
     await expect(window.locator('#live-eq-pane')).toBeHidden();
-
-    await window.locator('#analyze-entry-listen-live').click();
-    await expect(window.locator('#settings-pane-audio')).toBeVisible();
-    await window.locator('#secondary-measurement-device').selectOption('0');
-    await window.locator('#settings-dialog-done').click();
     await expect(window.locator('#settings-dialog')).toBeHidden();
 
     // 4. Live RTA with listening true.
@@ -577,10 +555,9 @@ test.describe('Analyze → Session → Analyze → Live journey (#1606)', () => 
       expect(await surfaceIsolation(window)).toEqual(ISOLATED);
     }).toPass();
 
-    // 6. Session → Analyze with the now pre-configured device: straight to
-    // the live RTA, no dialog.
+    // 6. Session → Analyze: straight to the live RTA again.
     await window.locator('#nav-analyze').click();
-    await expect(window.locator('#analyze-entry-dialog')).toBeHidden();
+    await expect(window.locator('#settings-dialog')).toBeHidden();
     await expect(window.locator('#analyze-live-island')).toBeVisible();
     await expect(window.locator('#analyze-mode-live')).toHaveAttribute('aria-pressed', 'true');
     await expect(pane).toBeHidden();
@@ -603,17 +580,18 @@ test.describe('Analyze tab entry point (#1485), Advanced features off (Simple mo
     await electronApp.close();
   });
 
-  test('AC: never opens the file chooser automatically; offers the entry dialog with Listen live primary', async () => {
+  test('AC: never opens the file chooser automatically; Live is the default and Load file… is the explicit file path (#1646)', async () => {
     await stubOpenFileDialogTracked(electronApp, fixturePath);
 
     await window.locator('#nav-analyze').click();
 
     expect(await openFileDialogCallCount(electronApp)).toBe(0);
-    await expect(window.locator('#analyze-entry-dialog')).toBeVisible();
+    await expect(window.locator('#analyze-mode-live')).toHaveAttribute('aria-pressed', 'true');
 
-    await window.locator('#analyze-entry-choose-file').click();
+    await window.locator('#analyze-live-eq-choose-file').click();
 
     await expect(window.locator('#rc-filename')).toHaveText('silence.wav');
     expect(await openFileDialogCallCount(electronApp)).toBe(1);
+    await expect(window.locator('#analyze-mode-file')).toHaveAttribute('aria-pressed', 'true');
   });
 });

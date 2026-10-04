@@ -1306,6 +1306,20 @@ describe('createLiveCaptureStore', () => {
       expect(store.getState().secondaryMeasurement.status).toBe('disconnected');
     });
 
+    it('startSecondaryMeasurement starts the system default input (empty device) when no device is configured (#1646)', async () => {
+      const startMeasurement = vi.fn().mockResolvedValue({ success: true });
+      const { store } = makeStore({ startMeasurement });
+      store.setState({
+        devices: SECONDARY_DEVICES,
+        secondaryMeasurement: { status: 'off', deviceName: '' },
+      });
+
+      await store.getState().startSecondaryMeasurement({ windowSecs: 5, intervalSecs: 0.1 });
+
+      expect(startMeasurement).toHaveBeenCalledWith({ device: '', windowSecs: 5, intervalSecs: 0.1 });
+      expect(store.getState().secondaryMeasurement).toEqual({ status: 'active', deviceName: '' });
+    });
+
     it('startSecondaryMeasurement surfaces a blocked mic result', async () => {
       const startMeasurement = vi.fn().mockResolvedValue({ success: false, micAccess: 'denied' });
       const { store } = makeStore({ startMeasurement });

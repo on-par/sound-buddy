@@ -1,6 +1,6 @@
 # 'analyze' is a landed appMode, and Simple-mode Report Card requests redirect to the Analyze stage inside switchMode
 
-- Status: Accepted (amended 2026-09-27, #1576 (also tracked as #1617), #1587 and #1602 — see Amendments)
+- Status: Accepted (amended 2026-09-27, #1576 (also tracked as #1617), #1587 and #1602; amended 2026-10-04, #1646 — see Amendments)
 - Date: 2026-09-24
 
 ## Context
@@ -153,3 +153,52 @@ unchanged. Session's `LiveEqPane` isolation (ADR-0141) still holds: nothing is r
 
 - [Issue #1602](https://github.com/on-par/sound-buddy/issues/1602)
 - [PR #1595](https://github.com/on-par/sound-buddy/pull/1595)
+
+## Amendment (2026-10-04, #1646)
+
+The #1576 amendment kept a no-device cold boot on a non-modal File-mode stage, and the Analyze
+tab/Live toggle with no device sent the user to Settings > Audio (or the File-or-live entry
+dialog). On the Mac app that is the product bug #1646 reports, for the third time (after #1485):
+a fresh install has no room mic configured, so Analyze opened on **File**, and clicking **Live**
+opened **Settings**. Product rule from #1646: Analyze defaults to Live with the RTA showing, and
+File is an explicit, secondary path. This amendment supersedes the no-device parts of #1576 and
+of the #1587 tab-click rule:
+
+- **No device configured means the system default input.** `listenLive()` no longer has a
+  `needsSecondarySource` fork. With no secondary device configured (in memory or persisted,
+  #1604), it listens on the system default input: `liveCaptureStore.startSecondaryMeasurement`
+  maps an empty device name to an empty `device` arg, and stream.py meters sounddevice's default
+  input for it. A *named* device that is absent still goes `disconnected` with no fallback
+  (ADR 0003 unchanged). The room source is labelled "System default input" in the RTA header and
+  status line.
+- **The cold-boot auto-listen loses its device condition.** `decideAnalyzeHomeAutoListen` is
+  `'startListening'` whenever the app is still on the boot-painted Analyze home and not already
+  listening. Every other #1576 condition stands: post-hydration only, never in
+  `applyInitialMode`, never in `showAnalyzeStage()`, and only `listenLive()`, never
+  `enterAnalyze()`.
+- **The Analyze tab click and the Live toggle always listen in place.** `enterAnalyze()` calls
+  `listenLive()` unconditionally. `AnalyzeEntryDialog` and the Settings > Audio bounce
+  (`openSettingsAudio`, `pendingListenAfterSettings`, `resumePendingListen`,
+  `abandonPendingListen` from #1589/#1639) are deleted. No Analyze code path can open Settings.
+- **The system-default listen is Analyze-only.** `exitAnalyze()` stops a listen that runs on the
+  system default input (no device configured), because Session's room feed, EQ pane and badge
+  read any active secondary stream, and "None (use board channel)" must keep meaning the board
+  there. A configured room mic's listen still survives a tab switch, as before.
+- **A file-derived result yields the stage to File.** Analyze's mode is still derived from
+  `listening` (#1522). `bridge.ts` stops the listen whenever a file analysis starts or a history
+  entry loads (`shouldYieldLiveToFileResult`), so File > Open, onboarding's demo and History
+  land visible in File mode instead of behind the Live rail. Load file… and the File-mode
+  dropzone already stopped the listen first.
+
+**Unchanged:** `showAnalyzeStage()` stays silent and is still the only seam for non-click
+landings. The free tier is unaffected: `body.not-pro` hides `#analyze-live-island`, and main
+rejects `start-measurement` on the entitlement check before any microphone prompt. ADR-0141
+isolation (Analyze island vs Session's `LiveEqPane`) still holds.
+
+**Guard:** `app/tests/e2e/analyze-live-default.spec.ts` (stubbed, so it runs in CI's e2e job and in
+`scripts/verify.sh`) fails if a fresh no-device launch lands on File, if Live opens Settings, or if
+re-entering Analyze does not land on Live with the RTA painted. It covers Advanced and Simple
+mode.
+
+- [Issue #1646](https://github.com/on-par/sound-buddy/issues/1646)
+- [Issue #1485](https://github.com/on-par/sound-buddy/issues/1485)
