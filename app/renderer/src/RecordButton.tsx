@@ -2,16 +2,19 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 // The persistent top-bar Record control (#729), portaled by App.tsx onto
-// #record-button-island in #header-right. #1648: it records a Main +
-// Measurement take (recordTakeStore) — the board's mix out plus the room
-// mic, each mono or stereo — with no Session tab and no multitrack grid, and
-// beside the circle shows elapsed / saving / the saved take / an actionable
-// error. The take runs on its own record processes, so the Live RTA keeps
-// listening untouched. The Session tab's live-capture transport (#757) still
-// owns this button while a Session recording is running or stopping, so its
-// Stop stays reachable from any tab (flag-on builds only). Pro-gated via the
-// shared body.not-pro CSS hook on #record-button-island (app.css) rather than
-// re-deriving license status here.
+// #record-button-island in the header's fixed center slot (#1650). #1648: it
+// records a Main + Measurement take (recordTakeStore) — the board's mix out
+// plus the room mic, each mono or stereo — with no Session tab and no
+// multitrack grid, and beside the button shows elapsed / saving / the saved
+// take / an actionable error, all inside .record-meta, which app.css takes
+// out of flow so that text never moves the button (#1650). While pressed the
+// inner circle is a square stop glyph (recordButtonGlyph). The take runs on
+// its own record processes, so the Live RTA keeps listening untouched. The
+// Session tab's live-capture transport (#757) still owns this button while a
+// Session recording is running or stopping, so its Stop stays reachable from
+// any tab (flag-on builds only). Pro-gated via the shared body.not-pro CSS
+// hook on #record-button-island (app.css) rather than re-deriving license
+// status here.
 
 import { useEffect, useState, type JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
@@ -19,7 +22,7 @@ import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useRecordTakeStore } from './stores/recordTakeStore';
 import { iconSvg } from './report-card';
 import { runtime, stopLiveCapture } from './LiveControls';
-import { recordButtonView, recordButtonAction } from './record-transport';
+import { recordButtonView, recordButtonAction, recordButtonGlyph } from './record-transport';
 import { recordTakeView, savedFileNames, savedFilePaths, takeName } from './record-take';
 
 const RECORD_TICK_MS = 1000;
@@ -67,7 +70,7 @@ export default function RecordButton(): JSX.Element {
         aria-label={view.ariaLabel}
         aria-pressed={view.phase === 'recording' || view.phase === 'stopping'}
         onClick={onSessionClick}
-        dangerouslySetInnerHTML={{ __html: iconSvg('circle', 16) }}
+        dangerouslySetInnerHTML={{ __html: iconSvg(recordButtonGlyph(view.phase), 16) }}
       />
     );
   }
@@ -93,41 +96,47 @@ export default function RecordButton(): JSX.Element {
         aria-label={button.ariaLabel}
         aria-pressed={button.phase === 'recording' || button.phase === 'stopping'}
         onClick={onClick}
-        dangerouslySetInnerHTML={{ __html: iconSvg('circle', 16) }}
+        dangerouslySetInnerHTML={{ __html: iconSvg(recordButtonGlyph(button.phase), 16) }}
       />
-      {view.statusText && (
-        <span
-          id="record-status"
-          role="status"
-          className="record-status"
-          title={take.sources ? `Main: ${take.sources.main}\nMeasurement: ${take.sources.measurement}` : undefined}
-        >
-          {view.statusText}
-        </span>
-      )}
-      {view.saved && (
-        <>
-          <span className="record-take-info">
-            <span id="record-saved" className="record-saved" title={view.saved.dir}>
-              {`Saved · ${takeName(view.saved.dir)}`}
+      {(view.statusText || view.saved || view.error) && (
+        <div className="record-meta">
+          {view.statusText && (
+            <span
+              id="record-status"
+              role="status"
+              className="record-status"
+              title={take.sources ? `Main: ${take.sources.main}\nMeasurement: ${take.sources.measurement}` : undefined}
+            >
+              {view.statusText}
             </span>
-            <span id="record-saved-files" className="record-saved" title={savedFilePaths(view.saved)}>
-              {savedFileNames(view.saved)}
-            </span>
-          </span>
-          <button
-            type="button"
-            id="record-reveal"
-            className="btn btn-secondary sm"
-            /* c8 ignore next -- click dispatch, no jsdom */
-            onClick={() => { void useRecordTakeStore.getState().reveal(); }}
-          >
-            Show in Finder
-          </button>
-        </>
-      )}
-      {view.error && (
-        <span id="record-error" role="alert" className="record-error">{view.error}</span>
+          )}
+          {view.saved && (
+            <>
+              {/* #1650: no room for both beside the pinned button — an error
+                  replaces the take name; Show in Finder stays. */}
+              {!view.error && <span className="record-take-info">
+                <span id="record-saved" className="record-saved" title={view.saved.dir}>
+                  {`Saved · ${takeName(view.saved.dir)}`}
+                </span>
+                <span id="record-saved-files" className="record-saved" title={savedFilePaths(view.saved)}>
+                  {savedFileNames(view.saved)}
+                </span>
+              </span>}
+              <button
+                type="button"
+                id="record-reveal"
+                className="btn btn-secondary sm"
+                /* c8 ignore next -- click dispatch, no jsdom */
+                onClick={() => { void useRecordTakeStore.getState().reveal(); }}
+              >
+                Show in Finder
+              </button>
+            </>
+          )}
+          {view.error && (
+            <span id="record-error" role="alert" className="record-error">{view.error}</span>
+          )}
+        </div>
       )}
     </>
   );

@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import RecordButton from './RecordButton';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useRecordTakeStore } from './stores/recordTakeStore';
+import { iconSvg } from './report-card';
 
 const liveTransitionState = require('../live-transition-state.js');
 
@@ -48,6 +49,23 @@ function expectNoVisibleText(html: string) {
 
 function expectCircleIcon(html: string) {
   expect(html).toMatch(/id="record-button"[^>]*>\s*<svg/);
+  expect(html).toContain(iconSvg('circle', 16));
+  expect(html).not.toContain(iconSvg('square', 16));
+}
+
+// #1650: while recording the inner circle becomes a square (stop glyph).
+function expectStopIcon(html: string) {
+  expect(html).toContain(iconSvg('square', 16));
+  expect(html).not.toContain(iconSvg('circle', 16));
+}
+
+// #1650: everything beside the circle (elapsed / Saving / saved take /
+// error) renders inside .record-meta, which app.css takes out of flow so it
+// can never shove the pinned button.
+function metaInner(html: string): string {
+  const m = html.match(/<div class="record-meta">([\s\S]*)<\/div>$/);
+  expect(m, 'status renders inside .record-meta after the button').not.toBeNull();
+  return m![1];
 }
 
 describe('RecordButton — Main + Measurement take (#1648)', () => {
@@ -90,6 +108,8 @@ describe('RecordButton — Main + Measurement take (#1648)', () => {
     expect(html).toContain('aria-label="Recording Main + Measurement — press to stop"');
     expect(html).not.toMatch(/id="record-button"[^>]*disabled=""/);
     expect(html).toMatch(/id="record-status"[^>]*title="Main: X32 USB · Ch 17–18 \(stereo\)\nMeasurement: UMIK-1 · Ch 1 \(mono\)"[^>]*>Recording · 0:0\d</);
+    expectStopIcon(html);
+    expect(metaInner(html)).toContain('id="record-status"');
   });
 
   it('is a disabled Saving state while the files finalize', () => {
@@ -97,6 +117,7 @@ describe('RecordButton — Main + Measurement take (#1648)', () => {
     const html = renderMarkup();
     expect(html).toMatch(/record-btn--stopping[^>]*disabled=""/);
     expect(html).toMatch(/id="record-status"[^>]*>Saving…</);
+    expectStopIcon(html);
   });
 
   it('names the saved take and both stems, with a Show in Finder button', () => {
@@ -113,11 +134,37 @@ describe('RecordButton — Main + Measurement take (#1648)', () => {
     expect(html).toMatch(/id="record-saved-files"[^>]*title="\/Music\/Sound Buddy\/sound-buddy-20261004-101500-000\/main\/01-main\.wav\n\/Music\/Sound Buddy\/sound-buddy-20261004-101500-000\/measurement\/01-measurement\.wav"/);
     expect(html).toContain('id="record-reveal"');
     expect(html).not.toContain('id="record-status"');
+    expectCircleIcon(html);
+    const meta = metaInner(html);
+    expect(meta).toContain('id="record-saved"');
+    expect(meta).toContain('id="record-reveal"');
   });
 
   it('renders the actionable error as an alert', () => {
     useRecordTakeStore.setState({ error: 'Measurement input not found — pick it in Settings ▸ Audio, then press Record.' });
-    expect(renderMarkup()).toMatch(/id="record-error"[^>]*role="alert"[^>]*>Measurement input not found/);
+    const html = renderMarkup();
+    expect(html).toMatch(/id="record-error"[^>]*role="alert"[^>]*>Measurement input not found/);
+    expect(metaInner(html)).toContain('id="record-error"');
+  });
+
+  // #1650: the pinned button leaves half the header for the status, which
+  // can't fit the two-line take name AND the error — the error wins, and Show
+  // in Finder stays so a partial take (one stem missing) is still reachable.
+  it('drops the take name lines in favour of the error, keeping Show in Finder', () => {
+    const dir = '/Music/Sound Buddy/sound-buddy-20261004-101500-000';
+    useRecordTakeStore.setState({
+      lastTake: { dir, files: { main: `${dir}/main/01-main.wav`, measurement: null } },
+      error: 'Measurement file was not written — check the room mic in Settings ▸ Audio, then record again.',
+    });
+    const meta = metaInner(renderMarkup());
+    expect(meta).toContain('id="record-error"');
+    expect(meta).toContain('id="record-reveal"');
+    expect(meta).not.toContain('id="record-saved"');
+    expect(meta).not.toContain('record-take-info');
+  });
+
+  it('renders no .record-meta when there is nothing to say beside the button', () => {
+    expect(renderMarkup()).not.toContain('record-meta');
   });
 });
 
@@ -128,16 +175,20 @@ describe('RecordButton — a running Session recording keeps its Stop reachable 
     expect(html).toMatch(/class="record-btn record-btn--recording"/);
     expect(html).toContain('aria-label="Recording — press to stop"');
     expect(html).not.toContain('record-status');
+    expectStopIcon(html);
   });
 
   it('keeps starting and stopping Session transitions visible and disabled', () => {
     useLiveCaptureStore.setState({ appMode: 'console', isCapturing: true, liveMode: 'monitor', promoting: true });
-    expect(renderMarkup()).toMatch(/record-btn--starting-record[^>]*disabled=""/);
+    const starting = renderMarkup();
+    expect(starting).toMatch(/record-btn--starting-record[^>]*disabled=""/);
+    expectCircleIcon(starting);
 
     useLiveCaptureStore.setState({ appMode: 'console', isCapturing: false, liveMode: 'record', promoting: false, stopping: true });
     const html = renderMarkup();
     expect(html).toMatch(/record-btn--stopping[^>]*disabled=""/);
     expect(html).toContain('aria-pressed="true"');
+    expectStopIcon(html);
   });
 
   it('returns to the take Record across the post-stop demote (#1384)', () => {
@@ -154,7 +205,7 @@ describe('RecordButton — a running Session recording keeps its Stop reachable 
   });
 });
 
-// #record-button-island (#header-right) sits outside #tab-live/
+// #record-button-island (#header-center, #1650) sits outside #tab-live/
 // #settings-pane-audio — the two containers the
 // shared body.not-pro CSS rule covered before this ticket. Without its own
 // entry in that rule, a free-tier user gets a working Record button in the

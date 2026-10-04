@@ -66,14 +66,19 @@
     .live-mix-alert-action { color:var(--text-primary); font:var(--fw-regular) var(--fs-label)/1.35 var(--font-sans); }
 
     /* Header */
+    /* #1650: left / center / right columns. The two 1fr sides keep the center
+       slot (Record) at the middle of the header, and nothing beside the button
+       is in flow (.record-meta below), so status text can't slide it. */
     #header {
-      display:flex; align-items:center; gap:18px; height:var(--header-h); padding:0 16px;
-      /* Clear the macOS traffic-light cluster (hiddenInset) so the logo isn't
-         squashed underneath the close/minimize/maximize buttons. */
-      padding-left:var(--titlebar-safe-left);
+      display:grid; grid-template-columns:1fr auto 1fr; align-items:center; column-gap:18px; height:var(--header-h); padding:0 16px;
       background:var(--bg-panel); border-bottom:1px solid var(--border-subtle);
       flex-shrink:0; -webkit-app-region:drag;
     }
+    /* Clear the macOS traffic-light cluster (hiddenInset) so the logo isn't
+       squashed underneath the close/minimize/maximize buttons. On #header-left
+       rather than #header so the header's own padding stays symmetric and the
+       center slot is the true middle of the window (#1650). */
+    #header-left { display:flex; align-items:center; gap:18px; padding-left:calc(var(--titlebar-safe-left) - 16px); }
     #logo { display:flex; align-items:center; gap:10px; -webkit-app-region:no-drag; }
     #logo-mark { width:22px; height:22px; flex-shrink:0; border-radius:5px; box-shadow:0 0 14px color-mix(in srgb, var(--gold-glow) 56%, transparent); }
     #logo-text { font:var(--fw-semibold) 15px/1 var(--font-sans); letter-spacing:0.04em; text-transform:uppercase; color:var(--text-primary); }
@@ -94,8 +99,13 @@
       font-weight:var(--fw-semibold); box-shadow:var(--highlight-top),var(--shadow-sm); }
     .mode-tab svg { flex-shrink:0; }
 
-    #header-right { margin-left:auto; display:flex; align-items:center; gap:14px; -webkit-app-region:no-drag; }
-    #record-button-island { display:flex; align-items:center; gap:8px; }
+    #header-center { display:flex; align-items:center; justify-content:center; -webkit-app-region:no-drag; }
+    #header-right { justify-self:end; display:flex; align-items:center; gap:14px; -webkit-app-region:no-drag; }
+    /* #1650: the island is exactly the button; .record-meta hangs off its right
+       edge, absolutely positioned, so elapsed / Saving / Saved / error never
+       move the button. */
+    #record-button-island { position:relative; display:flex; align-items:center; }
+    .record-meta { position:absolute; left:calc(100% + 10px); top:50%; transform:translateY(-50%); display:flex; align-items:center; gap:8px; width:max-content; }
     /* #777: the Record control is a no-text red-circle toggle — idle/monitoring
        is a red ring (transparent fill); recording is the solid-red
        pressed/highlighted state (record-btn--recording), which STAYS while
@@ -111,6 +121,8 @@
     .record-btn--recording { background:var(--issue-500); border-color:var(--issue-500); color:#fff; }
     .record-btn--recording:hover:not(:disabled) { background:var(--issue-text); }
     .record-btn--recording svg { animation:sbpulse var(--dur-pulse) var(--ease-in-out) infinite; }
+    /* #1650: pressed = the standard stop glyph, a filled square. */
+    .record-btn[aria-pressed="true"] svg path { fill:currentColor; }
     .record-btn--stopping { background:var(--issue-tint); border-color:var(--issue-border); color:var(--issue-text); }
     /* #1648: the Main + Measurement take's status line beside the circle —
        elapsed / saving, the saved take + stems (full path in its title), and
@@ -179,7 +191,7 @@
     body.not-pro #settings-pane-audio > :not(.pro-gate) { display:none !important; }
     body.not-pro #tab-live .pro-gate,
     body.not-pro #settings-pane-audio .pro-gate { display:flex; }
-    /* #record-button-island (#729) lives in #header-right, outside all three
+    /* #record-button-island (#729) lives in #header-center, outside all three
        gated containers above — needs its own rule or a free-tier user gets a
        working Record button in the header with no Pro gate (the exact class
        of bug the #727 follow-up fixed for #settings-pane-audio). The Session

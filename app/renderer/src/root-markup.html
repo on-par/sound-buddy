@@ -15,29 +15,36 @@
        picker markup here. -->
   <!-- ══ Header ══ -->
   <div id="header">
-    <div id="logo">
-      <svg id="logo-mark" width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
-        <rect width="22" height="22" rx="5" fill="#0B0C0F"></rect>
-        <rect x="3.2" y="8.1" width="2.2" height="5.8" rx="1.1" fill="#F26D71"></rect>
-        <rect x="6.1" y="5.8" width="2.2" height="10.4" rx="1.1" fill="#F2A65A"></rect>
-        <rect x="9" y="3.7" width="2.2" height="14.6" rx="1.1" fill="#57D77C"></rect>
-        <rect x="11.9" y="5.8" width="2.2" height="10.4" rx="1.1" fill="#F3CA5E"></rect>
-        <rect x="14.8" y="8.1" width="2.2" height="5.8" rx="1.1" fill="#4EA8FF"></rect>
-      </svg>
-      <span id="logo-text">Sound<b> Buddy</b></span>
+    <!-- #1650: three columns — left (logo + tabs) / center (Record, pinned) /
+         right (settings, Pro badge, LIVE). The center slot never moves when
+         Record's status text appears; see #header in app.css. -->
+    <div id="header-left">
+      <div id="logo">
+        <svg id="logo-mark" width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+          <rect width="22" height="22" rx="5" fill="#0B0C0F"></rect>
+          <rect x="3.2" y="8.1" width="2.2" height="5.8" rx="1.1" fill="#F26D71"></rect>
+          <rect x="6.1" y="5.8" width="2.2" height="10.4" rx="1.1" fill="#F2A65A"></rect>
+          <rect x="9" y="3.7" width="2.2" height="14.6" rx="1.1" fill="#57D77C"></rect>
+          <rect x="11.9" y="5.8" width="2.2" height="10.4" rx="1.1" fill="#F3CA5E"></rect>
+          <rect x="14.8" y="8.1" width="2.2" height="5.8" rx="1.1" fill="#4EA8FF"></rect>
+        </svg>
+        <span id="logo-text">Sound<b> Buddy</b></span>
+      </div>
+      <div class="header-div"></div>
+      <!-- ModeTabs.tsx (TD-001 slice 6e, #703) renders the 9 tab buttons. -->
+      <div id="mode-tabs" role="tablist"></div>
     </div>
-    <div class="header-div"></div>
-    <!-- ModeTabs.tsx (TD-001 slice 6e, #703) renders the 9 tab buttons. -->
-    <div id="mode-tabs" role="tablist"></div>
-    <div id="header-right">
-      <button type="button" id="settings-btn" data-icon="settings" data-size="17" aria-label="Settings" title="Settings"></button>
-      <!-- LicenseChrome.tsx (TD-001 slice 6e, #703) renders the badge. -->
-      <div id="license-badge-island"></div>
+    <div id="header-center">
       <!-- RecordButton.tsx (#729) — gated Pro via body.not-pro #record-button-island in app.css.
            Hidden while the Session workspace is active; Session owns its in-tab
            recording affordance there. Everywhere else it records a Main +
            Measurement take with no Session tab (#1648). -->
       <div id="record-button-island"></div>
+    </div>
+    <div id="header-right">
+      <button type="button" id="settings-btn" data-icon="settings" data-size="17" aria-label="Settings" title="Settings"></button>
+      <!-- LicenseChrome.tsx (TD-001 slice 6e, #703) renders the badge. -->
+      <div id="license-badge-island"></div>
       <div id="live-indicator">
         <div class="pulse sb-pulse"></div>
         <span class="live-txt">LIVE</span>

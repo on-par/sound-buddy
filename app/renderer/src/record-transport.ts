@@ -38,6 +38,14 @@ export function recordButtonView(phase: CapturePhase): RecordButtonViewModel {
   };
 }
 
+// #1650: the control's inner glyph — the record circle, swapped for a square
+// (the standard stop glyph) while pressed, so the same button reads as Stop.
+export type RecordButtonGlyph = 'circle' | 'square';
+
+export function recordButtonGlyph(phase: RecordButtonPhase): RecordButtonGlyph {
+  return phase === 'recording' || phase === 'stopping' ? 'square' : 'circle';
+}
+
 export function recordButtonAction(phase: RecordButtonPhase): RecordButtonAction {
   if (phase === 'idle' || phase === 'monitoring') return 'record';
   if (phase === 'recording') return 'stop';
