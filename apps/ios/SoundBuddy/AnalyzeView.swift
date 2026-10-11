@@ -226,7 +226,7 @@ struct AnalyzeView: View {
                     showsProblemMarkers: layout.showsProblemMarkers(isEditingTarget: model.isEditingTarget)
                 )
                 if layout.targetControlsUnderRTA {
-                    TargetControlsBand(model: model, onEdit: beginTargetEdit)
+                    TargetControlsBand(model: model, metrics: layout.targetControlMetrics, onEdit: beginTargetEdit)
                 }
             }
             CoachingStackView(
@@ -276,7 +276,7 @@ struct AnalyzeView: View {
                         showsProblemMarkers: layout.showsProblemMarkers(isEditingTarget: model.isEditingTarget)
                     )
                     if layout.targetControlsUnderRTA {
-                        TargetControlsBand(model: model, onEdit: beginTargetEdit)
+                        TargetControlsBand(model: model, metrics: layout.targetControlMetrics, onEdit: beginTargetEdit)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -332,7 +332,7 @@ struct AnalyzeView: View {
                 rta
             }
             if AnalyzeLayout.landscape.targetControlsUnderRTA {
-                TargetControlsBand(model: model, onEdit: beginTargetEdit)
+                TargetControlsBand(model: model, metrics: AnalyzeLayout.landscape.targetControlMetrics, onEdit: beginTargetEdit)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             StatusMessageView(model: model)
@@ -690,9 +690,12 @@ private struct ListeningIndicator: View {
 /// "Editing target" chip while `model.isEditingTarget`, plus a row of preset
 /// pills (#1560) that only that chip row needs. Every row stays laid out
 /// (only the inactive ones are hidden), so the band is always the same total
-/// height and nothing around it shifts on toggle (#1565).
+/// height and nothing around it shifts on toggle (#1565). Sizes come from
+/// `TargetControlMetrics` (#1744): on iPad every control is at least 44 pt
+/// tall and the text is one step larger; iPhone keeps its compact sizes.
 private struct TargetControlsBand: View {
     let model: AnalyzeModel
+    let metrics: TargetControlMetrics
     let onEdit: () -> Void
 
     var body: some View {
@@ -700,19 +703,20 @@ private struct TargetControlsBand: View {
         VStack(alignment: .leading, spacing: Layout.legendSpacing) {
             HStack(spacing: Layout.legendSwatchGap) {
                 ZStack(alignment: .leading) {
-                    TargetLegend(text: model.targetLegendText, onEdit: onEdit)
+                    TargetLegend(text: model.targetLegendText, metrics: metrics, onEdit: onEdit)
                         .opacity(editing ? 0 : 1)
                         .allowsHitTesting(!editing)
                         .accessibilityHidden(editing)
-                    TargetEditChip(model: model)
+                    TargetEditChip(model: model, metrics: metrics)
                         .opacity(editing ? 1 : 0)
                         .allowsHitTesting(editing)
                         .accessibilityHidden(!editing)
                 }
+                .frame(minHeight: metrics.rowMinHeight)
                 Spacer(minLength: Layout.legendSwatchGap)
-                ProgramModeChip(model: model)
+                ProgramModeChip(model: model, metrics: metrics)
             }
-            TargetPresetStrip(model: model)
+            TargetPresetStrip(model: model, metrics: metrics)
                 .opacity(editing ? 1 : 0)
                 .allowsHitTesting(editing)
                 .accessibilityHidden(!editing)
@@ -720,15 +724,26 @@ private struct TargetControlsBand: View {
     }
 }
 
+private extension TargetControlMetrics {
+    /// The Dynamic Type font for this text step.
+    var font: Font {
+        switch textStep {
+        case .caption: .caption
+        case .subheadline: .subheadline
+        }
+    }
+}
+
 /// The detected Speech/Music chip beside the target legend (#1690). Visible
 /// (and laid out, so nothing shifts when it fades) only while live; same
-/// caption font as the legend so the band's height never changes (#1565).
+/// font as the legend so the band's height never changes (#1565).
 private struct ProgramModeChip: View {
     let model: AnalyzeModel
+    let metrics: TargetControlMetrics
 
     var body: some View {
         Text(model.programModeChipText)
-            .font(.caption.weight(.semibold))
+            .font(metrics.font.weight(.semibold))
             .foregroundStyle(Palette.secondaryText)
             .padding(.horizontal, Layout.badgePaddingH)
             .padding(.vertical, Layout.badgePaddingV)
@@ -739,63 +754,97 @@ private struct ProgramModeChip: View {
     }
 }
 
-/// A short dashed swatch plus "Target · <label> (auto)", under the RTA.
-/// Tapping the row (or its pencil) enters in-place target-edit mode (#1558).
+/// A short dashed swatch plus "Target · <label> (auto)", under the RTA, and
+/// a pencil. Tapping the row or the pencil enters in-place target-edit mode
+/// (#1558). On iPad the pencil is its own 44 pt capsule button (#1744); on
+/// iPhone it stays a bare glyph whose tappable shape reaches past its frame
+/// to 44 pt without taking layout space.
 private struct TargetLegend: View {
     let text: String
+    let metrics: TargetControlMetrics
     let onEdit: () -> Void
 
     var body: some View {
-        Button(action: onEdit) {
-            HStack(spacing: Layout.legendSwatchGap) {
-                Path { path in
-                    let midY = Layout.legendSwatchSize.height / 2
-                    path.move(to: CGPoint(x: 0, y: midY))
-                    path.addLine(to: CGPoint(x: Layout.legendSwatchSize.width, y: midY))
+        HStack(spacing: Layout.legendSwatchGap) {
+            Button(action: onEdit) {
+                HStack(spacing: Layout.legendSwatchGap) {
+                    Path { path in
+                        let midY = metrics.swatchHeight / 2
+                        path.move(to: CGPoint(x: 0, y: midY))
+                        path.addLine(to: CGPoint(x: metrics.swatchWidth, y: midY))
+                    }
+                    .stroke(Palette.target, style: StrokeStyle(lineWidth: Layout.legendSwatchLineWidth, dash: Layout.legendSwatchDash))
+                    .frame(width: metrics.swatchWidth, height: metrics.swatchHeight)
+                    Text(text)
+                        .font(metrics.font.weight(.semibold))
+                        .foregroundStyle(Palette.secondaryText)
                 }
-                .stroke(Palette.target, style: StrokeStyle(lineWidth: Layout.legendSwatchLineWidth, dash: Layout.legendSwatchDash))
-                .frame(width: Layout.legendSwatchSize.width, height: Layout.legendSwatchSize.height)
-                Text(text)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Palette.secondaryText)
-                Image(systemName: "pencil")
-                    .font(.caption)
-                    .foregroundStyle(Palette.secondaryText)
+                .frame(minHeight: metrics.minHitSize)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(text)
+            .accessibilityHint("Edits the target curve")
+            .accessibilityIdentifier("analyze.targetLegend")
+            pencil
+        }
+    }
+
+    @ViewBuilder private var pencil: some View {
+        let button = Button(action: onEdit) {
+            Image(systemName: "pencil")
+                .font(metrics.pencilIsBordered ? metrics.font.weight(.semibold) : metrics.font)
+                .foregroundStyle(metrics.pencilIsBordered ? Palette.target : Palette.secondaryText)
+                .frame(minWidth: metrics.pencilButtonSize, minHeight: metrics.pencilButtonSize)
+                .background {
+                    if metrics.pencilIsBordered {
+                        Capsule()
+                            .fill(Palette.surface)
+                            .overlay(Capsule().strokeBorder(Palette.target.opacity(Layout.pencilBorderOpacity), lineWidth: Layout.pencilBorderWidth))
+                    }
+                }
+                .contentShape(Rectangle().inset(by: -metrics.hitOutset))
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(text)
+        .accessibilityLabel("Edit target")
         .accessibilityHint("Edits the target curve")
-        .accessibilityIdentifier("analyze.targetLegend")
+        .accessibilityIdentifier("analyze.targetLegend.edit")
+        button
     }
 }
 
 /// The "Editing target" chip (Cancel / Done) shown in place of the legend,
-/// under the RTA, while `model.isEditingTarget` (#1558, #1565).
+/// under the RTA, while `model.isEditingTarget` (#1558, #1565). On iPad
+/// Cancel and Done are 44 pt tall (#1744).
 private struct TargetEditChip: View {
     let model: AnalyzeModel
+    let metrics: TargetControlMetrics
 
     var body: some View {
         HStack(spacing: Layout.editChipSpacing) {
             Label(TargetCurveEditor.chipTitle, systemImage: "pencil")
-                .font(.caption.weight(.semibold))
+                .font(metrics.font.weight(.semibold))
                 .foregroundStyle(Palette.target)
             Button("Cancel") {
                 withAnimation(.snappy) { model.cancelTargetEdit() }
             }
-            .font(.caption.weight(.semibold))
+            .font(metrics.font.weight(.semibold))
             .foregroundStyle(Palette.secondaryText)
+            .frame(minWidth: metrics.minHitSize, minHeight: metrics.editButtonMinHeight)
+            .contentShape(Rectangle())
             .accessibilityIdentifier("analyze.targetEditChip.cancel")
             Button("Done") {
                 withAnimation(.snappy) { model.commitTargetEdit() }
             }
-            .font(.caption.weight(.semibold))
+            .font(metrics.font.weight(.semibold))
             .foregroundStyle(Palette.accent)
+            .frame(minWidth: metrics.minHitSize, minHeight: metrics.editButtonMinHeight)
+            .contentShape(Rectangle())
             .accessibilityIdentifier("analyze.targetEditChip.done")
         }
         .padding(.horizontal, Layout.editChipPaddingH)
-        .padding(.vertical, Layout.editChipPaddingV)
+        .padding(.vertical, metrics.editChipVerticalPadding)
         .background(Palette.surface, in: Capsule())
         .accessibilityIdentifier("analyze.targetEditChip")
     }
@@ -808,13 +857,14 @@ private struct TargetEditChip: View {
 /// change, so the active curve is never the one cut off at the edge (#1742).
 private struct TargetPresetStrip: View {
     let model: AnalyzeModel
+    let metrics: TargetControlMetrics
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Layout.presetPillSpacing) {
                     ForEach(TargetCurvePreset.all) { preset in
-                        TargetPresetPill(preset: preset, model: model)
+                        TargetPresetPill(preset: preset, model: model, metrics: metrics)
                             .id(preset.id)
                     }
                 }
@@ -836,18 +886,21 @@ private struct TargetPresetStrip: View {
 private struct TargetPresetPill: View {
     let preset: TargetCurvePreset
     let model: AnalyzeModel
+    let metrics: TargetControlMetrics
 
     var body: some View {
         let selected = model.activeTargetPresetId == preset.id
         Button(preset.title) {
             withAnimation(.snappy) { _ = model.selectTargetPreset(preset) }
         }
-        .font(.caption.weight(.semibold))
+        .font(metrics.font.weight(.semibold))
         .lineLimit(1)
         .padding(.horizontal, Layout.presetPillPaddingH)
-        .padding(.vertical, Layout.presetPillPaddingV)
+        .padding(.vertical, metrics.pillVerticalPadding)
+        .frame(minHeight: metrics.pillMinHeight)
         .foregroundStyle(selected ? Palette.background : Palette.secondaryText)
         .background(selected ? Palette.accent : Palette.surface, in: Capsule())
+        .contentShape(Capsule())
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("analyze.targetPreset.\(preset.id)")
     }
@@ -1054,15 +1107,14 @@ private enum Layout {
     static let coachingMaxLines = 3
     static let legendSpacing: CGFloat = 6
     static let legendSwatchGap: CGFloat = 6
-    static let legendSwatchSize = CGSize(width: 18, height: 8)
     static let legendSwatchLineWidth: CGFloat = 1.5
     static let legendSwatchDash: [CGFloat] = [3, 2]
     static let editChipSpacing: CGFloat = 10
     static let editChipPaddingH: CGFloat = 10
-    static let editChipPaddingV: CGFloat = 5
     static let presetPillSpacing: CGFloat = 8
     static let presetPillPaddingH: CGFloat = 10
-    static let presetPillPaddingV: CGFloat = 5
+    static let pencilBorderOpacity: CGFloat = 0.5
+    static let pencilBorderWidth: CGFloat = 1
     static let landscapeSpacing: CGFloat = 8
     static let peekHandleHeight: CGFloat = 28
     static let peekDragMinDistance: CGFloat = 8
