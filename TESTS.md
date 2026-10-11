@@ -69,6 +69,13 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push/PR to `main`:
 6. Python audio-engine tests
 7. Gitleaks secret scan
 
+## Claude Factory
+
+Issues labeled `factory-ready` or `sdv` can be picked up by the Claude Factory
+`/factory:sdv` command: one ticket → one PR, built in its own worktree. The ticket's
+check command (`cf-check`) is the only gate for "done"; two failures stop the run.
+The factory opens the PR with an evidence pack and never merges — a human does.
+
 ## Test Conventions
 
 - Tests are **colocated** with source files — no `__tests__/` or `test/` directories
