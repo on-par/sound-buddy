@@ -65,6 +65,12 @@ private let tolerance = 1e-9
         #expect(ConsoleEQ.frequencyHz(nodeToken: "abc") == nil)
     }
 
+    @Test func configPathPerTarget() {
+        #expect(ConsoleEQTarget.channel(1).configPath == "/ch/01/config")
+        #expect(ConsoleEQTarget.channel(32).configPath == "/ch/32/config")
+        #expect(ConsoleEQTarget.mainLR.configPath == "/main/st/config")
+    }
+
     @Test func issueExampleLineParses() {
         var eq = ConsoleEQ.flat(for: .channel(5))
         #expect(eq.apply(nodeLine: "/ch/05/eq/2 PEQ 2k5 -3.0 2.0") == true)

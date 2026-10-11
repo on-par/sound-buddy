@@ -41,10 +41,21 @@ struct AnalyzeView: View {
     let model: AnalyzeModel
     let keepAwake: KeepAwakeController
     let micInputs: MicInputController
+    /// Injected until #1662 (flag), #1665 (consent) and #1666
+    /// (transport/connect) land: Release passes `console: nil`, so the chip
+    /// never shows there.
+    let console: ConsoleTargetModel?
+    let consoleFlagEnabled: Bool
+    let consoleConsentGranted: Bool
     @Environment(\.scenePhase) private var scenePhase
     @State private var coachingPeekOpen = false
     @State private var settingsOpen = false
+    @State private var consolePickerOpen = false
     @AppStorage(KeepAwakePolicy.defaultsKey) private var keepAwakeEnabled = KeepAwakePolicy.defaultValue
+
+    private var showsConsoleChip: Bool {
+        ConsoleChipStatus.isVisible(flagEnabled: consoleFlagEnabled, consentGranted: consoleConsentGranted, console: console?.console)
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -62,6 +73,11 @@ struct AnalyzeView: View {
             SettingsView(keepAwakeEnabled: $keepAwakeEnabled, micInputs: micInputs) { id in
                 micInputs.select(id)
                 Task { await model.restartListening() }
+            }
+        }
+        .sheet(isPresented: $consolePickerOpen) {
+            if let console {
+                ConsoleTargetPickerView(model: console) { consolePickerOpen = false }
             }
         }
         .task { await model.appear() }
@@ -166,6 +182,9 @@ struct AnalyzeView: View {
     private var landscapeStrip: some View {
         HStack(spacing: Layout.landscapeStripSpacing) {
             ListeningIndicator(state: model.state)
+            if showsConsoleChip, let console, let chipTitle = console.chipTitle {
+                ConsoleChip(title: chipTitle, status: console.chipStatus) { consolePickerOpen = true }
+            }
             Spacer()
             OverallLevelReadout(model: model, font: .headline.monospacedDigit())
             SettingsButton { settingsOpen = true }
@@ -193,6 +212,9 @@ struct AnalyzeView: View {
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(Palette.accent)
                     ListeningIndicator(state: model.state)
+                }
+                if showsConsoleChip, let console, let chipTitle = console.chipTitle {
+                    ConsoleChip(title: chipTitle, status: console.chipStatus) { consolePickerOpen = true }
                 }
             }
             Spacer(minLength: 0)
@@ -714,8 +736,9 @@ private enum Layout {
 }
 
 /// Mirrors the Mac renderer's design tokens (app/renderer :root) — dark
-/// neutrals with the gold accent.
-private enum Palette {
+/// neutrals with the gold accent. Internal (not file-private) so other
+/// Analyze-adjacent views (e.g. ConsoleChip) share the same tokens.
+enum Palette {
     static let background = hex(0x0B0C0F) // --neutral-950 (--bg-app)
     static let surface = hex(0x1B1F26) // --neutral-800 (--surface)
     static let accent = hex(0xEBB93C) // --gold-500
