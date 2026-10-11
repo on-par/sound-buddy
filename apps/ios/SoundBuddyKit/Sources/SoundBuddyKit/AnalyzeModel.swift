@@ -80,10 +80,19 @@ public final class AnalyzeModel {
     /// Broadband level of the latest reading in dBFS; nil when not live or at
     /// or below overallLevelFloorDb (never a fake 0).
     public private(set) var overallDb: Double?
-    /// The coaching cards, identity-stable across refreshes (#1700): a tip
-    /// that stays keeps its position and only its numbers change. At most
-    /// `AnalyzeCoachingViewModel.maxCards`.
+    /// The coaching cards (#1715): level-matched band deltas from every
+    /// reading are smoothed (CoachingDeltaSmoother), gated by dwell and
+    /// hysteresis (CoachingStabilizer: a tip appears after a sustained
+    /// off-target run and stays at least 8 s), then reconciled into
+    /// identity-stable cards (#1700, AnalyzeCoachingViewModel) — a tip that
+    /// stays keeps its position and only its numbers change. At most
+    /// `AnalyzeCoachingViewModel.maxCards`. The RTA does not go through this
+    /// path; it keeps its own per-reading timing.
     public private(set) var coaching: [CoachingEvent] = []
+    /// The calm 'Mix is on target' state (#1699, #1715): live readings are
+    /// coming in, no tip has earned its way onto the screen, and no card is
+    /// showing. Never true while a card is visible or before a real reading.
+    public private(set) var isMixOnTarget = false
     /// Same bands as `coaching`, in the same order (both come from the coach
     /// on the same refresh); drawn as text-free pulses on the portrait RTA.
     public private(set) var problemMarkers: [ProblemMarkerDescriptor] = []
@@ -121,6 +130,8 @@ public final class AnalyzeModel {
     // until the edit resolves.
     private var coach: BandDeviationCoach
     private var coachingCards = AnalyzeCoachingViewModel()
+    private var deltaSmoother = CoachingDeltaSmoother()
+    private var stabilizer = CoachingStabilizer()
     private let now: () -> Date
     /// `target` resampled onto `rtaLayout`'s band centers, recomputed whenever
     /// `target` changes.
@@ -183,7 +194,25 @@ public final class AnalyzeModel {
     /// outside edit mode (#1690) — never from the live draft (#1561).
     private func apply(target: IdealCurve, isAuto: Bool) {
         applyDrawn(target: target, isAuto: isAuto)
+        guard target != coach.ideal else { return }
         coach = BandDeviationCoach(ideal: target)
+        // Deltas and dwells so far were judged against the old curve (#1715).
+        resetCoaching()
+    }
+
+    /// Drops every smoothed delta, dwell, visible tip and card, so coaching
+    /// starts over: on stop, on a Speech/Music switch, and when the coach's
+    /// curve changes (#1715). Clears the cards immediately and lets the next
+    /// reading refresh them.
+    private func resetCoaching() {
+        deltaSmoother.reset()
+        stabilizer.reset()
+        stabilizer.targetDidSwitch(to: programMode)
+        coachingCards.reset()
+        coaching = []
+        problemMarkers = []
+        isMixOnTarget = false
+        lastCoachingAt = nil
     }
 
     /// The curve the coach judges the room against — `target` outside of edit
@@ -277,7 +306,9 @@ public final class AnalyzeModel {
     public var coachingPlaceholder: String {
         switch state {
         case .live:
-            "Balance looks close to the target. Keep listening."
+            isMixOnTarget
+                ? CoachingStabilizer.onTargetMessage
+                : "Listening for the mix. A tip shows once a band stays off target. Keep listening."
         case .idle, .requestingPermission:
             "Listening starts automatically. Play program material through the PA."
         case .micDenied, .failed:
@@ -483,14 +514,12 @@ public final class AnalyzeModel {
         lastCoachingAt = nil
         bandLevels = .silent
         rta.reset()
-        coachingCards.reset()
-        coaching = []
-        problemMarkers = []
         overallDb = nil
         handleDrag = nil
         contentClassifier.reset()
         modeTracker.reset()
         programMode = .music
+        resetCoaching()
         syncAutoTarget()
         state = .idle
     }
@@ -506,15 +535,31 @@ public final class AnalyzeModel {
         if let features = reading.programFeatures {
             programMode = modeTracker.update(contentClassifier.classify(features), at: time)
         }
+        // A Speech/Music switch drops every tip and dwell (#1701, #1715),
+        // whether or not the auto target follows the mode.
+        if programMode != stabilizer.activeMode {
+            resetCoaching()
+        }
         syncAutoTarget()
 
         if isCoachingFrozen { return }
-        if let last = lastCoachingAt, time.timeIntervalSince(last) < Self.coachingRefreshSeconds { return }
+        // Every reading feeds the smoother and the stabilizer, so dwell
+        // timing is measured at the meter rate; the cards refresh at most
+        // once per coachingRefreshSeconds, or at once when the tip set changes.
+        let deviations = coach.deviations(for: reading.bands)
+        let smoothed = deviations.isEmpty ? [:] : deltaSmoother.ingest(deviations, at: time)
+        let previouslyVisible = stabilizer.visible
+        let visible = stabilizer.ingest(smoothed, at: time)
+        if visible == previouslyVisible, let last = lastCoachingAt,
+           time.timeIntervalSince(last) < Self.coachingRefreshSeconds {
+            return
+        }
         lastCoachingAt = time
         let elapsed = sessionStart.map { time.timeIntervalSince($0) } ?? 0
-        coaching = coachingCards.update(with: coach.events(for: reading.bands, sessionTime: elapsed))
-        let markers = coach.problemMarkers(for: reading.bands)
+        coaching = coachingCards.update(with: coach.events(forDeviations: smoothed, bands: visible, sessionTime: elapsed))
+        let markers = coach.problemMarkers(forDeviations: smoothed, bands: visible)
         problemMarkers = coaching.compactMap { card in markers.first { $0.band == card.band } }
+        isMixOnTarget = stabilizer.isOnTarget && coaching.isEmpty
     }
 
     /// Reconciles the drawn/coaching target with `programMode` while the

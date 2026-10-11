@@ -121,16 +121,26 @@ private enum ConsoleDemoSeed {
 #if DEBUG
 /// `-coachingDemo`: replaces the mic with a synthetic, fluctuating reading
 /// stream so the coaching stack can be recorded on a simulator with no audio
-/// input (#1700). Bass and Presence trade which is worse every ~1.5 s (the
-/// coach re-sorts them each refresh), Low-mid comes and goes, and every band
-/// jitters a little, so the recording shows cards holding position while
-/// their numbers update. Compiles out of Release, like `-consoleDemo`.
+/// input (#1700, #1715). It loops a 60 s script:
+///
+/// - 0-30 s, a problem mix: Bass runs hot and Presence low, and the two trade
+///   which is worse every ~1.5 s (raw deltas swing across the 4 dB enter
+///   threshold), so tips appear only after the dwell, hold well past 8 s,
+///   and never reorder. Low-mid spikes for 1.5 s every 7 s, too briefly to
+///   earn a tip.
+/// - 30-60 s, the mix is fixed: every band sits near the target with a
+///   little jitter, the tips clear after the exit dwell, and the calm
+///   'Mix is on target' state shows.
+///
+/// Compiles out of Release, like `-consoleDemo`.
 @MainActor
 private final class CoachingDemoSource: LiveAudioSource {
     static func isRequested(by arguments: [String]) -> Bool {
         arguments.contains("-coachingDemo")
     }
 
+    static let loopSeconds = 60.0
+    static let problemSeconds = 30.0
     private static let readingsPerSecond = 20.0
     private static let baseDb = -30.0
     private let targets: [Band: Double]
@@ -162,14 +172,17 @@ private final class CoachingDemoSource: LiveAudioSource {
 
     /// Offsets from the target (dB) at `t` seconds into the demo.
     private func offsets(at t: Double) -> [Band: Double] {
+        let phase = t.truncatingRemainder(dividingBy: Self.loopSeconds)
+        guard phase < Self.problemSeconds else {
+            return [.mid: 0.8 * sin(t * 2.3), .bass: 0.6 * sin(t * 1.7)]
+        }
         let swap = sin(t * .pi / 1.5) // flips sign every 1.5 s
         var result: [Band: Double] = [
-            .bass: 7 + 2.5 * swap,
-            .presence: -(7 - 2.5 * swap),
+            .bass: 7 + 4 * swap,
+            .presence: -(7 - 4 * swap),
         ]
-        // Low-mid joins for 4 s out of every 10 s.
-        if t.truncatingRemainder(dividingBy: 10) > 6 {
-            result[.lowMid] = 5 + 0.8 * sin(t * 3.1)
+        if phase.truncatingRemainder(dividingBy: 7) > 5.5 {
+            result[.lowMid] = 9
         }
         return result
     }

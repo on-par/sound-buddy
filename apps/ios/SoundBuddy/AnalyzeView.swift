@@ -820,7 +820,7 @@ struct CoachingStackView: View {
             }
             ForEach(events.count..<AnalyzeCoachingViewModel.maxCards, id: \.self) { slot in
                 if slot == 0 {
-                    CoachingPlaceholder(text: model.coachingPlaceholder)
+                    CoachingPlaceholder(text: model.coachingPlaceholder, isCalm: model.isMixOnTarget)
                 } else {
                     // Keeps the stack's height steady as hints come and go.
                     Color.clear
@@ -863,16 +863,29 @@ private struct AppliedCoachingNote: View {
     }
 }
 
+/// The empty-stack slot. In the calm 'Mix is on target' state (#1699,
+/// #1715) it gets a checkmark and primary text, so "nothing to fix" reads as
+/// a result rather than as a waiting message.
 private struct CoachingPlaceholder: View {
     let text: String
+    var isCalm = false
 
     var body: some View {
-        Text(text)
-            .font(.subheadline)
-            .foregroundStyle(Palette.secondaryText)
-            .frame(maxWidth: .infinity, minHeight: Layout.coachingSlotMinHeight, alignment: .leading)
-            .padding(.horizontal, Layout.cardPadding)
-            .background(Palette.surface, in: RoundedRectangle(cornerRadius: Layout.cornerRadius))
+        HStack(alignment: .center, spacing: Layout.cardSpacing) {
+            if isCalm {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(Palette.accent)
+                    .accessibilityHidden(true)
+            }
+            Text(text)
+                .font(isCalm ? .subheadline.weight(.semibold) : .subheadline)
+                .foregroundStyle(isCalm ? Color.primary : Palette.secondaryText)
+        }
+        .frame(maxWidth: .infinity, minHeight: Layout.coachingSlotMinHeight, alignment: .leading)
+        .padding(.horizontal, Layout.cardPadding)
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: Layout.cornerRadius))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(isCalm ? "coaching.onTarget" : "coaching.placeholder")
     }
 }
 

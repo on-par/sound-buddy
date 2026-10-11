@@ -40,27 +40,59 @@ public struct BandDeviationCoach: Sendable {
     /// as typed data a view can draw instead of copy text — so a future marker UI can't
     /// drift from the coaching cards' threshold, silence-gate, level-match, and max-3 rules.
     public func problemMarkers(for levels: BandLevels) -> [ProblemMarkerDescriptor] {
-        problemBands(for: levels).map {
-            ProblemMarkerDescriptor(
-                band: $0.band,
-                direction: $0.deviation > 0 ? .overTarget : .underTarget,
-                severityDb: Self.roundedMagnitude($0.deviation)
-            )
-        }
+        problemBands(for: levels).map(Self.marker)
+    }
+
+    /// The signed, level-matched deviation (dB) of every band from the ideal
+    /// curve for one reading — the raw input to the stabilized coaching path
+    /// (#1715: CoachingDeltaSmoother -> CoachingStabilizer). Empty when the
+    /// reading is below `minimumSignalDb`: too little signal to judge.
+    public func deviations(for levels: BandLevels) -> [Band: Double] {
+        guard levels[levels.loudest] >= Self.minimumSignalDb else { return [:] }
+        let raw = Band.allCases.map { ($0, levels[$0] - (targets[$0] ?? 0)) }
+        let mean = raw.reduce(0) { $0 + $1.1 } / Double(raw.count)
+        return Dictionary(uniqueKeysWithValues: raw.map { ($0.0, $0.1 - mean) })
+    }
+
+    /// Cards for the stabilizer's visible `bands` (#1715), worded from the
+    /// (smoothed) `deviations`, most severe first and capped at `maxEvents`.
+    /// The stabilizer already decided which bands deserve a tip, so no
+    /// threshold applies here; a visible band with no finite deviation is skipped.
+    public func events(forDeviations deviations: [Band: Double], bands: Set<Band>, sessionTime: Double) -> [CoachingEvent] {
+        selected(deviations, bands: bands).map { event(band: $0.band, deviation: $0.deviation, sessionTime: sessionTime) }
+    }
+
+    /// The problem markers matching `events(forDeviations:bands:sessionTime:)`.
+    public func problemMarkers(forDeviations deviations: [Band: Double], bands: Set<Band>) -> [ProblemMarkerDescriptor] {
+        selected(deviations, bands: bands).map(Self.marker)
+    }
+
+    private func selected(_ deviations: [Band: Double], bands: Set<Band>) -> [(band: Band, deviation: Double)] {
+        Band.allCases
+            .compactMap { band in deviations[band].flatMap { bands.contains(band) && $0.isFinite ? (band: band, deviation: $0) : nil } }
+            .sorted { abs($0.deviation) > abs($1.deviation) }
+            .prefix(Self.maxEvents)
+            .map { $0 }
+    }
+
+    private static func marker(_ item: (band: Band, deviation: Double)) -> ProblemMarkerDescriptor {
+        ProblemMarkerDescriptor(
+            band: item.band,
+            direction: item.deviation > 0 ? .overTarget : .underTarget,
+            severityDb: roundedMagnitude(item.deviation)
+        )
     }
 
     /// The gated, level-matched, thresholded, sorted, capped (band, signed deviation)
     /// list that both `events(for:sessionTime:)` and `problemMarkers(for:)` map over.
     private func problemBands(for levels: BandLevels) -> [(band: Band, deviation: Double)] {
-        guard levels[levels.loudest] >= Self.minimumSignalDb else { return [] }
-        let raw = Band.allCases.map { ($0, levels[$0] - (targets[$0] ?? 0)) }
-        let mean = raw.reduce(0) { $0 + $1.1 } / Double(raw.count)
-        return raw
-            .map { (band: $0.0, deviation: $0.1 - mean) }
+        let deviations = deviations(for: levels)
+        return Band.allCases
+            .compactMap { band in deviations[band].map { (band: band, deviation: $0) } }
             .filter { abs($0.deviation) >= Self.thresholdDb }
             .sorted { abs($0.deviation) > abs($1.deviation) }
             .prefix(Self.maxEvents)
-            .map { (band: $0.band, deviation: $0.deviation) }
+            .map { $0 }
     }
 
     private func event(band: Band, deviation: Double, sessionTime: Double) -> CoachingEvent {
