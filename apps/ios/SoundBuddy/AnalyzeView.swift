@@ -167,6 +167,13 @@ struct AnalyzeView: View {
         ConsoleCoachingMapper.showsAction(for: event, consoleVisible: showsConsoleChip, phase: console?.phase ?? .idle)
     }
 
+    /// The same armed-writer-and-live-link gate `ConsoleEQPanel` uses for
+    /// Apply (#1676 rework) — Undo in the coaching stack shares it so a tap
+    /// while disarmed never fires the `.disarmed` throw into the void.
+    private var canUndoApplied: Bool {
+        consoleEQWriter != nil && (console?.phase.isLinkUp ?? false)
+    }
+
     /// Selects Main LR and stores the tapped event (#1671); on the sheet
     /// placement it also opens the sheet — on the side-column placement the
     /// panel is already on screen and just updates.
@@ -194,6 +201,7 @@ struct AnalyzeView: View {
                 onShowOnConsole: { showOnConsole($0, placement: placement) },
                 showsConsoleAction: showsConsoleAction,
                 applied: console?.appliedCoaching,
+                canUndoApplied: canUndoApplied,
                 onUndoApplied: { try? console?.undoAppliedCoaching(using: consoleEQWriter) }
             )
             Spacer(minLength: 0)
@@ -243,6 +251,7 @@ struct AnalyzeView: View {
                     },
                     showsConsoleAction: showsConsoleAction,
                     applied: console?.appliedCoaching,
+                    canUndoApplied: canUndoApplied,
                     onUndoApplied: { try? console?.undoAppliedCoaching(using: consoleEQWriter) }
                 )
             }
@@ -485,6 +494,7 @@ private struct CoachingPeekPanel: View {
     var onShowOnConsole: ((CoachingEvent) -> Void)? = nil
     var showsConsoleAction: (CoachingEvent) -> Bool = { _ in false }
     var applied: ConsoleCoachingApplied? = nil
+    var canUndoApplied = false
     var onUndoApplied: (() -> Void)? = nil
 
     var body: some View {
@@ -495,6 +505,7 @@ private struct CoachingPeekPanel: View {
                     onShowOnConsole: onShowOnConsole,
                     showsConsoleAction: showsConsoleAction,
                     applied: applied,
+                    canUndoApplied: canUndoApplied,
                     onUndoApplied: onUndoApplied
                 )
             }
@@ -679,6 +690,10 @@ struct CoachingStackView: View {
     /// The last coaching suggestion Apply wrote to Main LR (#1676), or `nil`
     /// before any Apply (or after Undo/a console change clears it).
     var applied: ConsoleCoachingApplied? = nil
+    /// The same armed-writer-and-live-link gate `ConsoleEQPanel` uses for
+    /// Apply (#1676 rework) — while false, Undo reads "Unlock to undo" and
+    /// is disabled, so a tap never fires the `.disarmed` throw into the void.
+    var canUndoApplied = false
     var onUndoApplied: (() -> Void)? = nil
 
     var body: some View {
@@ -687,7 +702,7 @@ struct CoachingStackView: View {
             Text("Coaching")
                 .font(.headline)
             if let applied, let onUndoApplied {
-                AppliedCoachingNote(applied: applied, onUndo: onUndoApplied)
+                AppliedCoachingNote(applied: applied, canUndo: canUndoApplied, onUndo: onUndoApplied)
             }
             ForEach(0..<BandDeviationCoach.maxEvents, id: \.self) { slot in
                 if slot < events.count {
@@ -708,9 +723,12 @@ struct CoachingStackView: View {
 
 /// The applied-coaching note in the coaching stack (#1676): a checkmark, the
 /// confirmation copy, and an Undo button that writes that one band back to
-/// its prior value.
+/// its prior value. `canUndo` gates the button the same way `canApply` gates
+/// Apply in `ConsoleEQPanel` (#1676 rework) — while false, the label reads
+/// "Unlock to undo" and the button is disabled.
 private struct AppliedCoachingNote: View {
     let applied: ConsoleCoachingApplied
+    let canUndo: Bool
     let onUndo: () -> Void
 
     var body: some View {
@@ -720,9 +738,10 @@ private struct AppliedCoachingNote: View {
             Text(applied.confirmation)
                 .font(.subheadline)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Undo", action: onUndo)
+            Button(ConsoleCoachingMapper.undoLabel(isArmed: canUndo), action: onUndo)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Palette.accent)
+                .disabled(!canUndo)
                 .accessibilityIdentifier("coaching.applied.undo")
         }
         .padding(.horizontal, Layout.cardPadding)

@@ -75,6 +75,11 @@ public enum ConsoleCoachingMapper {
     /// The Apply button's label (disabled) while no armed writer is
     /// available — tells the engineer what to do, not just that it's off.
     public static let applyLabelDisarmed = "Unlock to apply"
+    /// The Undo button's label while an armed writer is available.
+    public static let undoLabelArmed = "Undo"
+    /// The Undo button's label (disabled) while no armed writer is
+    /// available — tells the engineer what to do, not just that it's off.
+    public static let undoLabelDisarmed = "Unlock to undo"
 
     static let deviationKey = "deviationDb"
     static let minusSign = "\u{2212}"
@@ -146,6 +151,13 @@ public enum ConsoleCoachingMapper {
     /// "Apply" once armed, or "Unlock to apply" (disabled) otherwise.
     public static func applyLabel(isArmed: Bool) -> String {
         isArmed ? applyLabelArmed : applyLabelDisarmed
+    }
+
+    /// "Undo" once armed, or "Unlock to undo" (disabled) otherwise — the
+    /// Undo button is gated on the same armed state as Apply (#1676 rework),
+    /// so a tap while disarmed never silently swallows a `.disarmed` throw.
+    public static func undoLabel(isArmed: Bool) -> String {
+        isArmed ? undoLabelArmed : undoLabelDisarmed
     }
 
     private static func isPeqOrVeq(_ type: ConsoleEQBandType) -> Bool {

@@ -105,7 +105,12 @@ struct ConsoleEQPanel: View {
                 )
             }
             if console.selected == .mainLR, let applied = console.appliedCoaching {
-                AppliedCoachingBlock(applied: applied) { try? console.undoAppliedCoaching(using: eqWriter) }
+                AppliedCoachingBlock(
+                    applied: applied,
+                    undoLabel: ConsoleCoachingMapper.undoLabel(isArmed: canApply),
+                    canUndo: canApply,
+                    onUndo: { try? console.undoAppliedCoaching(using: eqWriter) }
+                )
             }
             VStack(alignment: .leading, spacing: Layout.rowSpacing) {
                 ForEach(state.bandRows, id: \.number) { row in
@@ -245,10 +250,14 @@ private struct CoachingGhostBlock: View {
 /// The applied-coaching confirmation row (#1676): the confirmation copy, the
 /// before → after line, and an Undo button that writes that one band back
 /// to its prior value. Shown only while Main LR is selected and something is
-/// applied — `onUndo` already swallows `.disarmed` because the button stays
-/// enabled regardless of armed state, matching the Undo card in AnalyzeView.
+/// applied. `canUndo` is the same armed-writer-and-live-link gate as
+/// Apply's `canApply` (#1676 rework) — while false, `undoLabel` reads
+/// "Unlock to undo" and the button is disabled, so a tap never sends the
+/// `.disarmed` throw into the void.
 private struct AppliedCoachingBlock: View {
     let applied: ConsoleCoachingApplied
+    let undoLabel: String
+    let canUndo: Bool
     let onUndo: () -> Void
 
     var body: some View {
@@ -260,9 +269,10 @@ private struct AppliedCoachingBlock: View {
             Text(applied.beforeAfter)
                 .font(.caption)
                 .foregroundStyle(Palette.secondaryText)
-            Button("Undo", action: onUndo)
+            Button(undoLabel, action: onUndo)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Palette.accent)
+                .disabled(!canUndo)
                 .accessibilityIdentifier("consoleEQ.applied.undo")
         }
         .padding(Layout.padding)

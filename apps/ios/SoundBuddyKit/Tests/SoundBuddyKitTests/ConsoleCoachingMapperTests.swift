@@ -191,6 +191,16 @@ private func quantizedQ(_ band: Band) -> Double {
         #expect(ConsoleCoachingMapper.applyLabel(isArmed: true) == "Apply")
     }
 
+    @Test func undoLabelReadsUnlockToUndoWhenDisarmed() {
+        #expect(ConsoleCoachingMapper.undoLabel(isArmed: false) == ConsoleCoachingMapper.undoLabelDisarmed)
+        #expect(ConsoleCoachingMapper.undoLabel(isArmed: false) == "Unlock to undo")
+    }
+
+    @Test func undoLabelReadsUndoWhenArmed() {
+        #expect(ConsoleCoachingMapper.undoLabel(isArmed: true) == ConsoleCoachingMapper.undoLabelArmed)
+        #expect(ConsoleCoachingMapper.undoLabel(isArmed: true) == "Undo")
+    }
+
     @Test func appliedBeforeAfterCopy() throws {
         let eq = mainLR(flatMainLRLines)
         let suggestion = try #require(
