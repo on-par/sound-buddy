@@ -464,4 +464,63 @@ struct AnalyzeLayoutTests {
             #expect(m.bandMinHeight(isEditing: false, spacing: 6) >= 2 * 44 + 6)
         }
     }
+
+    // MARK: - Target tray in the wide trailing column (#1745)
+
+    @Test(
+        "only the wide (iPad landscape) layout shows the Target tray",
+        arguments: [
+            (AnalyzeLayout.portrait, false),
+            (AnalyzeLayout.landscape, false),
+            (AnalyzeLayout.tallPortrait, false),
+            (AnalyzeLayout.wide, true),
+        ]
+    )
+    func showsTargetTray(layout: AnalyzeLayout, expected: Bool) {
+        #expect(layout.showsTargetTray == expected)
+    }
+
+    @Test("the tray never changes the RTA's share of the row")
+    func trayKeepsRTAShare() {
+        #expect(AnalyzeLayout.wideRTAShare(showsConsoleEQ: false) == AnalyzeLayout.wideRTAWidthFraction)
+        #expect(abs(AnalyzeLayout.wideRTAShare(showsConsoleEQ: true) - (1 - AnalyzeLayout.consoleEQColumnWidthFraction)) < 0.0001)
+    }
+
+    @Test("the tray is two 44 pt rows alone, and collapses to one row above the console EQ")
+    func trayHeight() {
+        let full = AnalyzeLayout.wideTargetTrayHeight(showsConsoleEQ: false)
+        let collapsed = AnalyzeLayout.wideTargetTrayHeight(showsConsoleEQ: true)
+        #expect(AnalyzeLayout.wideTargetTrayRows(showsConsoleEQ: false) == 2)
+        #expect(AnalyzeLayout.wideTargetTrayRows(showsConsoleEQ: true) == 1)
+        #expect(full >= 2 * TargetControlMetrics.minimumHitTarget)
+        #expect(collapsed >= TargetControlMetrics.minimumHitTarget)
+        #expect(collapsed < full)
+    }
+
+    @Test(
+        "tray + (console EQ +) coaching fit the column with nothing clipped, from iPad mini to iPad Pro 13 inch",
+        arguments: [(560.0, false), (560.0, true), (900.0, false), (900.0, true)]
+    )
+    func trayFitsTheColumn(columnHeight: Double, showsConsoleEQ: Bool) {
+        let spacing = 12.0
+        let split = AnalyzeLayout.wideTrailingColumnSplit(columnHeight: columnHeight, spacing: spacing, showsConsoleEQ: showsConsoleEQ)
+        #expect(split.tray == AnalyzeLayout.wideTargetTrayHeight(showsConsoleEQ: showsConsoleEQ))
+        #expect(split.consoleEQ >= 0)
+        #expect(split.coaching > 0)
+        let gaps = spacing * (showsConsoleEQ ? 2 : 1)
+        #expect(split.tray + split.consoleEQ + split.coaching + gaps <= columnHeight + 0.001)
+        if showsConsoleEQ {
+            #expect(split.consoleEQ > split.coaching, "the EQ panel keeps the larger share below the tray")
+        } else {
+            #expect(split.consoleEQ == 0)
+        }
+    }
+
+    @Test("a tiny or non-finite column never yields negative heights", arguments: [0.0, 40.0, Double.nan, Double.infinity])
+    func traySplitEdges(columnHeight: Double) {
+        let split = AnalyzeLayout.wideTrailingColumnSplit(columnHeight: columnHeight, spacing: 12, showsConsoleEQ: true)
+        #expect(split.tray >= 0)
+        #expect(split.consoleEQ >= 0)
+        #expect(split.coaching >= 0)
+    }
 }

@@ -285,19 +285,29 @@ struct AnalyzeView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
-                Group {
-                    if showsConsoleEQ, let console {
-                        GeometryReader { column in
-                            VStack(spacing: Layout.landscapeSpacing) {
-                                ConsoleEQPanel(console: console, analyze: model, showsTargetButton: false)
-                                    .frame(height: AnalyzeLayout.wideConsoleEQPanelHeight(
-                                        columnHeight: column.size.height,
-                                        spacing: Layout.landscapeSpacing
-                                    ))
-                                coaching
-                            }
+                // Trailing column, top to bottom (#1745): the Target tray
+                // (fixed height; one row above the console EQ), the console
+                // EQ panel when shown, then coaching (scrolls). Heights come
+                // from AnalyzeLayout.wideTrailingColumnSplit, so nothing clips.
+                GeometryReader { column in
+                    let split = AnalyzeLayout.wideTrailingColumnSplit(
+                        columnHeight: column.size.height,
+                        spacing: Layout.landscapeSpacing,
+                        showsConsoleEQ: showsConsoleEQ
+                    )
+                    VStack(spacing: Layout.landscapeSpacing) {
+                        if layout.showsTargetTray {
+                            TargetTray(
+                                model: model,
+                                rows: AnalyzeLayout.wideTargetTrayRows(showsConsoleEQ: showsConsoleEQ),
+                                onEdit: beginTargetEdit
+                            )
+                            .frame(height: split.tray)
                         }
-                    } else {
+                        if showsConsoleEQ, let console {
+                            ConsoleEQPanel(console: console, analyze: model, showsTargetButton: false)
+                                .frame(height: split.consoleEQ)
+                        }
                         coaching
                     }
                 }
@@ -947,6 +957,132 @@ private struct TargetPresetPill: View {
     }
 }
 
+// MARK: - Target tray (iPad landscape, #1745)
+
+/// A compact card at the top of the wide layout's trailing column for
+/// picking and editing the target curve on the right-hand side. Two rows
+/// alone: the current target (with an "auto" badge) and **Edit curve**, then
+/// the picker. One row above the console EQ panel. Picking applies the curve
+/// directly (no edit mode); **Auto** returns to the program-mode target.
+/// Every control is at least 44 pt. Disabled while editing: the band under
+/// the RTA owns the edit (Cancel / Done).
+private struct TargetTray: View {
+    let model: AnalyzeModel
+    let rows: Int
+    let onEdit: () -> Void
+
+    var body: some View {
+        Group {
+            if rows >= 2 {
+                VStack(alignment: .leading, spacing: AnalyzeLayout.wideTargetTrayRowSpacing) {
+                    HStack(spacing: Layout.legendSwatchGap) {
+                        name
+                        Spacer(minLength: Layout.legendSwatchGap)
+                        editButton
+                    }
+                    picker
+                    // Slot for Duplicate / Rename / Delete, filled by the
+                    // manage-targets issue.
+                }
+            } else {
+                HStack(spacing: Layout.legendSwatchGap) {
+                    name
+                    Spacer(minLength: Layout.legendSwatchGap)
+                    picker
+                    editButton
+                }
+            }
+        }
+        .padding(.horizontal, Layout.cardPadding)
+        .padding(.vertical, AnalyzeLayout.wideTargetTrayPadding)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: Layout.cornerRadius))
+        .disabled(model.isEditingTarget)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("analyze.targetTray")
+    }
+
+    private var name: some View {
+        HStack(spacing: Layout.legendSwatchGap) {
+            Text(model.target.label)
+                .font(.headline)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            if model.targetIsAuto {
+                Text("auto")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Palette.secondaryText)
+                    .padding(.horizontal, Layout.badgePaddingH)
+                    .padding(.vertical, Layout.badgePaddingV)
+                    .background(Palette.background, in: Capsule())
+            }
+        }
+        .frame(minHeight: TargetControlMetrics.minimumHitTarget)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(model.targetLegendText)
+        .accessibilityIdentifier("analyze.targetTray.name")
+    }
+
+    private var editButton: some View {
+        Button(action: onEdit) {
+            Label("Edit curve", systemImage: "pencil")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Palette.target)
+                .padding(.horizontal, Layout.trayButtonPaddingH)
+                .frame(minWidth: TargetControlMetrics.minimumHitTarget, minHeight: TargetControlMetrics.minimumHitTarget)
+                .background(Capsule().strokeBorder(Palette.target.opacity(Layout.pencilBorderOpacity), lineWidth: Layout.pencilBorderWidth))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Edits the target curve")
+        .accessibilityIdentifier("analyze.targetTray.edit")
+    }
+
+    private var picker: some View {
+        let selected = model.selectedTargetTrayId
+        let options = model.targetTrayOptions
+        let current = options.first(where: { $0.id == selected })?.title ?? model.target.label
+        return Menu {
+            ForEach(options) { option in
+                Button {
+                    withAnimation(.snappy) { select(option) }
+                } label: {
+                    if option.id == selected {
+                        Label(option.title, systemImage: "checkmark")
+                    } else {
+                        Text(option.title)
+                    }
+                }
+                .accessibilityIdentifier("analyze.targetTray.option.\(option.id)")
+            }
+        } label: {
+            HStack(spacing: Layout.legendSwatchGap) {
+                Text(current)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(Palette.secondaryText)
+            .padding(.horizontal, Layout.trayButtonPaddingH)
+            .frame(minHeight: TargetControlMetrics.minimumHitTarget)
+            .background(Palette.background, in: Capsule())
+            .contentShape(Capsule())
+        }
+        .accessibilityLabel("Target curve")
+        .accessibilityValue(current)
+        .accessibilityIdentifier("analyze.targetTray.picker")
+    }
+
+    private func select(_ option: AnalyzeModel.TargetTrayOption) {
+        if option.id == AnalyzeModel.autoTargetTrayId {
+            model.selectAutoTarget()
+        } else {
+            model.selectTarget(id: option.id)
+        }
+    }
+}
+
 // MARK: - Coaching
 
 /// The short coaching stack: up to AnalyzeCoachingViewModel.maxCards cards,
@@ -1156,6 +1292,7 @@ private enum Layout {
     static let presetPillPaddingH: CGFloat = 10
     static let pencilBorderOpacity: CGFloat = 0.5
     static let pencilBorderWidth: CGFloat = 1
+    static let trayButtonPaddingH: CGFloat = 12
     static let landscapeSpacing: CGFloat = 8
     static let peekHandleHeight: CGFloat = 28
     static let peekDragMinDistance: CGFloat = 8

@@ -183,4 +183,55 @@ public enum AnalyzeLayout: Equatable, Sendable {
     public static func peekOpen(afterEditingChange isEditingTarget: Bool, wasOpen: Bool) -> Bool {
         isEditingTarget ? false : wasOpen
     }
+
+    // MARK: Target tray (#1745)
+
+    /// The iPad Target tray (pick and edit the target curve) sits at the top
+    /// of the wide layout's trailing column. Every other layout keeps the
+    /// legend band under the RTA.
+    public var showsTargetTray: Bool { self == .wide }
+
+    /// Vertical padding inside the tray card, top and bottom.
+    public static let wideTargetTrayPadding = 10.0
+    /// Gap between the tray's two rows.
+    public static let wideTargetTrayRowSpacing = 8.0
+
+    /// Rows in the tray: two (name + Edit curve, then the picker) when it has
+    /// the column to itself; one (name, picker, Edit curve) above the console
+    /// EQ panel, so the EQ keeps the room #1685 gave it.
+    public static func wideTargetTrayRows(showsConsoleEQ: Bool) -> Int {
+        showsConsoleEQ ? 1 : 2
+    }
+
+    /// The tray's fixed height: its rows at 44 pt each, the row gap and the
+    /// card padding.
+    public static func wideTargetTrayHeight(showsConsoleEQ: Bool) -> Double {
+        let rows = Double(wideTargetTrayRows(showsConsoleEQ: showsConsoleEQ))
+        return rows * TargetControlMetrics.minimumHitTarget
+            + (rows - 1) * wideTargetTrayRowSpacing
+            + 2 * wideTargetTrayPadding
+    }
+
+    /// Heights in the wide trailing column (top to bottom): tray, console EQ
+    /// panel (0 when hidden), coaching (scrolls). The tray is fixed; the EQ
+    /// panel takes `wideConsoleEQHeightFraction` of what is left; coaching
+    /// gets the rest. Nothing goes negative for tiny or non-finite input.
+    public struct WideTrailingColumnSplit: Equatable, Sendable {
+        public let tray: Double
+        public let consoleEQ: Double
+        public let coaching: Double
+    }
+
+    public static func wideTrailingColumnSplit(columnHeight: Double, spacing: Double, showsConsoleEQ: Bool) -> WideTrailingColumnSplit {
+        let tray = wideTargetTrayHeight(showsConsoleEQ: showsConsoleEQ)
+        guard columnHeight.isFinite, columnHeight > tray + spacing else {
+            return WideTrailingColumnSplit(tray: tray, consoleEQ: 0, coaching: 0)
+        }
+        let below = columnHeight - tray - spacing
+        guard showsConsoleEQ else {
+            return WideTrailingColumnSplit(tray: tray, consoleEQ: 0, coaching: below)
+        }
+        let eq = wideConsoleEQPanelHeight(columnHeight: below, spacing: spacing)
+        return WideTrailingColumnSplit(tray: tray, consoleEQ: eq, coaching: max(0, below - spacing - eq))
+    }
 }
