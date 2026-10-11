@@ -20,17 +20,29 @@ struct SoundBuddyApp: App {
         let inputs = MicInputController(session: SystemMicInputSession())
         _micInputs = State(initialValue: inputs)
         let target = IdealCurveLibrary.liveDefault()
-        var source: LiveAudioSource = MicCapture(inputs: inputs)
+        // Demo sources replace the mic entirely: MicCapture (and its
+        // AVAudioEngine) is only built when no demo is requested, so a demo
+        // launch never touches the microphone or raises the record prompt.
+        var demoSource: LiveAudioSource?
         #if DEBUG
         if CoachingDemoSource.isRequested(by: ProcessInfo.processInfo.arguments) {
-            source = CoachingDemoSource(target: target)
+            demoSource = CoachingDemoSource(target: target)
         }
         if SpeechBedDemoSource.isRequested(by: ProcessInfo.processInfo.arguments) {
-            source = SpeechBedDemoSource()
+            demoSource = SpeechBedDemoSource()
         }
         #endif
+        var permission: MicPermission = SystemMicPermission()
+        #if DEBUG
+        // Simulator proofs: demo sources (and -skipMicPrompt) never show the
+        // record-permission alert over the screen being captured.
+        if DebugLaunchOptions.skipsMicPermissionPrompt(ProcessInfo.processInfo.arguments) {
+            permission = PreGrantedMicPermission()
+        }
+        #endif
+        let source: LiveAudioSource = demoSource ?? MicCapture(inputs: inputs)
         let analyze = AnalyzeModel(
-            permission: SystemMicPermission(),
+            permission: permission,
             source: source,
             target: target
         )

@@ -93,6 +93,15 @@ Every platform's tests run this file to **±0.01 dB**. iOS reads a byte-identica
 python3 apps/ios/scripts/make_rta_display_fixture.py
 ```
 
+## Built-in mic limits (iOS, #1708)
+
+What the phone or iPad RTA can and can't tell you:
+
+- **Raw path, proven at runtime.** Capture runs in `.record` / `.measurement` mode with the input node's voice processing off (Sound Buddy never enables it), so there is no AGC or speech EQ. Settings > Mic path shows "Mic: Raw measurement ✓" with the mode, port, data source, polar pattern and sample rate the running capture actually got, or "Processed ⚠" with the reason. Capture start also logs one `mic` line (subsystem `com.soundbuddy.ios`).
+- **Omni where offered.** When the built-in mic offers an omnidirectional pattern and the user hasn't picked a data source (Settings > Microphone), capture selects it rather than the speech-tuned cardioid/subcardioid sources.
+- **Uncalibrated.** Built-in mics typically roll off below about 100 Hz and are uneven above about 10 kHz. Top, bottom, front and back sources differ from each other and between models. Treat the RTA's extremes as indicative, and compare like with like (same device, same source).
+- **Levels stay estimates** (ADR-0158): dBFS or relative dB, never SPL. Mic calibration and external interfaces are out of scope.
+
 ## Desk RTA (#1704)
 
 The desk RTA must render with this spec: the same grid (power-summed from the 100 bins), views, ballistics and peak hold. The desk's own `rta/decay` already smooths `/meters/15`. #1704 must document that, and must not write desk prefs (ADR-0161).

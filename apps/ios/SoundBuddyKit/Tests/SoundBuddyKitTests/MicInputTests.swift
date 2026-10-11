@@ -24,6 +24,35 @@ private final class FakeMicSession: MicInputSession {
         // (the built-in mic on an iPhone).
         activeID = option?.id ?? options.first?.id
     }
+
+    // #1708: the current route's built-in data sources and polar patterns.
+    var dataSources: [MicDataSource] = []
+    var selectedDataSourceID: Int?
+    var polarChoices: [MicPolarChoice] = []
+    var failPolar = false
+
+    func builtInMicDataSources() -> [MicDataSource] { dataSources }
+    func selectedBuiltInDataSourceID() -> Int? { selectedDataSourceID }
+
+    func applyPolarPattern(_ choice: MicPolarChoice) throws {
+        if failPolar { throw ApplyFailure() }
+        polarChoices.append(choice)
+        selectedDataSourceID = choice.dataSourceID
+        dataSources = dataSources.map {
+            $0.id == choice.dataSourceID
+                ? MicDataSource(id: $0.id, name: $0.name, supportedPolarPatterns: $0.supportedPolarPatterns, selectedPolarPattern: choice.pattern)
+                : $0
+        }
+    }
+}
+
+/// A session that only implements the original #1594 surface, proving the
+/// #1708 additions have safe defaults.
+@MainActor
+private final class MinimalMicSession: MicInputSession {
+    func availableOptions() -> [MicInputOption] { [] }
+    func activeOptionID() -> String? { nil }
+    func apply(_ option: MicInputOption?) throws {}
 }
 
 private struct ApplyFailure: Error {}
@@ -342,5 +371,114 @@ struct MicInputControllerTests {
         #expect(controller.preferredID == nil)
         #expect(controller.activeID == nil)
         #expect(controller.activeName == MicInputPolicy.systemDefaultName)
+    }
+}
+
+private let cardioidFront = MicDataSource(id: 2, name: "Front", supportedPolarPatterns: [.cardioid, .subcardioid], selectedPolarPattern: .cardioid)
+private let omniBottom = MicDataSource(id: 1, name: "Bottom", supportedPolarPatterns: [.omnidirectional, .cardioid], selectedPolarPattern: .cardioid)
+
+@MainActor
+@Suite("MicInputController omni preference and diagnostics (#1708)")
+struct MicInputControllerRawPathTests {
+    @Test("with no source picked, capture start selects the built-in omni pattern")
+    func omniOnStart() throws {
+        let (defaults, suite) = try freshDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let session = FakeMicSession(options: [bottom, front], activeID: front.id)
+        session.dataSources = [omniBottom, cardioidFront]
+        session.selectedDataSourceID = 2
+        let controller = MicInputController(session: session, defaults: defaults)
+        controller.applyPreferred()
+        #expect(session.polarChoices == [MicPolarChoice(dataSourceID: 1, pattern: .omnidirectional)])
+        #expect(controller.polarChoice == MicPolarChoice(dataSourceID: 1, pattern: .omnidirectional))
+    }
+
+    @Test("a picked built-in data source is never switched to omni")
+    func userPickWins() throws {
+        let (defaults, suite) = try freshDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        MicInputPolicy.storePreferredID(front.id, in: defaults)
+        let session = FakeMicSession(options: [bottom, front], activeID: front.id)
+        session.dataSources = [omniBottom, cardioidFront]
+        session.selectedDataSourceID = 2
+        let controller = MicInputController(session: session, defaults: defaults)
+        controller.applyPreferred()
+        #expect(session.polarChoices.isEmpty)
+        #expect(controller.polarChoice == nil)
+    }
+
+    @Test("an external input picked by the user still gets no built-in pattern change")
+    func externalPick() throws {
+        let (defaults, suite) = try freshDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        MicInputPolicy.storePreferredID(usb.id, in: defaults)
+        let session = FakeMicSession(options: [usb], activeID: usb.id)
+        let controller = MicInputController(session: session, defaults: defaults)
+        controller.applyPreferred()
+        #expect(session.polarChoices.isEmpty, "no built-in sources on the route")
+    }
+
+    @Test("a refused pattern change keeps capture going with no recorded choice")
+    func polarRefused() throws {
+        let (defaults, suite) = try freshDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let session = FakeMicSession(options: [bottom, front], activeID: bottom.id)
+        session.dataSources = [omniBottom]
+        session.selectedDataSourceID = 1
+        session.failPolar = true
+        let controller = MicInputController(session: session, defaults: defaults)
+        controller.applyPreferred()
+        #expect(controller.polarChoice == nil)
+        #expect(controller.activeID == bottom.id)
+    }
+
+    @Test("a route change re-applies the omni preference")
+    func routeChangeReappliesOmni() throws {
+        let (defaults, suite) = try freshDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let session = FakeMicSession(options: [bottom, front], activeID: bottom.id)
+        session.dataSources = [omniBottom, cardioidFront]
+        session.selectedDataSourceID = 1
+        let controller = MicInputController(session: session, defaults: defaults)
+        controller.applyPreferred()
+        #expect(session.polarChoices.count == 1)
+        // The OS swaps back to the cardioid front source on the new route.
+        session.selectedDataSourceID = 2
+        session.dataSources = [omniBottom, cardioidFront]
+        #expect(controller.routeChanged(.deviceAdded))
+        #expect(session.polarChoices.count == 2)
+        #expect(session.polarChoices.last == MicPolarChoice(dataSourceID: 1, pattern: .omnidirectional))
+    }
+
+    @Test("capture records its diagnostics; each restart replaces them and stop clears them")
+    func diagnosticsRefresh() {
+        let controller = MicInputController(session: MinimalMicSession())
+        #expect(controller.diagnostics == nil)
+        let first = MicSessionDiagnostics(
+            category: "AVAudioSessionCategoryRecord", mode: MicSessionDiagnostics.measurementMode,
+            inputPortType: "MicrophoneBuiltIn", inputPortName: "iPhone Microphone", dataSource: "Bottom",
+            polarPattern: "Omnidirectional", sampleRate: 48_000, isVoiceProcessingEnabled: false,
+            isVoiceProcessingAGCEnabled: false, isInputGainSettable: true
+        )
+        controller.recordDiagnostics(first)
+        #expect(controller.diagnostics == first)
+        let afterRouteChange = MicSessionDiagnostics(
+            category: "AVAudioSessionCategoryRecord", mode: MicSessionDiagnostics.measurementMode,
+            inputPortType: "USBAudio", inputPortName: "Scarlett Solo USB", dataSource: nil,
+            polarPattern: nil, sampleRate: 44_100, isVoiceProcessingEnabled: false,
+            isVoiceProcessingAGCEnabled: nil, isInputGainSettable: true
+        )
+        controller.recordDiagnostics(afterRouteChange)
+        #expect(controller.diagnostics == afterRouteChange)
+        #expect(controller.diagnostics?.isRawMeasurement == true, "still raw after the restart")
+        controller.recordDiagnostics(nil)
+        #expect(controller.diagnostics == nil)
+    }
+
+    @Test("a session without the #1708 surface never changes patterns")
+    func minimalSession() {
+        let controller = MicInputController(session: MinimalMicSession())
+        controller.applyPreferred()
+        #expect(controller.polarChoice == nil)
     }
 }
