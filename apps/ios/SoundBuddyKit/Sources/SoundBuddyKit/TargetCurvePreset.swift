@@ -10,8 +10,9 @@ public struct TargetCurvePreset: Equatable, Sendable, Identifiable {
     public static let flat = TargetCurvePreset(id: IdealCurveLibrary.flatId, title: "Flat")
     public static let musicFullRange = TargetCurvePreset(id: IdealCurveLibrary.musicFullRangeId, title: "Music fullrange")
     public static let worshipService = TargetCurvePreset(id: IdealCurveLibrary.worshipServiceId, title: "Worship service")
+    public static let worshipRoom = TargetCurvePreset(id: IdealCurveLibrary.worshipRoomId, title: "Worship room")
     /// Pill order, left to right.
-    public static let all: [TargetCurvePreset] = [flat, musicFullRange, worshipService]
+    public static let all: [TargetCurvePreset] = [flat, musicFullRange, worshipService, worshipRoom]
 
     /// The bundled curve for this preset.
     public func curve(load: (String) throws -> IdealCurve = IdealCurveLibrary.builtIn(id:)) throws -> IdealCurve {

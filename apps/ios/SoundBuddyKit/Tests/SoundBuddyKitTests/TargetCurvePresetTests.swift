@@ -5,13 +5,14 @@ import Testing
 private struct LoaderFailure: Error, Equatable {}
 
 @Suite struct TargetCurvePresetAllTests {
-    @Test func listsFlatMusicWorshipInOrder() {
+    @Test func listsFlatMusicWorshipWorshipRoomInOrder() {
         #expect(TargetCurvePreset.all.map(\.id) == [
             IdealCurveLibrary.flatId,
             IdealCurveLibrary.musicFullRangeId,
             IdealCurveLibrary.worshipServiceId,
+            IdealCurveLibrary.worshipRoomId,
         ])
-        #expect(TargetCurvePreset.all.map(\.title) == ["Flat", "Music fullrange", "Worship service"])
+        #expect(TargetCurvePreset.all.map(\.title) == ["Flat", "Music fullrange", "Worship service", "Worship room"])
     }
 
     @Test func everyPresetIdIsABuiltInId() {

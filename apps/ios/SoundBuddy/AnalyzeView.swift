@@ -22,14 +22,14 @@ import UIKit
 /// stays on screen — no pushed view (#1558). The header / landscape strip
 /// always keeps the listening indicator and the band keeps one height, so the
 /// RTA never moves when editing starts or ends (#1565). While editing, a row
-/// of preset pills (Flat / Music fullrange / Worship service) sits under the
+/// of preset pills (Flat / Music fullrange / Worship service / Worship room) sits under the
 /// legend band; tapping one seeds the draft from that bundled curve (#1560).
 /// While editing, problem markers hide and the landscape coaching peek stays
 /// closed, so neither overlay collides with the handles or the chip (#1562).
 /// A small Speech/Music chip sits beside the legend in every layout (#1690):
 /// it reflects AnalyzeModel's detected program mode, and — only while the
 /// target is auto and not being edited — that mode also drives the auto
-/// target itself (worship-service for music, speech-podcast for speech).
+/// target itself (worship-room for music, speech-podcast for speech).
 ///
 /// A gear button beside the level readout (end of the landscape strip) opens
 /// the Settings sheet (#1591). Its keep-awake toggle (#1584): while on (the

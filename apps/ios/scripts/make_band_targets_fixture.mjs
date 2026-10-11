@@ -25,7 +25,7 @@ export const FIXTURE_PATH = resolve(
 );
 
 /** The curves bundled in SoundBuddyKit (IdealCurveLibrary.builtInIds). */
-export const BUILT_IN_IDS = ["flat", "music-fullrange", "worship-service", "speech-podcast"];
+export const BUILT_IN_IDS = ["flat", "music-fullrange", "worship-service", "speech-podcast", "worship-room"];
 
 /** Edge cases the Swift port must treat exactly as the TS reduction does. */
 export const EDGE_CASES = [

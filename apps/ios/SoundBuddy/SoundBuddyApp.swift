@@ -28,11 +28,15 @@ struct SoundBuddyApp: App {
             source = SpeechBedDemoSource()
         }
         #endif
-        _model = State(initialValue: AnalyzeModel(
+        let analyze = AnalyzeModel(
             permission: SystemMicPermission(),
             source: source,
             target: target
-        ))
+        )
+        #if DEBUG
+        TargetEditDemo.apply(ProcessInfo.processInfo.arguments, to: analyze)
+        #endif
+        _model = State(initialValue: analyze)
 
         #if DEBUG
         if let demo = ConsoleDemoSeed.fromLaunchArguments(ProcessInfo.processInfo.arguments) {
@@ -122,6 +126,22 @@ private enum ConsoleDemoSeed {
 #endif
 
 #if DEBUG
+/// `-targetEditDemo [presetId]`: opens Analyze already in target-edit mode
+/// and, when a preset id follows (for example `worship-room`), selects that
+/// pill, so simulator proof of the preset row needs no taps (#1725).
+/// Compiles out of Release, like `-coachingDemo`.
+private enum TargetEditDemo {
+    @MainActor
+    static func apply(_ arguments: [String], to model: AnalyzeModel) {
+        guard let flagIndex = arguments.firstIndex(of: "-targetEditDemo") else { return }
+        model.beginTargetEdit()
+        guard flagIndex + 1 < arguments.count,
+              let preset = TargetCurvePreset.all.first(where: { $0.id == arguments[flagIndex + 1] })
+        else { return }
+        model.selectTargetPreset(preset)
+    }
+}
+
 /// `-coachingDemo`: replaces the mic with a synthetic, fluctuating reading
 /// stream so the coaching stack can be recorded on a simulator with no audio
 /// input (#1700, #1715). It loops a 60 s script:

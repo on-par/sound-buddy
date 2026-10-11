@@ -131,6 +131,25 @@ export const PROFILES: IdealProfile[] = [
     ],
   },
   {
+    // Measured on the iPad mic at FOH from a mix Patrick called good-sounding
+    // (Oct 11 2026 reference recording, #1725): long-term spectrum on this
+    // grid, in the dbOffsets convention. iOS uses it as the Music auto target;
+    // the Mac live default stays worship-service. Advisory tolerances for
+    // reading it (the coach keeps its global 3 dB threshold): +/-3 dB from
+    // 250 Hz to 6 kHz, +/-4 dB at 100-250 Hz and 6-12 kHz, +/-6 dB below
+    // 100 Hz and above 12 kHz, where iPad mic roll-off and the recording's
+    // AAC low-pass make the measurement less trustworthy.
+    id: "worship-room",
+    label: "Worship (room mic)",
+    description: "Reference target from a good-sounding worship mix measured on the iPad mic at FOH.",
+    freqs: GRID_FREQS,
+    dbOffsets: [
+      -8.0, -7.5, -6.0, -3.5, -1.0, 1.5, 4.0, 6.5, 9.0, 11.0, 12.0, 12.0, 10.5, 8.5, 6.5, 5.5, 4.5, 4.0, 4.0,
+      4.5, 4.5, 4.5, 4.5, 4.5, 3.5, 2.5, 1.0, -0.5, -2.0, -3.5, -5.5, -7.5, -11.0, -13.5, -16.5, -19.0, -21.0,
+      -22.5, -23.5, -24.5, -26.0, -27.0, -28.5, -30.0, -31.5, -33.0, -34.5, -35.0,
+    ],
+  },
+  {
     id: "speech-podcast",
     label: "Speech / podcast",
     description: "Intelligibility: high-pass tilt, 2–5 kHz presence bump.",
