@@ -44,16 +44,21 @@ private let epsilon = 1e-9
         #expect(RTATarget.resample(.flat, onto: layout).count == layout.bands.count)
     }
 
-    @Test func flatCurveResamplesToAllZeros() {
-        #expect(RTATarget.resample(.flat, onto: layout).allSatisfy { $0 == 0 })
+    /// #1726: the flat curve is drawn with only the band-sum bandwidth
+    /// correction, rising 3 dB per octave from 0 dB at 1 kHz.
+    @Test func flatCurveResamplesToTheBandwidthCorrection() {
+        for (value, band) in zip(RTATarget.resample(.flat, onto: layout), layout.bands) {
+            #expect(abs(value - RTATarget.bandwidthCorrectionDb(atHz: band.centerHz)) < epsilon)
+        }
     }
 
-    @Test func eachValueIsTheCurvesOffsetAtItsBandCenter() throws {
+    @Test func eachValueIsTheCurvesOffsetAtItsBandCenterPlusTheBandwidthCorrection() throws {
         let curve = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
         let offsets = RTATarget.resample(curve, onto: layout)
         #expect(offsets.count == layout.bands.count)
         for (offset, band) in zip(offsets, layout.bands) {
-            #expect(abs(offset - curve.offset(atHz: band.centerHz)) < epsilon)
+            let expected = curve.offset(atHz: band.centerHz) + RTATarget.bandwidthCorrectionDb(atHz: band.centerHz)
+            #expect(abs(offset - expected) < epsilon)
         }
     }
 
@@ -62,7 +67,11 @@ private let epsilon = 1e-9
     /// points, and their frequencies don't line up index-for-index.
     @Test func resamplingIsNotIndexPairingTheCurvesOwnGrid() throws {
         let curve = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
-        let offsets = RTATarget.resample(curve, onto: layout)
+        // Undo the display-only bandwidth correction (#1726) to compare the
+        // curve's own shape.
+        let offsets = zip(RTATarget.resample(curve, onto: layout), layout.bands).map {
+            $0.0 - RTATarget.bandwidthCorrectionDb(atHz: $0.1.centerHz)
+        }
         let firstBand = try #require(layout.bands.first)
         #expect(abs(firstBand.centerHz - 22.1) < 0.5)
         #expect(abs(offsets[0] - 3) < 0.5, "band 0's ~22 Hz center sits in the curve's flat 3 dB plateau")

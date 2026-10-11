@@ -499,16 +499,39 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         }
     }
 
-    @Test func defaultFlatTargetIsAConstantLineAtTheMeasuredMean() async throws {
+    /// #1726: the flat target is drawn with the band-sum bandwidth
+    /// correction, so it rises 3 dB per octave around the measured mean.
+    @Test func defaultFlatTargetIsTheBandwidthCorrectionAroundTheMeasuredMean() async throws {
         let m = model()
         await m.appear()
-        let count = RTALayout.standard.bands.count
+        let bands = RTALayout.standard.bands
+        let count = bands.count
         let measured = (0..<count).map { -50.0 + Double($0 % 15) }
         try deliver(reading(.silent, rta: measured))
         let target = try #require(m.rtaTargetDb)
         let mean = measured.reduce(0, +) / Double(count)
-        for value in target {
-            #expect(abs(value - mean) < 1e-6)
+        let corrections = bands.map { RTATarget.bandwidthCorrectionDb(atHz: $0.centerHz) }
+        let correctionMean = corrections.reduce(0, +) / Double(count)
+        for (value, correction) in zip(target, corrections) {
+            #expect(abs(value - (mean + correction - correctionMean)) < 1e-6)
+        }
+    }
+
+    /// #1726 end to end: pink-noise bars (equal power per 1/6-octave band)
+    /// against a pink-PSD target draw a flat, parallel line.
+    @Test func aPinkTargetDrawsFlatOverPinkNoiseBars() async throws {
+        let pink = IdealCurve(
+            id: "pink", label: "Pink", description: "",
+            freqs: IdealCurve.gridFreqs,
+            dbOffsets: IdealCurve.gridFreqs.map { -10 * log10($0 / 1000) }
+        )
+        let m = model(target: pink)
+        await m.appear()
+        let bars = Array(repeating: -45.0, count: RTALayout.standard.bands.count)
+        try deliver(reading(.silent, rta: bars))
+        let target = try #require(m.rtaTargetDb)
+        for (value, bar) in zip(target, bars) {
+            #expect(abs(value - bar) <= 0.5)
         }
     }
 
@@ -1014,7 +1037,8 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         #expect(handles.count == TargetCurveHandles.handleCount)
         let shift = try #require(RTATarget.levelShift(offsets: RTATarget.resample(worship, onto: RTALayout.standard), measured: m.rta.levels))
         for entry in handles {
-            #expect(abs(entry.displayDb - (entry.handle.offsetDb + shift)) < 1e-6)
+            let corrected = RTATarget.displayOffsetDb(entry.handle.offsetDb, atHz: entry.handle.hz)
+            #expect(abs(entry.displayDb - (corrected + shift)) < 1e-6, "handles sit on the bandwidth-corrected line (#1726)")
         }
     }
 
@@ -1074,8 +1098,10 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         m.dragTargetHandle(translationFraction: fraction)
 
         let expectedOffset = fraction * m.rtaScale.spanDb
-        let handleDisplayDb = try #require(m.rtaTargetHandles.first { $0.handle.ordinal == 3 }?.displayDb)
-        #expect(abs(handleDisplayDb - (expectedOffset + shiftBeforeDrag)) < 1e-6)
+        let handle3 = try #require(m.rtaTargetHandles.first { $0.handle.ordinal == 3 })
+        let handleDisplayDb = handle3.displayDb
+        let correction = RTATarget.bandwidthCorrectionDb(atHz: handle3.handle.hz)
+        #expect(abs(handleDisplayDb - (expectedOffset + correction + shiftBeforeDrag)) < 1e-6)
 
         // Delivering a new reading mid-drag does not move the frozen shift.
         let count = RTALayout.standard.bands.count
@@ -1096,6 +1122,31 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         m.dragTargetHandle(translationFraction: -1000)
         let loweredEntry = try #require(m.rtaTargetHandles.first { $0.handle.ordinal == 3 })
         #expect(abs(loweredEntry.displayDb - m.rtaScale.floorDb) < 1e-6)
+    }
+
+    /// #1726 round trip: a +2 dB drag on the handle nearest 4 kHz moves the
+    /// drawn handle by 2 dB and stores exactly +2 dB at that grid point, with
+    /// no bandwidth term baked into the saved dbOffsets.
+    @Test func aPlusTwoDbDragAtFourKilohertzStoresPlusTwoDbUncorrected() async throws {
+        let m = try await liveModelWithFullReading()
+        m.beginTargetEdit()
+        let handles = m.rtaTargetHandles
+        let nearest = try #require(handles.min { abs(log2($0.handle.hz / 4000)) < abs(log2($1.handle.hz / 4000)) })
+        #expect(abs(log2(nearest.handle.hz / 4000)) < 0.5, "a handle sits within half an octave of 4 kHz")
+        let ordinal = nearest.handle.ordinal
+        let gridIndex = TargetCurveHandles.gridIndices[ordinal]
+        let storedBefore = m.target.dbOffsets[gridIndex]
+
+        #expect(m.beginTargetHandleDrag(ordinal))
+        m.dragTargetHandle(translationFraction: 2 / m.rtaScale.spanDb)
+        let moved = try #require(m.rtaTargetHandles.first { $0.handle.ordinal == ordinal })
+        #expect(abs(moved.displayDb - (nearest.displayDb + 2)) < 1e-6)
+        m.endTargetHandleDrag()
+        m.commitTargetEdit()
+
+        #expect(abs(m.target.dbOffsets[gridIndex] - (storedBefore + 2)) < 1e-9)
+        #expect(abs(m.target.dbOffsets[gridIndex] - 2) < 1e-9, "flat start: exactly +2 dB stored, no 10*log10(fc/1k) term")
+        #expect(m.target.dbOffsets.first == 0 && m.target.dbOffsets.last == 0, "untouched grid points keep their stored offsets")
     }
 
     @Test func dragTargetHandleWithoutABeginIsANoOp() async throws {
