@@ -64,6 +64,11 @@ public final class ConsoleTargetModel {
     public private(set) var eq: ConsoleEQ?
     public var phase: ConsoleSessionPhase = .idle
 
+    /// The coaching hint behind the current ghost band (#1671), in memory
+    /// only — never persisted. Non-nil only while it's showing; `eqPanel`
+    /// only turns it into a suggestion while Main LR is selected.
+    public private(set) var coachingEvent: CoachingEvent?
+
     /// Opt-in, in-memory only (never persisted): when on, a `/-stat/selidx`
     /// push from the desk switches `selected` to the matching strip, or
     /// sets `deskSelectHint` when the strip isn't one we model.
@@ -87,6 +92,7 @@ public final class ConsoleTargetModel {
         selected = console.map { ConsoleTargetMemory.load(for: $0, in: defaults) } ?? .mainLR
         eq = nil
         deskSelectHint = nil
+        coachingEvent = nil
     }
 
     public func ingest(nodeLine: String) {
@@ -142,6 +148,8 @@ public final class ConsoleTargetModel {
     /// different target clears the EQ, since the new target's values are
     /// unknown until the next read. A manual pick (or a followed desk pick,
     /// which also calls this) always clears any stale desk-select hint.
+    /// Picking anything other than Main LR also clears the coaching ghost
+    /// (#1671) — it only ever applies to Main LR.
     public func select(_ target: ConsoleEQTarget) {
         guard ConsoleTargetCatalog.targets.contains(target) else { return }
         if target != selected {
@@ -149,9 +157,26 @@ public final class ConsoleTargetModel {
         }
         selected = target
         deskSelectHint = nil
+        if target != .mainLR {
+            coachingEvent = nil
+        }
         if let console {
             ConsoleTargetMemory.store(target, for: console, in: defaults)
         }
+    }
+
+    /// Selects Main LR (the picker's own path, so the pick is remembered for
+    /// this console) and stores `event` as the ghost's source (#1671). The
+    /// view opens the EQ panel after calling this — on iPhone a sheet, on
+    /// iPad landscape the already-visible side column just updates.
+    public func showCoaching(_ event: CoachingEvent) {
+        select(.mainLR)
+        coachingEvent = event
+    }
+
+    /// Removes the ghost without changing the selected target.
+    public func clearCoaching() {
+        coachingEvent = nil
     }
 
     public var chipStatus: ConsoleChipStatus {
@@ -165,7 +190,14 @@ public final class ConsoleTargetModel {
     }
 
     /// The read-only EQ panel's full render state for the selected target.
+    /// The coaching suggestion is only ever derived while Main LR is
+    /// selected and its EQ has been read (#1671) — picking Main LR from a
+    /// channel clears `eq` until the next read, so the ghost appears once
+    /// the value arrives rather than racing it.
     public var eqPanel: ConsoleEQPanelState {
-        ConsoleEQPanelState(target: selected, eq: eq, phase: phase)
+        let coaching: ConsoleCoachingSuggestion? = selected == .mainLR
+            ? coachingEvent.flatMap { event in eq.flatMap { ConsoleCoachingMapper.suggestion(for: event, mainLR: $0) } }
+            : nil
+        return ConsoleEQPanelState(target: selected, eq: eq, phase: phase, coaching: coaching)
     }
 }

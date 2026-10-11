@@ -40,6 +40,11 @@ import UIKit
 /// column beside the RTA and the chip keeps opening the target picker
 /// instead — AnalyzeLayout.consoleEQPlacement(isRegularWidth:) decides.
 ///
+/// A band-deviation coaching card gets a "Show on console" button while a
+/// console link is up (#1671): tapping it selects Main LR and shows a
+/// dashed ghost band/curve for the suggested change — read-only, nothing is
+/// written to the desk (ADR-0161; applying is a later slice, #1676).
+///
 /// TODO(ipad): the rest of the layout (coaching stack, portrait) is still
 /// single-column; only the console EQ panel sits beside the RTA so far.
 struct AnalyzeView: View {
@@ -87,7 +92,7 @@ struct AnalyzeView: View {
                 ConsoleTargetPickerView(model: console) { consolePickerOpen = false }
             }
         }
-        .sheet(isPresented: $consoleEQOpen) {
+        .sheet(isPresented: $consoleEQOpen, onDismiss: { console?.clearCoaching() }) {
             if let console {
                 ConsoleEQPanel(console: console, analyze: model, showsTargetButton: true) { consoleEQOpen = false }
                     .presentationDetents([.medium, .large])
@@ -152,6 +157,20 @@ struct AnalyzeView: View {
         }
     }
 
+    private func showsConsoleAction(for event: CoachingEvent) -> Bool {
+        ConsoleCoachingMapper.showsAction(for: event, consoleVisible: showsConsoleChip, phase: console?.phase ?? .idle)
+    }
+
+    /// Selects Main LR and stores the tapped event (#1671); on the sheet
+    /// placement it also opens the sheet — on the side-column placement the
+    /// panel is already on screen and just updates.
+    private func showOnConsole(_ event: CoachingEvent, placement: AnalyzeLayout.ConsoleEQPlacement) {
+        console?.showCoaching(event)
+        if placement == .sheet {
+            consoleEQOpen = true
+        }
+    }
+
     private func portraitBody(placement: AnalyzeLayout.ConsoleEQPlacement) -> some View {
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
             header(placement: placement)
@@ -164,7 +183,11 @@ struct AnalyzeView: View {
                     TargetControlsBand(model: model, onEdit: beginTargetEdit)
                 }
             }
-            CoachingStackView(model: model)
+            CoachingStackView(
+                model: model,
+                onShowOnConsole: { showOnConsole($0, placement: placement) },
+                showsConsoleAction: showsConsoleAction
+            )
             Spacer(minLength: 0)
             StatusMessageView(model: model)
         }
@@ -203,7 +226,14 @@ struct AnalyzeView: View {
                 CoachingPeekPanel(
                     model: model,
                     isOpen: $coachingPeekOpen,
-                    maxHeight: proxy.size.height * Layout.peekMaxHeightFraction
+                    maxHeight: proxy.size.height * Layout.peekMaxHeightFraction,
+                    onShowOnConsole: { event in
+                        showOnConsole(event, placement: placement)
+                        if placement == .sheet {
+                            coachingPeekOpen = false
+                        }
+                    },
+                    showsConsoleAction: showsConsoleAction
                 )
             }
         }
@@ -442,11 +472,13 @@ private struct CoachingPeekPanel: View {
     let model: AnalyzeModel
     @Binding var isOpen: Bool
     let maxHeight: CGFloat
+    var onShowOnConsole: ((CoachingEvent) -> Void)? = nil
+    var showsConsoleAction: (CoachingEvent) -> Bool = { _ in false }
 
     var body: some View {
         VStack(spacing: Layout.landscapeSpacing) {
             ScrollView {
-                CoachingStackView(model: model)
+                CoachingStackView(model: model, onShowOnConsole: onShowOnConsole, showsConsoleAction: showsConsoleAction)
             }
             .frame(maxHeight: maxHeight)
             CoachingPeekHandle(model: model, isOpen: $isOpen)
@@ -624,6 +656,8 @@ private struct TargetPresetPill: View {
 /// copies into ghosted, double-drawn text.
 struct CoachingStackView: View {
     let model: AnalyzeModel
+    var onShowOnConsole: ((CoachingEvent) -> Void)? = nil
+    var showsConsoleAction: (CoachingEvent) -> Bool = { _ in false }
 
     var body: some View {
         let events = model.coaching
@@ -632,7 +666,7 @@ struct CoachingStackView: View {
                 .font(.headline)
             ForEach(0..<BandDeviationCoach.maxEvents, id: \.self) { slot in
                 if slot < events.count {
-                    CoachingCard(event: events[slot])
+                    CoachingCard(event: events[slot], onShowOnConsole: onShowOnConsole, showsConsoleAction: showsConsoleAction)
                 } else if slot == 0 {
                     CoachingPlaceholder(text: model.coachingPlaceholder)
                 } else {
@@ -662,15 +696,25 @@ private struct CoachingPlaceholder: View {
 
 private struct CoachingCard: View {
     let event: CoachingEvent
+    var onShowOnConsole: ((CoachingEvent) -> Void)? = nil
+    var showsConsoleAction: (CoachingEvent) -> Bool = { _ in false }
 
     var body: some View {
         HStack(alignment: .center, spacing: Layout.cardSpacing) {
             Image(systemName: icon)
                 .foregroundStyle(Palette.accent)
-            Text(event.message)
-                .font(.subheadline)
-                .lineLimit(Layout.coachingMaxLines)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: Layout.cardSpacing) {
+                Text(event.message)
+                    .font(.subheadline)
+                    .lineLimit(Layout.coachingMaxLines)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if let onShowOnConsole, showsConsoleAction(event) {
+                    Button("Show on console") { onShowOnConsole(event) }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Palette.accent)
+                        .accessibilityIdentifier("coaching.showOnConsole")
+                }
+            }
         }
         .frame(minHeight: Layout.coachingSlotMinHeight)
         .padding(.horizontal, Layout.cardPadding)

@@ -146,4 +146,33 @@ private let channelLines = [
         let state = ConsoleEQPanelState(target: .mainLR, eq: nil, phase: .reconnecting)
         #expect(state.isDimmed == false)
     }
+
+    @Test func ghostCurveEmptyWithoutSuggestionOrEq() {
+        let eq = ConsoleEQ.parse(nodeLines: mainLRLines, for: .mainLR)
+        let noCoaching = ConsoleEQPanelState(target: .mainLR, eq: eq, phase: .live)
+        #expect(noCoaching.ghostCurveDb.isEmpty)
+
+        let noEq = ConsoleEQPanelState(target: .mainLR, eq: nil, phase: .idle)
+        #expect(noEq.ghostCurveDb.isEmpty)
+    }
+
+    @Test func ghostCurveDiffersFromDeskCurveOnlyNearSuggestedBand() {
+        let eq = ConsoleEQ.parse(nodeLines: mainLRLines, for: .mainLR)
+        let event = CoachingEvent(
+            id: "lowMid", ruleType: .bandDeviation, severity: .suggestion, band: .lowMid,
+            message: "test", data: ["deviationDb": .number(5)], source: .phoneMicEstimate, sessionTime: 0
+        )
+        let suggestion = ConsoleCoachingMapper.suggestion(for: event, mainLR: eq)!
+        let state = ConsoleEQPanelState(target: .mainLR, eq: eq, phase: .live, coaching: suggestion)
+
+        #expect(state.ghostCurveDb.count == state.curveDb.count)
+        #expect(state.ghostCurveDb != state.curveDb)
+        for value in state.ghostCurveDb {
+            #expect(value >= -ConsoleEQPanelState.curveRangeDb - tolerance)
+            #expect(value <= ConsoleEQPanelState.curveRangeDb + tolerance)
+        }
+
+        let farIndex = ConsoleEQPanelState.curveFrequencies.firstIndex { $0 > 10_000 }!
+        #expect(abs(state.ghostCurveDb[farIndex] - state.curveDb[farIndex]) < 0.1)
+    }
 }

@@ -8,7 +8,10 @@ import SwiftUI
 /// dismiss) or sits as a fixed-width side column on iPad landscape
 /// (`showsTargetButton: false`, no `onDone` — the chip itself keeps opening
 /// the picker there). While the link is down the values dim and a status
-/// pill shows; the panel never blanks. Pure rendering — every decision
+/// pill shows; the panel never blanks. While a coaching suggestion is
+/// showing (#1671, Main LR only), a dashed ghost band/curve overlays the
+/// desk's own curve with a copy block beneath the band list — read-only,
+/// nothing is written to the desk. Pure rendering — every decision
 /// lives in `ConsoleTargetModel.eqPanel` (SoundBuddyKit).
 struct ConsoleEQPanel: View {
     let console: ConsoleTargetModel
@@ -83,6 +86,9 @@ struct ConsoleEQPanel: View {
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(Palette.secondaryText)
                     .accessibilityIdentifier("consoleEQ.hpf")
+            }
+            if let coaching = state.coaching {
+                CoachingGhostBlock(coaching: coaching) { console.clearCoaching() }
             }
             VStack(alignment: .leading, spacing: Layout.rowSpacing) {
                 ForEach(state.bandRows, id: \.number) { row in
@@ -160,5 +166,47 @@ private struct BandRow: View {
         static let numberWidth: CGFloat = 16
         static let typeWidth: CGFloat = 76
         static let valueWidth: CGFloat = 64
+    }
+}
+
+/// The coaching ghost's copy block (#1671): "Suggestion (not applied)",
+/// the band/amount copy, a retune note when the suggestion reuses a band
+/// already in use, and a Clear button. No edit/apply affordance — ADR-0161
+/// read-only stays intact; applying is a later slice (#1676).
+private struct CoachingGhostBlock: View {
+    let coaching: ConsoleCoachingSuggestion
+    let onClear: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Layout.spacing) {
+            HStack {
+                Text("Suggestion (not applied)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Palette.secondaryText)
+                Spacer(minLength: 0)
+                Button("Clear", action: onClear)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Palette.accent)
+                    .accessibilityIdentifier("consoleEQ.ghost.clear")
+            }
+            Text(coaching.copy)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color.primary)
+                .accessibilityIdentifier("consoleEQ.ghost.copy")
+            if let retuneNote = coaching.retuneNote {
+                Text(retuneNote)
+                    .font(.caption)
+                    .foregroundStyle(Palette.secondaryText)
+                    .accessibilityIdentifier("consoleEQ.ghost.retune")
+            }
+        }
+        .padding(Layout.padding)
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: Layout.cornerRadius))
+    }
+
+    private enum Layout {
+        static let spacing: CGFloat = 6
+        static let padding: CGFloat = 10
+        static let cornerRadius: CGFloat = 10
     }
 }

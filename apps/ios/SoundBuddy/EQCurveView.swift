@@ -5,9 +5,11 @@ import SwiftUI
 /// magnitude response across 20 Hz-20 kHz on a ±`ConsoleEQPanelState.
 /// curveRangeDb` axis, with the phone-mic RTA drawn faintly behind it so the
 /// engineer can compare what the desk is doing to what Sound Buddy hears.
-/// Pure rendering — `ConsoleEQPanelState` (SoundBuddyKit) owns every curve
-/// and band-marker value; `AnalyzeModel` only supplies the RTA levels for
-/// the background trace.
+/// While a coaching suggestion is showing (#1671), a dashed ghost curve and
+/// ghost band marker overlay the desk's own solid curve — a picture of the
+/// change, never a write. Pure rendering — `ConsoleEQPanelState`
+/// (SoundBuddyKit) owns every curve and band-marker value; `AnalyzeModel`
+/// only supplies the RTA levels for the background trace.
 struct EQCurveView: View {
     let eqPanel: ConsoleEQPanelState
     let analyze: AnalyzeModel
@@ -18,6 +20,7 @@ struct EQCurveView: View {
             drawGrid(in: &context, plot: plot)
             drawRTA(in: &context, plot: plot)
             drawCurve(in: &context, plot: plot)
+            drawGhost(in: &context, plot: plot)
         }
         .frame(height: Layout.height)
         .background(Layout.background, in: RoundedRectangle(cornerRadius: Layout.cornerRadius))
@@ -100,6 +103,43 @@ struct EQCurveView: View {
         }
     }
 
+    /// The dashed ghost curve (#1671) for `eqPanel.coaching`'s suggested
+    /// band: the desk's own EQ with that band substituted. No-op without a
+    /// suggestion or a read EQ (`ghostCurveDb` is empty then).
+    private func drawGhost(in context: inout GraphicsContext, plot: CGRect) {
+        guard let coaching = eqPanel.coaching, let eq = eqPanel.eq else { return }
+        let ghostCurve = eqPanel.ghostCurveDb
+        let frequencies = ConsoleEQPanelState.curveFrequencies
+        guard ghostCurve.count == frequencies.count, !ghostCurve.isEmpty else { return }
+
+        var path = Path()
+        for (index, hz) in frequencies.enumerated() {
+            let point = CGPoint(x: x(hz, in: plot), y: y(ghostCurve[index], in: plot))
+            if index == 0 {
+                path.move(to: point)
+            } else {
+                path.addLine(to: point)
+            }
+        }
+        context.stroke(
+            path, with: .color(Layout.ghostColor),
+            style: StrokeStyle(lineWidth: Layout.ghostLineWidth, lineCap: .round, lineJoin: .round, dash: Layout.ghostDash)
+        )
+
+        let ghostEQ = ConsoleCoachingMapper.ghostEQ(eq, applying: coaching)
+        let db = ghostEQ.magnitudeResponseDb(atHz: [coaching.band.freqHz]).first ?? 0
+        let clamped = min(ConsoleEQPanelState.curveRangeDb, max(-ConsoleEQPanelState.curveRangeDb, db))
+        let point = CGPoint(x: x(coaching.band.freqHz, in: plot), y: y(clamped, in: plot))
+        let dot = CGRect(
+            x: point.x - Layout.ghostMarkerRadius, y: point.y - Layout.ghostMarkerRadius,
+            width: Layout.ghostMarkerRadius * 2, height: Layout.ghostMarkerRadius * 2
+        )
+        context.stroke(
+            Path(ellipseIn: dot), with: .color(Layout.ghostColor),
+            style: StrokeStyle(lineWidth: Layout.ghostMarkerLineWidth, dash: Layout.ghostDash)
+        )
+    }
+
     private enum Layout {
         static let height: CGFloat = 160
         static let inset: CGFloat = 8
@@ -112,5 +152,13 @@ struct EQCurveView: View {
         static let curveColor = Palette.accent
         static let curveLineWidth: CGFloat = 2
         static let markerRadius: CGFloat = 3
+        /// The ghost curve/marker (#1671) draw in the accent color at
+        /// reduced opacity, dashed, so they read as "not yet real" beside
+        /// the desk's own solid curve.
+        static let ghostColor = Palette.accent.opacity(0.6)
+        static let ghostLineWidth: CGFloat = 2
+        static let ghostDash: [CGFloat] = [5, 4]
+        static let ghostMarkerRadius: CGFloat = 5
+        static let ghostMarkerLineWidth: CGFloat = 1.5
     }
 }
