@@ -108,21 +108,28 @@ public struct TargetHandleDrag: Equatable, Sendable {
     /// The RTA's dB-mean level-match shift, frozen for the whole drag so the
     /// handle stays under the finger while it moves.
     public let levelShiftDb: Double
+    /// The handle's band-sum bandwidth correction (#1726,
+    /// `RTATarget.bandwidthCorrectionDb` at its frequency): constant for the
+    /// drag, so it only affects the clamp, never the stored delta.
+    public let displayCorrectionDb: Double
 
-    public init(handle: Int, startOffsetDb: Double, levelShiftDb: Double) {
+    public init(handle: Int, startOffsetDb: Double, levelShiftDb: Double, displayCorrectionDb: Double = 0) {
         self.handle = handle
         self.startOffsetDb = startOffsetDb
         self.levelShiftDb = levelShiftDb
+        self.displayCorrectionDb = displayCorrectionDb
     }
 
     /// `startOffsetDb + fraction * scale.spanDb`, clamped so the *displayed*
-    /// value (`result + levelShiftDb`) stays inside `[scale.floorDb,
-    /// scale.ceilingDb]` — the handle can never leave the visible RTA.
-    /// `fraction` is the vertical drag translation as a fraction of the
-    /// plot's height, positive meaning up.
+    /// value (`result + displayCorrectionDb + levelShiftDb`) stays inside
+    /// `[scale.floorDb, scale.ceilingDb]` — the handle can never leave the
+    /// visible RTA. The result is a stored (uncorrected) offset. `fraction`
+    /// is the vertical drag translation as a fraction of the plot's height,
+    /// positive meaning up.
     public func offsetDb(forTranslationFraction fraction: Double, scale: RTAScale) -> Double {
         let raw = startOffsetDb + fraction * scale.spanDb
-        let displayed = min(scale.ceilingDb, max(scale.floorDb, raw + levelShiftDb))
-        return displayed - levelShiftDb
+        let shift = levelShiftDb + displayCorrectionDb
+        let displayed = min(scale.ceilingDb, max(scale.floorDb, raw + shift))
+        return displayed - shift
     }
 }

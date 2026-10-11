@@ -98,10 +98,44 @@ public struct RTAScale: Equatable, Sendable {
 /// bands, coaching bands, …) can differ in length and spacing, so this never
 /// pairs dbOffsets[i] with grid index i — see ADR for #1542.
 public enum RTATarget {
-    /// One offset per `layout` band, each the curve's log-frequency
-    /// interpolated value at that band's center.
+    /// Reference frequency of the band-sum bandwidth correction (#1726): the
+    /// RTA layout's anchor, where the correction is 0 dB.
+    public static let bandwidthReferenceHz = 1000.0
+
+    /// Bandwidth correction (#1726) from a target's mean-power-per-FFT-bin
+    /// convention to the RTA's band-sum convention, in dB.
+    ///
+    /// `IdealCurve.dbOffsets` describe a power spectral density shape (the
+    /// convention the coaching bands and the Mac/web level-matching use),
+    /// but each RTA bar is the *sum* of the bin powers inside a 1/6-octave
+    /// band whose width grows in proportion to its center frequency. A
+    /// signal that matches the target's PSD therefore reads
+    /// `10 * log10(fc / 1 kHz)` dB higher on a bar at `fc` than at 1 kHz.
+    /// Pink noise (PSD -3 dB/octave) reads flat on the bars, white noise
+    /// rises +3 dB/octave. Display only: stored dbOffsets and the coaching
+    /// path stay in the per-bin convention. See docs/rta-target-convention.md.
+    public static func bandwidthCorrectionDb(atHz hz: Double) -> Double {
+        10 * log10(hz / bandwidthReferenceHz)
+    }
+
+    /// A stored (per-bin) target offset at `hz` in the RTA's band-sum
+    /// display convention, before any level-match shift.
+    public static func displayOffsetDb(_ offsetDb: Double, atHz hz: Double) -> Double {
+        offsetDb + bandwidthCorrectionDb(atHz: hz)
+    }
+
+    /// Inverse of `displayOffsetDb`: a displayed (band-sum, unshifted) value
+    /// at `hz` back in the stored per-bin convention.
+    public static func storedOffsetDb(fromDisplay displayDb: Double, atHz hz: Double) -> Double {
+        displayDb - bandwidthCorrectionDb(atHz: hz)
+    }
+
+    /// One display offset per `layout` band: the curve's log-frequency
+    /// interpolated value at that band's center plus the band-sum
+    /// bandwidth correction (#1726), so a mix matching the curve's PSD draws
+    /// parallel to its bars. Level-match with `levelShift`/`levelMatched`.
     public static func resample(_ curve: IdealCurve, onto layout: RTALayout) -> [Double] {
-        layout.bands.map { curve.offset(atHz: $0.centerHz) }
+        layout.bands.map { displayOffsetDb(curve.offset(atHz: $0.centerHz), atHz: $0.centerHz) }
     }
 
     /// The difference between the measured and target dB means — the shift
