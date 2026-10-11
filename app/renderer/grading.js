@@ -476,7 +476,7 @@
     const recType = analyzeRecordingType(src);
     const maxBandDiff = maxSrcBandDiff(src);
     // Against an ideal curve the deduction's target names the curve, so the
-    // reason reads "vs. Worship service" rather than the flat "vs. other bands".
+    // reason reads "vs. Worship – Classic" rather than the flat "vs. other bands".
     const bandImbalanceDeduction = () => ({
       rule: 'Band imbalance',
       measured: '+' + maxBandDiff.toFixed(1) + ' dB',

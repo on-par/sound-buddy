@@ -54,7 +54,7 @@ Capabilities**. The project sets no team on purpose.
    Lows glow green to orange as they get hot; mids and highs are cyan to blue.
    A dashed white target line rides on top of the bars, tracks the material's
    level, and keeps its shape as the level changes. Under the RTA,
-   "Target · Worship (room mic) (auto)" shows with a matching dashed swatch.
+   "Target · Worship – Full Band (auto)" shows with a matching dashed swatch.
 4. Play something tonally lopsided, such as a bass-heavy track. Within a
    second, up to three coaching cards appear. An example: "Bass is 6.2 dB over
    the target. Try a gentle cut around 60-250 Hz." The cards update in place
@@ -90,8 +90,8 @@ Capabilities**. The project sets no team on purpose.
     Drag a handle past the top or bottom of the grid — it stops exactly at the
     ceiling or floor line rather than leaving the plot. Cancel or Done puts the
     legend back, returns the line to dashed, and hides the handles.
-11. While still in edit mode, a row of **Flat / Music fullrange / Worship
-    service / Worship room** pills sits under the chip. Tapping one snaps the solid target
+11. While still in edit mode, a row of **Flat / Music / Worship
+    Classic / Worship Full Band** pills sits under the chip. Tapping one snaps the solid target
     line to that curve and highlights the pill. Dragging a handle afterwards
     reshapes the curve from that new baseline and un-highlights the pill.
     Cancel restores the pre-edit target, and the RTA does not move when edit

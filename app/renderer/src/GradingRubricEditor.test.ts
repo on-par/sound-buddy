@@ -40,7 +40,7 @@ describe('GradingRubricEditor', () => {
     const html = render();
     expect(html).toContain('id="grading-baseline-select"');
     expect(html).toContain('Auto (by content)');
-    expect(html).toContain('Worship service');
+    expect(html).toContain('Worship – Classic');
     expect(html).toContain('id="grading-baseline-edit-btn"');
     expect(html).toContain('Edit or capture curve…');
   });

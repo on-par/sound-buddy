@@ -182,7 +182,7 @@ describe('createIdealProfilesStore', () => {
       expect(store.getState().editor.open).toBe(true);
       expect(store.getState().editor.editingId).toBeNull();
       expect(store.getState().editor.title).toBe('Create Ideal Curve');
-      expect(store.getState().editor.name).toBe('Copy of Worship service');
+      expect(store.getState().editor.name).toBe('Copy of Worship – Classic');
       expect(store.getState().editor.bands).toHaveLength(7);
       expect(store.getState().editor.canCapture).toBe(false);
       expect(store.getState().editor.canDelete).toBe(false);

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "flat",
-  "label": "Flat / neutral",
+  "label": "Flat",
   "description": "Neutral reference — no target tilt.",
   "freqs": [
     20,

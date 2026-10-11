@@ -145,7 +145,7 @@ test.describe('Sound Buddy E2E — report card grading', () => {
 
     // .spectrum-legend lives in the shared spectrum panel beside the report
     // card, not a separate File tab (#203) — no navigation needed to see it.
-    await expect(window.locator('.spectrum-legend')).toContainText('Worship service');
+    await expect(window.locator('.spectrum-legend')).toContainText('Worship – Classic');
 
     await electronApp.evaluate(({ ipcMain }, analysis) => {
       ipcMain.removeHandler('analyze-file');
@@ -213,7 +213,7 @@ test.describe('Sound Buddy E2E — report card grading', () => {
     // Speech content ⇒ the default target is the speech profile.
     await expect(window.locator('#ideal-profile-wrap')).toBeVisible();
     await expect(window.locator('#ideal-profile-select')).toHaveValue('');
-    await expect(window.locator('.spectrum-legend')).toContainText('Speech / podcast');
+    await expect(window.locator('.spectrum-legend')).toContainText('Speech – Clear Voice');
 
     // A match score is shown on the curve legend.
     await expect(window.locator('.spectrum-legend .sl-score .num')).toHaveText(/^\d{1,3}$/);
@@ -223,7 +223,7 @@ test.describe('Sound Buddy E2E — report card grading', () => {
     await gotoReportCard(window);
 
     await window.locator('#ideal-profile-select').selectOption('flat');
-    await expect(window.locator('.spectrum-legend')).toContainText('Flat / neutral');
+    await expect(window.locator('.spectrum-legend')).toContainText('Flat');
 
     await window.locator('#ideal-curve-edit-btn').click();
     await expect(window.locator('#curve-dialog')).toBeVisible();

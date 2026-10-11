@@ -8,9 +8,9 @@ public struct TargetCurvePreset: Equatable, Sendable, Identifiable {
     public let title: String
 
     public static let flat = TargetCurvePreset(id: IdealCurveLibrary.flatId, title: "Flat")
-    public static let musicFullRange = TargetCurvePreset(id: IdealCurveLibrary.musicFullRangeId, title: "Music fullrange")
-    public static let worshipService = TargetCurvePreset(id: IdealCurveLibrary.worshipServiceId, title: "Worship service")
-    public static let worshipRoom = TargetCurvePreset(id: IdealCurveLibrary.worshipRoomId, title: "Worship room")
+    public static let musicFullRange = TargetCurvePreset(id: IdealCurveLibrary.musicFullRangeId, title: "Music")
+    public static let worshipService = TargetCurvePreset(id: IdealCurveLibrary.worshipServiceId, title: "Worship Classic")
+    public static let worshipRoom = TargetCurvePreset(id: IdealCurveLibrary.worshipRoomId, title: "Worship Full Band")
     /// Pill order, left to right.
     public static let all: [TargetCurvePreset] = [flat, musicFullRange, worshipService, worshipRoom]
 

@@ -22,7 +22,7 @@ import UIKit
 /// stays on screen — no pushed view (#1558). The header / landscape strip
 /// always keeps the listening indicator and the band keeps one height, so the
 /// RTA never moves when editing starts or ends (#1565). While editing, a row
-/// of preset pills (Flat / Music fullrange / Worship service / Worship room) sits under the
+/// of preset pills (Flat / Music / Worship Classic / Worship Full Band) sits under the
 /// legend band; tapping one seeds the draft from that bundled curve (#1560).
 /// While editing, problem markers hide and the landscape coaching peek stays
 /// closed, so neither overlay collides with the handles or the chip (#1562).
@@ -793,19 +793,33 @@ private struct TargetEditChip: View {
 
 /// One-tap starting points for the target-curve draft while editing
 /// (#1560): tapping a pill replaces the draft with that bundled curve,
-/// discarding unsaved handle drags.
+/// discarding unsaved handle drags. On a narrow iPhone the row scrolls, and
+/// it brings the selected pill fully into view on appear and on every
+/// change, so the active curve is never the one cut off at the edge (#1742).
 private struct TargetPresetStrip: View {
     let model: AnalyzeModel
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Layout.presetPillSpacing) {
-                ForEach(TargetCurvePreset.all) { preset in
-                    TargetPresetPill(preset: preset, model: model)
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Layout.presetPillSpacing) {
+                    ForEach(TargetCurvePreset.all) { preset in
+                        TargetPresetPill(preset: preset, model: model)
+                            .id(preset.id)
+                    }
                 }
+            }
+            .onAppear { reveal(model.activeTargetPresetId, with: proxy) }
+            .onChange(of: model.activeTargetPresetId) { _, id in
+                withAnimation(.snappy) { reveal(id, with: proxy) }
             }
         }
         .accessibilityIdentifier("analyze.targetPresets")
+    }
+
+    private func reveal(_ id: String?, with proxy: ScrollViewProxy) {
+        guard let id else { return }
+        proxy.scrollTo(id, anchor: .center)
     }
 }
 

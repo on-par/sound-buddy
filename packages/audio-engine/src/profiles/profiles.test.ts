@@ -36,12 +36,32 @@ describe("ideal profiles", () => {
   it("ships worship-room exactly as measured from the Oct 11 2026 FOH reference mix (#1725)", () => {
     const room = getProfile("worship-room")!;
     expect(room).toBeDefined();
-    expect(room.label).toBe("Worship (room mic)");
-    expect(room.description).toBe(
-      "Reference target from a good-sounding worship mix measured on the iPad mic at FOH.",
-    );
+    expect(room.label).toBe("Worship – Full Band");
+    expect(room.description).toBe("Shape of a good-sounding full-band worship mix (Oct 11 2026 reference).");
     expect(room.freqs).toEqual(GRID_FREQS);
     expect(room.dbOffsets).toEqual(WORSHIP_ROOM_OFFSETS);
+  });
+
+  // #1742: built-in names describe a tonal shape to mix toward, never an input.
+  it.each(PROFILES.map((p) => [p.id, p] as const))("%s's label names a curve, not a mic, feed, desk or channel (#1742)", (_id, p) => {
+    for (const word of ["mic", "room mic", "input", "feed", "desk", "channel"]) {
+      expect(p.label.toLowerCase()).not.toContain(word);
+      expect(p.description.toLowerCase()).not.toContain(`${word} `);
+    }
+  });
+
+  it("renames the built-ins with every id unchanged (#1742)", () => {
+    const labels = Object.fromEntries(PROFILES.map((p) => [p.id, p.label]));
+    expect(labels).toEqual({
+      flat: "Flat",
+      "music-fullrange": "Music – Balanced",
+      "worship-service": "Worship – Classic",
+      "worship-room": "Worship – Full Band",
+      "speech-podcast": "Speech – Clear Voice",
+      broadcast: "Speech – Broadcast",
+    });
+    // A stored id still resolves to the same curve data under its new label.
+    expect(getProfile("worship-room")!.dbOffsets).toEqual(WORSHIP_ROOM_OFFSETS);
   });
 
   it("leaves the Mac live default and worship-service data untouched (#1725)", () => {

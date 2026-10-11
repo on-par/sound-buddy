@@ -370,7 +370,7 @@ describe('installStoreBridge', () => {
     });
 
     const source = useAnalysisStore.getState().liveSource as { baseline?: { label: string; isAuto?: boolean } } | null;
-    expect(source?.baseline?.label).toBe('Worship service');
+    expect(source?.baseline?.label).toBe('Worship – Classic');
     expect(source?.baseline?.isAuto).toBe(true);
   });
 
@@ -384,7 +384,7 @@ describe('installStoreBridge', () => {
 
     const source = useAnalysisStore.getState().liveSource as { filename: string; baseline?: { label: string; isAuto?: boolean } } | null;
     expect(source?.filename).toBe('Live capture — Main (3 windows)');
-    expect(source?.baseline?.label).toBe('Flat / neutral');
+    expect(source?.baseline?.label).toBe('Flat');
     expect(source?.baseline?.isAuto).toBe(false);
   });
 

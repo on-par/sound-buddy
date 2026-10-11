@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "id": "worship-room",
-  "label": "Worship (room mic)",
-  "description": "Reference target from a good-sounding worship mix measured on the iPad mic at FOH.",
+  "label": "Worship – Full Band",
+  "description": "Shape of a good-sounding full-band worship mix (Oct 11 2026 reference).",
   "freqs": [
     20,
     23.166,

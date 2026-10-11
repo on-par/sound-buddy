@@ -99,7 +99,7 @@ private let bedHeavyOffsets: [Band: Double] = [.subBass: 14, .bass: 12, .brillia
         #expect(m.programModeChipText == "Speech + bed")
         #expect(m.coaching.map(\.band) == [.mid], "the thin voice still gets its tip; the bed's lows and air do not")
         #expect(m.target.id == IdealCurveLibrary.speechPodcastId, "judged against the speech curve")
-        #expect(m.targetLegendText == "Target · Speech / podcast (auto)")
+        #expect(m.targetLegendText == "Target · Speech – Clear Voice (auto)")
         #expect(m.programModeAccessibilityLabel == "Program: speech over a music bed, target switched automatically")
     }
 
@@ -141,7 +141,7 @@ private let bedHeavyOffsets: [Band: Double] = [.subBass: 14, .bass: 12, .brillia
         #expect(m.programMode == .speechOverBed, "the chip still shows the detected state")
         #expect(m.programModeChipText == "Speech + bed")
         #expect(m.target.id == IdealCurveLibrary.worshipServiceId, "a user-chosen target is never switched")
-        #expect(m.targetLegendText == "Target · Worship service")
+        #expect(m.targetLegendText == "Target · Worship – Classic")
         #expect(m.programModeAccessibilityLabel == "Program: speech over a music bed")
     }
 

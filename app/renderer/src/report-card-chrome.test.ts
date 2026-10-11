@@ -157,7 +157,7 @@ describe('getReportCardSource', () => {
 
   it('grades a file analysis against the resolved ideal-curve baseline (Auto → by content type)', () => {
     const src = getReportCardSource({ ...ANALYSIS, spectrum: { ...ANALYSIS.spectrum, contentType: 'music' } } as AnalysisPayload, null);
-    expect(src?.baseline?.label).toBe('Worship service');
+    expect(src?.baseline?.label).toBe('Worship – Classic');
     expect(src?.baseline?.isAuto).toBe(true);
     const { chromeSource } = resolveReportCardChromeSource({ currentAnalysis: ANALYSIS, liveSource: null, historySummary: null });
     expect(chromeSource?.baseline).not.toBeNull();

@@ -12,7 +12,7 @@ private struct LoaderFailure: Error, Equatable {}
             IdealCurveLibrary.worshipServiceId,
             IdealCurveLibrary.worshipRoomId,
         ])
-        #expect(TargetCurvePreset.all.map(\.title) == ["Flat", "Music fullrange", "Worship service", "Worship room"])
+        #expect(TargetCurvePreset.all.map(\.title) == ["Flat", "Music", "Worship Classic", "Worship Full Band"])
     }
 
     @Test func everyPresetIdIsABuiltInId() {

@@ -594,8 +594,8 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
 
     @Test func targetLegendTextUsesTheModelsTargetLabelAndAutoFlag() throws {
         let curve = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
-        #expect(model(target: curve, targetIsAuto: true).targetLegendText == "Target · Worship service (auto)")
-        #expect(model(target: curve, targetIsAuto: false).targetLegendText == "Target · Worship service")
+        #expect(model(target: curve, targetIsAuto: true).targetLegendText == "Target · Worship – Classic (auto)")
+        #expect(model(target: curve, targetIsAuto: false).targetLegendText == "Target · Worship – Classic")
     }
 
     // MARK: Coaching follows the active curve
@@ -645,13 +645,13 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         let bands = levels(shiftedTargets)
 
         try deliverSustained(speechOverAPadFeatures(), bands: bands, count: 110) // 5.5 s: short of the 6 s evidence
-        #expect(m.targetLegendText == "Target · Worship service (auto)")
+        #expect(m.targetLegendText == "Target · Worship – Classic (auto)")
         #expect(m.programMode == .music)
 
         try deliverSustained(speechOverAPadFeatures(), bands: bands, count: 20) // 6.5 s total: past the 6 s evidence
         #expect(m.programMode == .speech)
         #expect(m.programModeChipText == "Speech")
-        #expect(m.targetLegendText == "Target · Speech / podcast (auto)")
+        #expect(m.targetLegendText == "Target · Speech – Clear Voice (auto)")
         #expect(m.coachingCurve.id == IdealCurveLibrary.speechPodcastId)
         for marker in m.problemMarkers where marker.band == .presence || marker.band == .brilliance {
             #expect(marker.direction != .underTarget, "bands are level-matched to the speech-podcast target, so no under-target flag")
@@ -673,7 +673,7 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         #expect(m.programMode == .music)
         #expect(m.programModeChipText == "Music")
         #expect(m.target.id == IdealCurveLibrary.worshipServiceId)
-        #expect(m.targetLegendText == "Target · Worship service (auto)")
+        #expect(m.targetLegendText == "Target · Worship – Classic (auto)")
     }
 
     /// #1725: the app seeds Analyze with `IdealCurveLibrary.liveDefault()`, so
@@ -683,17 +683,17 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         let m = model(target: IdealCurveLibrary.liveDefault(), targetIsAuto: true)
         await m.appear()
         #expect(m.target.id == IdealCurveLibrary.worshipRoomId)
-        #expect(m.targetLegendText == "Target · Worship (room mic) (auto)")
+        #expect(m.targetLegendText == "Target · Worship – Full Band (auto)")
 
         try deliverSustained(speechOverAPadFeatures(), bands: levels(base: -40), count: 130) // 6.5 s of speech
         #expect(m.programMode == .speech)
         #expect(m.target.id == IdealCurveLibrary.speechPodcastId)
-        #expect(m.targetLegendText == "Target · Speech / podcast (auto)")
+        #expect(m.targetLegendText == "Target · Speech – Clear Voice (auto)")
 
         try deliverSustained(musicFeatures(), bands: levels(base: -30), count: 210) // 10.5 s of music
         #expect(m.programMode == .music)
         #expect(m.target.id == IdealCurveLibrary.worshipRoomId)
-        #expect(m.targetLegendText == "Target · Worship (room mic) (auto)")
+        #expect(m.targetLegendText == "Target · Worship – Full Band (auto)")
     }
 
     @Test func aUserChosenTargetIsNeverSwitchedBySpeech() async throws {
@@ -705,7 +705,7 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         #expect(m.programMode == .speech, "the chip still shows the detected mode")
         #expect(m.target == worship, "a user-chosen target is never switched")
         #expect(m.coachingCurve == worship)
-        #expect(m.targetLegendText == "Target · Worship service")
+        #expect(m.targetLegendText == "Target · Worship – Classic")
     }
 
     @Test func noAutoSwitchWhileEditingTheTarget() async throws {
@@ -718,7 +718,7 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         #expect(m.programMode == .speech, "the chip still shows the detected mode")
         #expect(m.target == worship, "the draft never auto-switches while editing")
         #expect(m.coachingCurve == worship)
-        #expect(m.targetLegendText == "Target · Worship service (auto)")
+        #expect(m.targetLegendText == "Target · Worship – Classic (auto)")
 
         m.cancelTargetEdit()
         clock.advance(0.05)
@@ -735,7 +735,7 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         try deliverSustained(speechOverAPadFeatures(), bands: levels(base: -40), count: 130)
         #expect(m.programMode == .speech)
         #expect(m.target == worship, "a load failure keeps the music target rather than crashing")
-        #expect(m.targetLegendText == "Target · Worship service (auto)")
+        #expect(m.targetLegendText == "Target · Worship – Classic (auto)")
     }
 
     @Test func readingsWithoutFeaturesNeverChangeTheMode() async throws {
@@ -761,7 +761,7 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         m.disappear()
         #expect(m.programMode == .music)
         #expect(m.target.id == IdealCurveLibrary.worshipServiceId)
-        #expect(m.targetLegendText == "Target · Worship service (auto)")
+        #expect(m.targetLegendText == "Target · Worship – Classic (auto)")
     }
 
     @Test func programModeAccessibilityLabelReflectsAutoVsUserTargetAndEditing() {
@@ -875,7 +875,7 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         m.beginTargetEdit()
         #expect(m.isEditingTarget)
         #expect(m.target == curve)
-        #expect(m.targetLegendText == "Target · Worship service (auto)")
+        #expect(m.targetLegendText == "Target · Worship – Classic (auto)")
     }
 
     @Test func cancelRestoresThePreEditCurveAfterADraftChange() throws {
@@ -889,7 +889,7 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         #expect(!m.isEditingTarget)
         #expect(m.target == .flat)
         #expect(m.coachingCurve == .flat)
-        #expect(m.targetLegendText == "Target · Flat / neutral (auto)")
+        #expect(m.targetLegendText == "Target · Flat (auto)")
     }
 
     @Test func commitKeepsTheDraftAndClearsAuto() throws {
@@ -901,7 +901,7 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         #expect(!m.isEditingTarget)
         #expect(m.target == worship)
         #expect(!m.targetIsAuto)
-        #expect(m.targetLegendText == "Target · Worship service")
+        #expect(m.targetLegendText == "Target · Worship – Classic")
     }
 
     @Test func commitWithNoChangeLeavesTheTargetAndAutoFlagUnchanged() {
@@ -911,7 +911,7 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         #expect(!m.isEditingTarget)
         #expect(m.target == .flat)
         #expect(m.targetIsAuto)
-        #expect(m.targetLegendText == "Target · Flat / neutral (auto)")
+        #expect(m.targetLegendText == "Target · Flat (auto)")
     }
 
     @Test func editTransitionsAreNoOpsWhenNotEditing() throws {
@@ -1446,10 +1446,10 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
 @MainActor
 @Suite struct FormatTargetLegendTests {
     @Test func autoSuffixIsAppendedWhenAuto() {
-        #expect(AnalyzeModel.formatTargetLegend(label: "Worship service", isAuto: true) == "Target · Worship service (auto)")
+        #expect(AnalyzeModel.formatTargetLegend(label: "Worship – Classic", isAuto: true) == "Target · Worship – Classic (auto)")
     }
 
     @Test func noSuffixWhenNotAuto() {
-        #expect(AnalyzeModel.formatTargetLegend(label: "Worship service", isAuto: false) == "Target · Worship service")
+        #expect(AnalyzeModel.formatTargetLegend(label: "Worship – Classic", isAuto: false) == "Target · Worship – Classic")
     }
 }
