@@ -65,9 +65,12 @@ private func levels(base: Double = -30, _ overrides: [Band: Double] = [:]) -> Ba
         #expect(coach.events(for: room, sessionTime: 0).isEmpty, "a flat target hears a flat room as balanced")
         let events = worship.events(for: room, sessionTime: 0)
         #expect(events.count == 3)
-        #expect(events.map(\.band) == [.brilliance, .bass, .presence])
+        // Uniform-Hz power-mean targets (#1724): worship-service's sub-bass
+        // target is about 16.1 dB (the old grid-point mean read 11.6 dB), so
+        // sub-bass, not bass, is now the second-largest gap on a flat room.
+        #expect(events.map(\.band) == [.brilliance, .subBass, .presence])
         #expect(events[0].message.contains("gentle cut"), "brilliance sits above the tilted target")
-        #expect(events[1].message.contains("small boost"), "bass sits below the tilted target")
+        #expect(events[1].message.contains("small boost"), "sub-bass sits below the tilted target")
         #expect(events[2].message.contains("gentle cut"), "presence sits above the tilted target")
     }
 
