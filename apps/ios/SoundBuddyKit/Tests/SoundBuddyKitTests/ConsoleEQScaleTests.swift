@@ -66,7 +66,7 @@ private let exactStepTolerance = 1e-9
         // Nearest-step property: the round-trip error never exceeds the
         // distance to either neighboring grid point.
         assertNearestStep(unit: 1000, raw: rawFreq1000, toUnit: ConsoleEQScale.freqHz, stepCount: ConsoleEQScale.freqStepCount)
-        assertNearestStep(unit: -3.1, raw: rawGain, toUnit: ConsoleEQScale.gainDb, stepCount: ConsoleEQScale.gainStepCountForTest)
+        assertNearestStep(unit: -3.1, raw: rawGain, toUnit: ConsoleEQScale.gainDb, stepCount: ConsoleEQScale.gainStepCount)
         assertNearestStep(unit: 2.0, raw: rawQ2, toUnit: ConsoleEQScale.q, stepCount: ConsoleEQScale.qStepCount)
         assertNearestStep(unit: 100, raw: rawHpf100, toUnit: ConsoleEQScale.hpfHz, stepCount: ConsoleEQScale.hpfStepCount)
     }
@@ -84,7 +84,7 @@ private let exactStepTolerance = 1e-9
     @Test func exactStepValuesRoundTripUnchanged() {
         assertExactStepRoundTrip(stepCount: ConsoleEQScale.freqStepCount, toRaw: { ConsoleEQScale.rawFreq(hz: ConsoleEQScale.freqHz(raw: $0)) })
         assertExactStepRoundTrip(
-            stepCount: ConsoleEQScale.gainStepCountForTest,
+            stepCount: ConsoleEQScale.gainStepCount,
             toRaw: { ConsoleEQScale.rawGain(db: ConsoleEQScale.gainDb(raw: $0)) }
         )
         assertExactStepRoundTrip(stepCount: ConsoleEQScale.qStepCount, toRaw: { ConsoleEQScale.rawQ(ConsoleEQScale.q(raw: $0)) })
@@ -153,10 +153,4 @@ private let exactStepTolerance = 1e-9
         #expect(mainEq.hpf == nil)
         #expect(mainEq.on == false)
     }
-}
-
-extension ConsoleEQScale {
-    /// The gain step count (121: 30 dB span in 0.25 dB steps) is private in
-    /// the production type; this mirrors it for the round-trip tests above.
-    fileprivate static let gainStepCountForTest = Int((30.0 / 0.25).rounded()) + 1
 }

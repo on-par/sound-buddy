@@ -164,7 +164,7 @@ public enum ConsoleEQScale {
     /// HPF sweep step grid: logf 20..400 Hz, 101 steps (X32 OSC doc).
     public static let hpfStepCount = 101
 
-    private static let gainStepCount = Int((eqGainRangeSpanDb / gainStepDb).rounded()) + 1
+    public static let gainStepCount = Int((eqGainRangeSpanDb / gainStepDb).rounded()) + 1
 
     public static func freqHz(raw: Double) -> Double {
         eqFreqMinHz * pow(eqFreqSpanRatio, raw)
