@@ -418,14 +418,68 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         #expect(coachOrder.prefix(2) == [.presence, .bass], "the fresh order is the coach's severity order")
     }
 
-    @Test func theRTAMeterAgesByWallClock() async throws {
+    @Test func theRTADisplayAgesByWallClock() async throws {
         let m = model()
         await m.appear()
         try deliver(reading(.silent, rta: [-20]))
         clock.advance(0.1)
         try deliver(reading(.silent, rta: [-90]))
+        // #1707: exponential release in the power domain with tau 0.4 s.
+        let tau = RTABallistics.medium.releaseTauSeconds
+        let expected = 10 * log10(pow(10, -9.0) + (pow(10, -2.0) - pow(10, -9.0)) * exp(-0.1 / tau))
         // Date arithmetic at epoch 1000 s keeps ~1e-7 s of precision.
-        #expect(abs(m.rta.levels[0] - (-20 - RTAMeter.releaseDbPerSecond * 0.1)) < 1e-4)
+        #expect(abs(m.rta.levels[0] - expected) < 1e-4)
+    }
+
+    /// AC5 (#1707): coaching never reads display-smoothed values, so the
+    /// RTA's ballistics can change without moving a single card or marker.
+    @Test func coachingIsUnchangedByTheRTABallistics() async throws {
+        let otherSource = FakeSource()
+        let medium = model()
+        let slow = AnalyzeModel(permission: FakePermission(granted: true), source: otherSource, now: { [clock] in clock.now })
+        slow.rtaBallistics = .slow
+        await medium.appear()
+        await slow.appear()
+        let sendToSlow = try #require(otherSource.onReading)
+        let offTarget = levels([.bass: -21, .presence: -12])
+        let frameCount = Int((Self.pastTheEnterDwell / 0.05).rounded())
+        for i in 0..<frameCount {
+            clock.advance(0.05)
+            let r = reading(offTarget, rta: i.isMultiple(of: 3) ? [-20, -60] : [-60, -20])
+            try deliver(r)
+            sendToSlow(r)
+            #expect(content(medium.coaching) == content(slow.coaching))
+            #expect(medium.problemMarkers == slow.problemMarkers)
+            #expect(medium.isMixOnTarget == slow.isMixOnTarget)
+        }
+        #expect(!medium.coaching.isEmpty, "the run really coaches")
+        #expect(medium.rta.levels != slow.rta.levels, "while the bars themselves differ")
+    }
+
+    @Test func theRTAUsesTheChosenBallistics() async throws {
+        let m = model()
+        #expect(m.rtaBallistics == .medium, "Medium is the default")
+        m.rtaBallistics = .slow
+        await m.appear()
+        try deliver(reading(.silent, rta: [-60]))
+        clock.advance(0.25)
+        try deliver(reading(.silent, rta: [-20]))
+        let risen = (pow(10, m.rta.levels[0] / 10) - pow(10, -6.0)) / (pow(10, -2.0) - pow(10, -6.0))
+        #expect(abs(risen - (1 - exp(-1))) < 1e-4, "slow attack tau 0.25 s")
+        #expect(m.rta.ballistics == .slow)
+    }
+
+    @Test func theRawRTAFrameAndTargetOffsetsAreExposedForRenderRateStepping() async throws {
+        let m = model()
+        #expect(m.rtaInput.isEmpty)
+        await m.appear()
+        try deliver(reading(.silent, rta: [-20, -30]))
+        clock.advance(0.05)
+        try deliver(reading(.silent, rta: [-70, -30]))
+        #expect(m.rtaInput == [-70, -30], "the latest raw frame, unsmoothed")
+        #expect(m.rtaTargetOffsets == RTATarget.resample(m.target, onto: m.rtaLayout))
+        m.disappear()
+        #expect(m.rtaInput.isEmpty, "halt clears the raw frame")
     }
 
     @Test func readingsPublishTheOverallLevel() async throws {

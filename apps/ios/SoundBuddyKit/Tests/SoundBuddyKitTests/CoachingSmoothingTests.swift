@@ -179,22 +179,20 @@ private func run(
         }
         let framesSnapshot = rawFrames
 
-        var reference = RTAMeter()
-        var alongside = RTAMeter()
+        var reference = RTADisplayModel()
+        var alongside = RTADisplayModel()
         var smoother = CoachingDeltaSmoother()
 
         for (i, frame) in rawFrames.enumerated() {
-            let previousLevels = reference.levels
-            reference.ingest(frame, dt: i == 0 ? 0 : step)
-            alongside.ingest(frame, dt: i == 0 ? 0 : step)
+            reference.step(input: frame, targetOffsets: nil, dt: i == 0 ? 0 : step)
+            alongside.step(input: frame, targetOffsets: nil, dt: i == 0 ? 0 : step)
             let deltas = Dictionary(uniqueKeysWithValues: zip(Band.allCases, frame))
             let time = t0.addingTimeInterval(Double(i) * step)
             _ = smoother.ingest(deltas, at: time)
 
             #expect(alongside == reference, "the RTA path is identical whether or not a smoother runs alongside it")
-            let rising = i == 0 || zip(frame, previousLevels).allSatisfy { raw, previous in raw >= previous }
-            if rising {
-                #expect(alongside.levels == frame, "a rising frame makes the RTA track the raw value exactly")
+            if i == 0 {
+                #expect(alongside.levels == frame, "the RTA adopts the first raw frame exactly (#1707 ballistics after that)")
             }
         }
 
