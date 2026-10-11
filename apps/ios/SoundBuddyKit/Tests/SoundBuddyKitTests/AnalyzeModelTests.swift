@@ -58,8 +58,25 @@ private func levels(base: Double = -30, _ overrides: [Band: Double] = [:]) -> Ba
     BandLevels(db: Dictionary(uniqueKeysWithValues: Band.allCases.map { ($0, overrides[$0] ?? base) }))
 }
 
-private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb: Double = -18.43) -> SpectrumReading {
-    SpectrumReading(bands: bands, rtaDb: rta, overallDb: overallDb)
+private func reading(
+    _ bands: BandLevels,
+    rta: [Double] = [-40, -50],
+    overallDb: Double = -18.43,
+    programFeatures: ProgramFeatures? = nil
+) -> SpectrumReading {
+    SpectrumReading(bands: bands, rtaDb: rta, overallDb: overallDb, programFeatures: programFeatures)
+}
+
+/// Full-band music-shaped features: no speech-band majority, real sub/air
+/// energy, a bright centroid — a clear `.music` classification.
+private func musicFeatures(levelDb: Double = -20) -> ProgramFeatures {
+    ProgramFeatures(speechBandFraction: 0.3, subFraction: 0.12, airFraction: 0.08, centroidHz: 3200, flatness: 0.01, levelDb: levelDb)
+}
+
+/// The 2026-10-11 dogfood shape: speech over a quiet instrumental bed —
+/// voice-band-heavy, quiet, low centroid — a clear `.speech` classification.
+private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
+    ProgramFeatures(speechBandFraction: 0.62, subFraction: 0.03, airFraction: 0.01, centroidHz: 1400, flatness: 0.05, levelDb: levelDb)
 }
 
 @MainActor
@@ -444,6 +461,146 @@ private func reading(_ bands: BandLevels, rta: [Double] = [-40, -50], overallDb:
         try deliver(reading(levels(base: -30)))
         #expect(worshipModel.coaching.count == BandDeviationCoach.maxEvents)
         #expect(worshipModel.coaching.first?.message.contains("gentle cut") == true)
+    }
+
+    // MARK: Program mode (speech/music) (#1690)
+
+    /// Delivers `count` readings carrying `features`, advancing the fake
+    /// clock by `step` seconds before each one — the live cadence the
+    /// tracker's dwell timing is measured against.
+    private func deliverSustained(_ features: ProgramFeatures, bands: BandLevels, count: Int, step: Double = 0.05) throws {
+        for _ in 0..<count {
+            clock.advance(step)
+            try deliver(reading(bands, programFeatures: features))
+        }
+    }
+
+    @Test func sustainedSpeechOverAPadSwitchesTheAutoTargetToSpeechPodcast() async throws {
+        let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        let speechPodcast = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.speechPodcastId)
+        let m = model(target: worship, targetIsAuto: true)
+        await m.appear()
+
+        let shiftedTargets = Dictionary(uniqueKeysWithValues: Band.allCases.map { ($0, speechPodcast.bandTargets[$0]! - 40) })
+        let bands = levels(shiftedTargets)
+
+        try deliverSustained(speechOverAPadFeatures(), bands: bands, count: 60) // 3 s: short of the dwell
+        #expect(m.targetLegendText == "Target · Worship service (auto)")
+        #expect(m.programMode == .music)
+
+        try deliverSustained(speechOverAPadFeatures(), bands: bands, count: 60) // 6 s total: past the 4 s dwell
+        #expect(m.programMode == .speech)
+        #expect(m.programModeChipText == "Speech")
+        #expect(m.targetLegendText == "Target · Speech / podcast (auto)")
+        #expect(m.coachingCurve.id == IdealCurveLibrary.speechPodcastId)
+        for marker in m.problemMarkers where marker.band == .presence || marker.band == .brilliance {
+            #expect(marker.direction != .underTarget, "bands are level-matched to the speech-podcast target, so no under-target flag")
+        }
+    }
+
+    @Test func sustainedMusicSwitchesTheAutoTargetBackToWorshipService() async throws {
+        let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        let m = model(target: worship, targetIsAuto: true)
+        await m.appear()
+
+        try deliverSustained(speechOverAPadFeatures(), bands: levels(base: -40), count: 120) // 6 s of speech
+        #expect(m.programMode == .speech)
+        #expect(m.target.id == IdealCurveLibrary.speechPodcastId)
+
+        try deliverSustained(musicFeatures(), bands: levels(base: -30), count: 60) // 3 s of music: past the 2 s dwell
+        #expect(m.programMode == .music)
+        #expect(m.programModeChipText == "Music")
+        #expect(m.target.id == IdealCurveLibrary.worshipServiceId)
+        #expect(m.targetLegendText == "Target · Worship service (auto)")
+    }
+
+    @Test func aUserChosenTargetIsNeverSwitchedBySpeech() async throws {
+        let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        let m = model(target: worship, targetIsAuto: false)
+        await m.appear()
+
+        try deliverSustained(speechOverAPadFeatures(), bands: levels(base: -40), count: 120)
+        #expect(m.programMode == .speech, "the chip still shows the detected mode")
+        #expect(m.target == worship, "a user-chosen target is never switched")
+        #expect(m.coachingCurve == worship)
+        #expect(m.targetLegendText == "Target · Worship service")
+    }
+
+    @Test func noAutoSwitchWhileEditingTheTarget() async throws {
+        let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        let m = model(target: worship, targetIsAuto: true)
+        await m.appear()
+        m.beginTargetEdit()
+
+        try deliverSustained(speechOverAPadFeatures(), bands: levels(base: -40), count: 120)
+        #expect(m.programMode == .speech, "the chip still shows the detected mode")
+        #expect(m.target == worship, "the draft never auto-switches while editing")
+        #expect(m.coachingCurve == worship)
+        #expect(m.targetLegendText == "Target · Worship service (auto)")
+
+        m.cancelTargetEdit()
+        clock.advance(0.05)
+        try deliver(reading(levels(base: -40), programFeatures: speechOverAPadFeatures()))
+        #expect(m.target.id == IdealCurveLibrary.speechPodcastId, "resolves to the already-detected mode on the next reading")
+    }
+
+    @Test func aSpeechCurveLoadFailureKeepsTheMusicTarget() async throws {
+        struct LoaderFailure: Error {}
+        let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        let m = model(target: worship, targetIsAuto: true, presetLoader: { _ in throw LoaderFailure() })
+        await m.appear()
+
+        try deliverSustained(speechOverAPadFeatures(), bands: levels(base: -40), count: 120)
+        #expect(m.programMode == .speech)
+        #expect(m.target == worship, "a load failure keeps the music target rather than crashing")
+        #expect(m.targetLegendText == "Target · Worship service (auto)")
+    }
+
+    @Test func readingsWithoutFeaturesNeverChangeTheMode() async throws {
+        let m = model()
+        await m.appear()
+        for _ in 0..<40 {
+            clock.advance(0.05)
+            try deliver(reading(levels(base: -30)))
+        }
+        #expect(m.programMode == .music)
+        #expect(m.target == .flat)
+    }
+
+    @Test func haltResetsTheModeAndAutoTarget() async throws {
+        let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        let m = model(target: worship, targetIsAuto: true)
+        await m.appear()
+
+        try deliverSustained(speechOverAPadFeatures(), bands: levels(base: -40), count: 120)
+        #expect(m.programMode == .speech)
+        #expect(m.target.id == IdealCurveLibrary.speechPodcastId)
+
+        m.disappear()
+        #expect(m.programMode == .music)
+        #expect(m.target.id == IdealCurveLibrary.worshipServiceId)
+        #expect(m.targetLegendText == "Target · Worship service (auto)")
+    }
+
+    @Test func programModeAccessibilityLabelReflectsAutoVsUserTargetAndEditing() {
+        let auto = model(target: .flat, targetIsAuto: true)
+        #expect(auto.programModeAccessibilityLabel == "Program: music, target switched automatically")
+
+        let userChosen = model(target: .flat, targetIsAuto: false)
+        #expect(userChosen.programModeAccessibilityLabel == "Program: music")
+
+        let editingAuto = model(target: .flat, targetIsAuto: true)
+        editingAuto.beginTargetEdit()
+        #expect(editingAuto.programModeAccessibilityLabel == "Program: music", "no auto switch while editing, so no claim of one")
+    }
+
+    @Test func showsProgramModeChipOnlyWhenLive() async {
+        let m = model()
+        #expect(!m.showsProgramModeChip)
+        await m.appear()
+        #expect(m.showsProgramModeChip)
+        m.disappear()
+        #expect(!m.showsProgramModeChip)
     }
 
     // MARK: Problem markers

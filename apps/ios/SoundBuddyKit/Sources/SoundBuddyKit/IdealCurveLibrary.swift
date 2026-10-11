@@ -8,7 +8,9 @@ public enum IdealCurveLibrary {
     public static let flatId = "flat"
     public static let musicFullRangeId = "music-fullrange"
     public static let worshipServiceId = "worship-service"
-    public static let builtInIds = [flatId, musicFullRangeId, worshipServiceId]
+    /// The auto target while ProgramModeTracker reads speech (#1690).
+    public static let speechPodcastId = "speech-podcast"
+    public static let builtInIds = [flatId, musicFullRangeId, worshipServiceId, speechPodcastId]
     /// Mac LIVE_CAPTURE_DEFAULT_PROFILE_ID.
     public static let liveDefaultId = worshipServiceId
     static let resourcePrefix = "ideal-curve.v1."

@@ -70,6 +70,9 @@ public final class AnalyzeModel {
     static let halfDisplayStep = 0.05
     static let targetLegendPrefix = "Target · "
     static let targetAutoSuffix = " (auto)"
+    /// The program-mode chip's two labels (#1690).
+    static let programChipSpeech = "Speech"
+    static let programChipMusic = "Music"
 
     public private(set) var state: State = .idle
     public private(set) var bandLevels: BandLevels = .silent
@@ -91,19 +94,27 @@ public final class AnalyzeModel {
     /// on edit-mode transitions, never at the meter rate.
     public private(set) var target: IdealCurve
     /// Whether `target` was picked automatically (vs. a user choice made
-    /// while editing) — only affects the legend copy.
+    /// while editing) — affects the legend copy and whether `programMode`
+    /// drives the target (#1690).
     public private(set) var targetIsAuto: Bool
 
     /// The last Custom curve committed with Done this session (#1561). On-device
     /// and in memory only — never persisted or synced.
     public private(set) var sessionCustomTarget: IdealCurve?
 
+    /// The detected speech/music program mode (#1690), from the live
+    /// readings' ProgramFeatures through ProgramContentClassifier and
+    /// ProgramModeTracker. Drives the chip and, while the target is auto and
+    /// not being edited, the auto target itself.
+    public private(set) var programMode: ProgramMode = .music
+
     private let permission: MicPermission
     private let source: LiveAudioSource
     // Coaches against the last *committed* target, not the live draft (#1561):
-    // rebuilt only by `apply()`, at init and when an edit is resolved (Done or
-    // Cancel). While editing, `target` is the draft and the coach still holds
-    // the pre-edit curve, so the overlay and the hints intentionally disagree
+    // rebuilt only by `apply()`, at init, when an edit is resolved (Done or
+    // Cancel), and on an auto program-mode switch outside edit mode (#1690).
+    // While editing, `target` is the draft and the coach still holds the
+    // pre-edit curve, so the overlay and the hints intentionally disagree
     // until the edit resolves.
     private var coach: BandDeviationCoach
     private let now: () -> Date
@@ -119,6 +130,15 @@ public final class AnalyzeModel {
     /// Loads a bundled preset curve (#1560); injected so tests can fake or
     /// fail loading without a real bundle.
     private let presetLoader: (String) throws -> IdealCurve
+    private var contentClassifier = ProgramContentClassifier()
+    private var modeTracker = ProgramModeTracker()
+    /// The auto target for `.music` mode — the curve passed in at init,
+    /// before any program-mode switch (#1690).
+    private let autoMusicTarget: IdealCurve
+    /// The auto target for `.speech` mode, lazily loaded via `presetLoader`
+    /// and cached; stays nil (and the model stays on `autoMusicTarget`) if
+    /// loading throws.
+    private var speechTarget: IdealCurve?
     private var sessionStart: Date?
     private var lastReadingAt: Date?
     private var lastCoachingAt: Date?
@@ -138,6 +158,7 @@ public final class AnalyzeModel {
         self.coach = BandDeviationCoach(ideal: target)
         self.target = target
         self.targetIsAuto = targetIsAuto
+        self.autoMusicTarget = target
         self.rtaTargetOffsets = RTATarget.resample(target, onto: RTALayout.standard)
         self.presetLoader = presetLoader
         self.now = now
@@ -153,8 +174,9 @@ public final class AnalyzeModel {
     }
 
     /// Sets the drawn target and rebuilds the coach from it together, so the
-    /// two never disagree outside of edit mode. Only called at init and when
-    /// an edit resolves (Done or Cancel) — never from the live draft (#1561).
+    /// two never disagree outside of edit mode. Only called at init, when an
+    /// edit resolves (Done or Cancel), and on an auto program-mode switch
+    /// outside edit mode (#1690) — never from the live draft (#1561).
     private func apply(target: IdealCurve, isAuto: Bool) {
         applyDrawn(target: target, isAuto: isAuto)
         coach = BandDeviationCoach(ideal: target)
@@ -224,6 +246,27 @@ public final class AnalyzeModel {
     /// The legend row shown under the RTA. Changes only on edit-mode
     /// transitions, never at the meter rate.
     public var targetLegendText: String { Self.formatTargetLegend(label: target.label, isAuto: targetIsAuto) }
+
+    // MARK: Program mode (speech/music) chip (#1690)
+
+    /// Only shown while live — there is nothing to classify otherwise.
+    public var showsProgramModeChip: Bool { state == .live }
+
+    /// "Speech" or "Music", next to the target legend.
+    public var programModeChipText: String {
+        switch programMode {
+        case .speech: Self.programChipSpeech
+        case .music: Self.programChipMusic
+        }
+    }
+
+    /// Spells out that the auto target follows this mode when it actually
+    /// does (auto target, not mid-edit); otherwise just reports the mode.
+    public var programModeAccessibilityLabel: String {
+        let mode = programMode == .speech ? "speech" : "music"
+        guard targetIsAuto, !isEditingTarget else { return "Program: \(mode)" }
+        return "Program: \(mode), target switched automatically"
+    }
 
     /// Placeholder for an empty coaching stack. Never points at a button:
     /// listening is automatic.
@@ -440,6 +483,10 @@ public final class AnalyzeModel {
         problemMarkers = []
         overallDb = nil
         handleDrag = nil
+        contentClassifier.reset()
+        modeTracker.reset()
+        programMode = .music
+        syncAutoTarget()
         state = .idle
     }
 
@@ -451,11 +498,46 @@ public final class AnalyzeModel {
         overallDb = reading.overallDb > Self.overallLevelFloorDb ? reading.overallDb : nil
         rta.ingest(reading.rtaDb, dt: step)
 
+        if let features = reading.programFeatures {
+            programMode = modeTracker.update(contentClassifier.classify(features), at: time)
+        }
+        syncAutoTarget()
+
         if isCoachingFrozen { return }
         if let last = lastCoachingAt, time.timeIntervalSince(last) < Self.coachingRefreshSeconds { return }
         lastCoachingAt = time
         let elapsed = sessionStart.map { time.timeIntervalSince($0) } ?? 0
         coaching = coach.events(for: reading.bands, sessionTime: elapsed)
         problemMarkers = coach.problemMarkers(for: reading.bands)
+    }
+
+    /// Reconciles the drawn/coaching target with `programMode` while the
+    /// target is auto and not being edited (#1690): never switches a
+    /// user-chosen target, and never touches the coach mid-edit (drafts
+    /// never reach the coach, ADR-0156). Re-evaluated on every reading (not
+    /// just on a mode flip) so it is self-healing after an edit cancels back
+    /// to auto, or after halt.
+    private func syncAutoTarget() {
+        guard targetIsAuto, !isEditingTarget else { return }
+        let desired: IdealCurve
+        switch programMode {
+        case .speech:
+            desired = loadSpeechTarget() ?? autoMusicTarget
+        case .music:
+            desired = autoMusicTarget
+        }
+        guard desired != target else { return }
+        apply(target: desired, isAuto: true)
+        lastCoachingAt = nil
+    }
+
+    /// Loads and caches the speech-podcast curve on first use; a load
+    /// failure leaves `speechTarget` nil so every call keeps retrying (and
+    /// the model stays on the music target) rather than caching a failure.
+    private func loadSpeechTarget() -> IdealCurve? {
+        if let speechTarget { return speechTarget }
+        let curve = try? presetLoader(IdealCurveLibrary.speechPodcastId)
+        speechTarget = curve
+        return curve
     }
 }

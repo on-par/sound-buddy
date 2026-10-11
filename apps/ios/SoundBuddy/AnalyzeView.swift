@@ -26,6 +26,10 @@ import UIKit
 /// legend band; tapping one seeds the draft from that bundled curve (#1560).
 /// While editing, problem markers hide and the landscape coaching peek stays
 /// closed, so neither overlay collides with the handles or the chip (#1562).
+/// A small Speech/Music chip sits beside the legend in every layout (#1690):
+/// it reflects AnalyzeModel's detected program mode, and — only while the
+/// target is auto and not being edited — that mode also drives the auto
+/// target itself (worship-service for music, speech-podcast for speech).
 ///
 /// A gear button beside the level readout (end of the landscape strip) opens
 /// the Settings sheet (#1591). Its keep-awake toggle (#1584): while on (the
@@ -640,21 +644,44 @@ private struct TargetControlsBand: View {
     var body: some View {
         let editing = model.isEditingTarget
         VStack(alignment: .leading, spacing: Layout.legendSpacing) {
-            ZStack(alignment: .leading) {
-                TargetLegend(text: model.targetLegendText, onEdit: onEdit)
-                    .opacity(editing ? 0 : 1)
-                    .allowsHitTesting(!editing)
-                    .accessibilityHidden(editing)
-                TargetEditChip(model: model)
-                    .opacity(editing ? 1 : 0)
-                    .allowsHitTesting(editing)
-                    .accessibilityHidden(!editing)
+            HStack(spacing: Layout.legendSwatchGap) {
+                ZStack(alignment: .leading) {
+                    TargetLegend(text: model.targetLegendText, onEdit: onEdit)
+                        .opacity(editing ? 0 : 1)
+                        .allowsHitTesting(!editing)
+                        .accessibilityHidden(editing)
+                    TargetEditChip(model: model)
+                        .opacity(editing ? 1 : 0)
+                        .allowsHitTesting(editing)
+                        .accessibilityHidden(!editing)
+                }
+                Spacer(minLength: Layout.legendSwatchGap)
+                ProgramModeChip(model: model)
             }
             TargetPresetStrip(model: model)
                 .opacity(editing ? 1 : 0)
                 .allowsHitTesting(editing)
                 .accessibilityHidden(!editing)
         }
+    }
+}
+
+/// The detected Speech/Music chip beside the target legend (#1690). Visible
+/// (and laid out, so nothing shifts when it fades) only while live; same
+/// caption font as the legend so the band's height never changes (#1565).
+private struct ProgramModeChip: View {
+    let model: AnalyzeModel
+
+    var body: some View {
+        Text(model.programModeChipText)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Palette.secondaryText)
+            .padding(.horizontal, Layout.badgePaddingH)
+            .padding(.vertical, Layout.badgePaddingV)
+            .background(Palette.surface, in: Capsule())
+            .opacity(model.showsProgramModeChip ? 1 : 0)
+            .accessibilityLabel(model.programModeAccessibilityLabel)
+            .accessibilityIdentifier("analyze.programModeChip")
     }
 }
 
