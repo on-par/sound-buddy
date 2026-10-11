@@ -787,11 +787,13 @@ private struct TargetPresetPill: View {
 
 // MARK: - Coaching
 
-/// The short coaching stack: BandDeviationCoach.maxEvents fixed slots, each
-/// updated in place. Slots are identified by position (not by event), and
-/// nothing here animates — the model refreshes the stack about once a second,
-/// and an implicit animation over changing text cross-fades old and new
-/// copies into ghosted, double-drawn text.
+/// The short coaching stack: up to AnalyzeCoachingViewModel.maxCards cards,
+/// then the placeholder/filler slots so the stack height stays steady. Cards
+/// are identified by `CoachingEvent.id` (#1700) and the model keeps their
+/// order across refreshes, so a visible tip never moves or is recreated; only
+/// its numbers update in place. Nothing here animates — the model refreshes
+/// the stack about once a second, and an implicit animation over changing
+/// text cross-fades old and new copies into ghosted, double-drawn text.
 struct CoachingStackView: View {
     let model: AnalyzeModel
     var onShowOnConsole: ((CoachingEvent) -> Void)? = nil
@@ -813,10 +815,11 @@ struct CoachingStackView: View {
             if let applied, let onUndoApplied {
                 AppliedCoachingNote(applied: applied, canUndo: canUndoApplied, onUndo: onUndoApplied)
             }
-            ForEach(0..<BandDeviationCoach.maxEvents, id: \.self) { slot in
-                if slot < events.count {
-                    CoachingCard(event: events[slot], onShowOnConsole: onShowOnConsole, showsConsoleAction: showsConsoleAction)
-                } else if slot == 0 {
+            ForEach(events) { event in
+                CoachingCard(event: event, onShowOnConsole: onShowOnConsole, showsConsoleAction: showsConsoleAction)
+            }
+            ForEach(events.count..<AnalyzeCoachingViewModel.maxCards, id: \.self) { slot in
+                if slot == 0 {
                     CoachingPlaceholder(text: model.coachingPlaceholder)
                 } else {
                     // Keeps the stack's height steady as hints come and go.

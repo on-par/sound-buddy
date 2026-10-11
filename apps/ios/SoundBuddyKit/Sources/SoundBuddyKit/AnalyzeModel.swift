@@ -80,9 +80,12 @@ public final class AnalyzeModel {
     /// Broadband level of the latest reading in dBFS; nil when not live or at
     /// or below overallLevelFloorDb (never a fake 0).
     public private(set) var overallDb: Double?
+    /// The coaching cards, identity-stable across refreshes (#1700): a tip
+    /// that stays keeps its position and only its numbers change. At most
+    /// `AnalyzeCoachingViewModel.maxCards`.
     public private(set) var coaching: [CoachingEvent] = []
-    /// Same bands as `coaching` (both come from the coach on the same refresh);
-    /// drawn as text-free pulses on the portrait RTA.
+    /// Same bands as `coaching`, in the same order (both come from the coach
+    /// on the same refresh); drawn as text-free pulses on the portrait RTA.
     public private(set) var problemMarkers: [ProblemMarkerDescriptor] = []
     public let rtaLayout = RTALayout.standard
     /// The clamp authority for target-handle drags (#1559): RTAView passes
@@ -117,6 +120,7 @@ public final class AnalyzeModel {
     // pre-edit curve, so the overlay and the hints intentionally disagree
     // until the edit resolves.
     private var coach: BandDeviationCoach
+    private var coachingCards = AnalyzeCoachingViewModel()
     private let now: () -> Date
     /// `target` resampled onto `rtaLayout`'s band centers, recomputed whenever
     /// `target` changes.
@@ -479,6 +483,7 @@ public final class AnalyzeModel {
         lastCoachingAt = nil
         bandLevels = .silent
         rta.reset()
+        coachingCards.reset()
         coaching = []
         problemMarkers = []
         overallDb = nil
@@ -507,8 +512,9 @@ public final class AnalyzeModel {
         if let last = lastCoachingAt, time.timeIntervalSince(last) < Self.coachingRefreshSeconds { return }
         lastCoachingAt = time
         let elapsed = sessionStart.map { time.timeIntervalSince($0) } ?? 0
-        coaching = coach.events(for: reading.bands, sessionTime: elapsed)
-        problemMarkers = coach.problemMarkers(for: reading.bands)
+        coaching = coachingCards.update(with: coach.events(for: reading.bands, sessionTime: elapsed))
+        let markers = coach.problemMarkers(for: reading.bands)
+        problemMarkers = coaching.compactMap { card in markers.first { $0.band == card.band } }
     }
 
     /// Reconciles the drawn/coaching target with `programMode` while the

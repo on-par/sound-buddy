@@ -339,6 +339,50 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         #expect(m.coaching.first?.band == .presence)
     }
 
+    /// #1700: when a visible tip overtakes another, the coach re-sorts by
+    /// magnitude but the stack keeps each card where it was; only its number
+    /// changes. Problem markers follow the same card order.
+    @Test func coachingCardsKeepTheirOrderAcrossRefreshes() async throws {
+        let m = model()
+        await m.appear()
+        let first = levels([.bass: -18, .presence: -22])
+        try deliver(reading(first))
+        let shownFirst = m.coaching.compactMap(\.band)
+        #expect(shownFirst.prefix(2) == [.bass, .presence])
+
+        clock.advance(AnalyzeModel.coachingRefreshSeconds)
+        let second = levels([.bass: -21, .presence: -12])
+        let coachOrder = BandDeviationCoach(ideal: m.coachingCurve)
+            .events(for: second, sessionTime: 0).compactMap(\.band)
+        try #require(coachOrder.prefix(2) == [.presence, .bass], "precondition: the raw coach re-sorts Presence first")
+        try deliver(reading(second))
+
+        let shownSecond = m.coaching.compactMap(\.band)
+        #expect(shownSecond.prefix(2) == [.bass, .presence], "cards hold position")
+        #expect(Set(shownSecond) == Set(coachOrder), "same tips as the coach")
+        let expected = BandDeviationCoach(ideal: m.coachingCurve).events(for: second, sessionTime: 1)
+        for card in m.coaching {
+            #expect(expected.first { $0.id == card.id }?.data == card.data, "\(card.id) shows the latest value")
+        }
+        #expect(m.problemMarkers.map(\.band) == shownSecond, "markers follow the card order")
+        #expect(m.coaching.count <= BandDeviationCoach.maxEvents)
+    }
+
+    @Test func listeningAgainStartsTheCardOrderFresh() async throws {
+        let m = model()
+        await m.appear()
+        try deliver(reading(levels([.bass: -18, .presence: -22])))
+        m.disappear()
+        #expect(m.coaching.isEmpty)
+        await m.appear()
+        clock.advance(AnalyzeModel.coachingRefreshSeconds)
+        let second = levels([.bass: -21, .presence: -12])
+        try deliver(reading(second))
+        let coachOrder = BandDeviationCoach(ideal: m.coachingCurve)
+            .events(for: second, sessionTime: 0).compactMap(\.band)
+        #expect(m.coaching.compactMap(\.band) == coachOrder, "no order remembered from the last session")
+    }
+
     @Test func theRTAMeterAgesByWallClock() async throws {
         let m = model()
         await m.appear()
