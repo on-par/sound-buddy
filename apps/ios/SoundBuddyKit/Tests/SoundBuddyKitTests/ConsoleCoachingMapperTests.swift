@@ -181,6 +181,60 @@ private func quantizedQ(_ band: Band) -> Double {
         #expect(ConsoleCoachingMapper.showsAction(for: other, consoleVisible: true, phase: .live) == false)
     }
 
+    @Test func isArmedRequiresBothWriterAndLiveLink() {
+        let writer = ConsoleEQWriter(now: { 0 }, isArmed: { true }, send: { _ in })
+
+        #expect(ConsoleCoachingMapper.isArmed(writer: nil, phase: .live) == false)
+        #expect(ConsoleCoachingMapper.isArmed(writer: writer, phase: .idle) == false)
+        #expect(ConsoleCoachingMapper.isArmed(writer: writer, phase: .live) == true)
+        #expect(ConsoleCoachingMapper.isArmed(writer: writer, phase: .liveDegraded) == true)
+    }
+
+    @Test func applyLabelReadsUnlockToApplyWhenDisarmed() {
+        #expect(ConsoleCoachingMapper.applyLabel(isArmed: false) == ConsoleCoachingMapper.applyLabelDisarmed)
+        #expect(ConsoleCoachingMapper.applyLabel(isArmed: false) == "Unlock to apply")
+    }
+
+    @Test func applyLabelReadsApplyWhenArmed() {
+        #expect(ConsoleCoachingMapper.applyLabel(isArmed: true) == ConsoleCoachingMapper.applyLabelArmed)
+        #expect(ConsoleCoachingMapper.applyLabel(isArmed: true) == "Apply")
+    }
+
+    @Test func undoLabelReadsUnlockToUndoWhenDisarmed() {
+        #expect(ConsoleCoachingMapper.undoLabel(isArmed: false) == ConsoleCoachingMapper.undoLabelDisarmed)
+        #expect(ConsoleCoachingMapper.undoLabel(isArmed: false) == "Unlock to undo")
+    }
+
+    @Test func undoLabelReadsUndoWhenArmed() {
+        #expect(ConsoleCoachingMapper.undoLabel(isArmed: true) == ConsoleCoachingMapper.undoLabelArmed)
+        #expect(ConsoleCoachingMapper.undoLabel(isArmed: true) == "Undo")
+    }
+
+    @Test func appliedBeforeAfterCopy() throws {
+        let eq = mainLR(flatMainLRLines)
+        let suggestion = try #require(
+            ConsoleCoachingMapper.suggestion(for: event(band: .lowMid, deviationDb: .number(6.2)), mainLR: eq)
+        )
+        let applied = ConsoleCoachingMapper.applied(suggestion, to: eq)
+
+        let freqText = ConsoleEQPanelState.freqText(quantizedCentreHz(.lowMid))
+        #expect(applied.bandIndex == 1)
+        #expect(applied.confirmation == "Applied \u{2212}3 dB at \(freqText) on Main LR")
+        #expect(applied.beforeAfter == "Band 2: +0 dB at 250 Hz \u{2192} \u{2212}3 dB at \(freqText)")
+    }
+
+    @Test func appliedLimitsGainAgainstPrior() throws {
+        var eq = mainLR(flatMainLRLines)
+        eq.bands[1] = ConsoleEQBand(type: .peaking, freqHz: 250, gainDb: 2, q: 1.4)
+
+        let ghostBand = ConsoleEQBand(type: .peaking, freqHz: 250, gainDb: -3, q: 1.4)
+        let suggestion = ConsoleCoachingSuggestion(bandIndex: 1, band: ghostBand, retunesBandInUse: false, copy: "test", retuneNote: nil)
+
+        let applied = ConsoleCoachingMapper.applied(suggestion, to: eq)
+        #expect(abs(applied.written.gainDb - (-1)) < tolerance)
+        #expect(abs(applied.prior.gainDb - 2) < tolerance)
+    }
+
     @Test func ghostEQSubstitutesBandAndTurnsEqOn() throws {
         var eq = mainLR(flatMainLRLines)
         eq.on = false

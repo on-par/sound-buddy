@@ -392,4 +392,250 @@ private func freshDefaults() -> UserDefaults {
         model.consoleChanged(ConsoleIdentity(name: "Monitors", model: "X32"))
         #expect(model.coachingEvent == nil)
     }
+
+    // MARK: - Apply coaching (#1676)
+
+    /// A fake clock plus a datagram-capturing, decoding recorder, copied from
+    /// `ConsoleEQWriterTests` (its own is file-private there).
+    private final class EQRecorder {
+        var clock: TimeInterval = 0
+        var datagrams: [(sentAt: TimeInterval, message: OSCMessage)] = []
+
+        func perform(_ effect: ConsoleSessionEffect) {}
+
+        func sendDatagram(_ data: Data) {
+            guard let message = try? OSCCodec.decode(data) else {
+                Issue.record("writer sent an undecodable datagram")
+                return
+            }
+            datagrams.append((sentAt: clock, message: message))
+        }
+    }
+
+    /// Drives a `ConsoleSessionModel` to `.live` and arms it, copied from
+    /// `ConsoleEQWriterTests` (its own is file-private there).
+    private func armedWriter(_ recorder: EQRecorder) -> (ConsoleSessionModel, ConsoleEQWriter) {
+        let identity = ConsoleIdentity(name: "FOH", model: "M32R")
+        let model = ConsoleSessionModel(now: { recorder.clock }, perform: recorder.perform, sendDatagram: recorder.sendDatagram)
+        model.send(.connect(identity))
+        model.send(.identityReceived(identity))
+        model.send(.syncCompleted)
+        guard let writer = model.arm() else {
+            fatalError("expected arm() to return a writer once live")
+        }
+        return (model, writer)
+    }
+
+    private static func applyEvent(deviationDb: Double = 3, band: Band = .lowMid) -> CoachingEvent {
+        CoachingEvent(
+            id: "apply", ruleType: .bandDeviation, severity: .suggestion, band: band,
+            message: "test", data: ["deviationDb": .number(deviationDb)], source: .phoneMicEstimate, sessionTime: 0
+        )
+    }
+
+    /// `sqrt(lowHz*highHz)` quantized to the console's own frequency grid —
+    /// the same round trip `ConsoleCoachingMapper.suggestion` uses.
+    private func quantizedCentreHz(_ band: Band) -> Double {
+        let centre = (band.lowHz * band.highHz).squareRoot()
+        return ConsoleEQScale.freqHz(raw: ConsoleEQScale.rawFreq(hz: centre))
+    }
+
+    /// Seeds a fresh `ConsoleTargetModel` on Main LR, live, with a showing
+    /// `.lowMid` ghost on band 2 (250 Hz, free) — well inside one octave of
+    /// band 2's 250 Hz, so Apply never hits the frequency limit here.
+    private func modelReadyToApply() -> ConsoleTargetModel {
+        let target = ConsoleTargetModel(defaults: freshDefaults())
+        target.consoleChanged(ConsoleIdentity(name: "FOH", model: "M32R"))
+        for line in mainLREqLines { target.ingest(nodeLine: line) }
+        target.phase = .live
+        target.showCoaching(Self.applyEvent())
+        return target
+    }
+
+    @Test func applyCoachingWritesGhostBandToMainLRAndConfirms() throws {
+        let recorder = EQRecorder()
+        let (model, writer) = armedWriter(recorder)
+        _ = model
+        let target = modelReadyToApply()
+
+        try target.applyCoaching(using: writer)
+
+        #expect(recorder.datagrams.count == 1)
+        let message = recorder.datagrams[0].message
+        #expect(message.address == "/main/st/eq/2")
+        guard case let .float(gainRaw) = message.arguments[2] else {
+            Issue.record("expected a float gain argument")
+            return
+        }
+        #expect(abs(Double(gainRaw) - ConsoleEQScale.rawGain(db: -3)) < 1e-5)
+
+        let expectedFreqText = ConsoleEQPanelState.freqText(quantizedCentreHz(.lowMid))
+        #expect(target.appliedCoaching?.bandIndex == 1)
+        #expect(target.appliedCoaching?.confirmation == "Applied \u{2212}3 dB at \(expectedFreqText) on Main LR")
+        #expect(abs((target.eq?.bands[1].gainDb ?? 0) - (-3)) < 1e-5)
+        #expect(target.coachingEvent == nil)
+    }
+
+    @Test func applyCoachingRecordsMainLRSnapshotFirst() throws {
+        let recorder = EQRecorder()
+        let (model, writer) = armedWriter(recorder)
+        _ = model
+        let target = modelReadyToApply()
+
+        #expect(writer.needsSnapshot(for: .mainLR) == true)
+        try target.applyCoaching(using: writer)
+        #expect(writer.needsSnapshot(for: .mainLR) == false)
+    }
+
+    @Test func applyCoachingWhileDisarmedSendsNothing() throws {
+        let target = modelReadyToApply()
+        let eqBefore = target.eq
+        let coachingBefore = target.coachingEvent
+
+        do {
+            try target.applyCoaching(using: nil)
+            Issue.record("expected .disarmed")
+        } catch {
+            #expect(error == .disarmed)
+        }
+        #expect(target.eq == eqBefore)
+        #expect(target.coachingEvent == coachingBefore)
+        #expect(target.appliedCoaching == nil)
+
+        let recorder = EQRecorder()
+        let (model, writer) = armedWriter(recorder)
+        model.disarm()
+
+        do {
+            try target.applyCoaching(using: writer)
+            Issue.record("expected .disarmed")
+        } catch {
+            #expect(error == .disarmed)
+        }
+        #expect(recorder.datagrams.isEmpty)
+        #expect(target.eq == eqBefore)
+        #expect(target.coachingEvent == coachingBefore)
+        #expect(target.appliedCoaching == nil)
+    }
+
+    @Test func applyCoachingWithoutSuggestionIsNoOp() throws {
+        let recorder = EQRecorder()
+        let (model, writer) = armedWriter(recorder)
+        _ = model
+        let target = ConsoleTargetModel(defaults: freshDefaults())
+        target.consoleChanged(ConsoleIdentity(name: "FOH", model: "M32R"))
+        for line in mainLREqLines { target.ingest(nodeLine: line) }
+        target.phase = .live
+
+        // No coaching event showing at all.
+        try target.applyCoaching(using: writer)
+        #expect(recorder.datagrams.isEmpty)
+        #expect(target.appliedCoaching == nil)
+
+        // A coaching event is showing, but a channel is selected.
+        target.showCoaching(Self.applyEvent())
+        target.select(.channel(2))
+        try target.applyCoaching(using: writer)
+        #expect(recorder.datagrams.isEmpty)
+        #expect(target.appliedCoaching == nil)
+    }
+
+    @Test func applyCoachingLimitsRetuneToOneOctave() throws {
+        let recorder = EQRecorder()
+        let (model, writer) = armedWriter(recorder)
+        _ = model
+        let target = ConsoleTargetModel(defaults: freshDefaults())
+        target.consoleChanged(ConsoleIdentity(name: "FOH", model: "M32R"))
+        for line in mainLREqLines { target.ingest(nodeLine: line) }
+        target.phase = .live
+        // subBass's centre (~35 Hz) is more than an octave below band 2's
+        // 250 Hz, so the write lands at band 2's prior freq / 2 instead.
+        target.showCoaching(Self.applyEvent(band: .subBass))
+
+        try target.applyCoaching(using: writer)
+
+        let message = recorder.datagrams[0].message
+        #expect(message.address == "/main/st/eq/2")
+        guard case let .float(freqRaw) = message.arguments[1] else {
+            Issue.record("expected a float freq argument")
+            return
+        }
+        let writtenHz = ConsoleEQScale.freqHz(raw: Double(freqRaw))
+        #expect(abs(writtenHz - 125) / 125 < 0.02)
+        #expect(target.appliedCoaching?.confirmation.contains(ConsoleEQPanelState.freqText(writtenHz)) == true)
+    }
+
+    @Test func undoAppliedCoachingRestoresPriorBand() throws {
+        let recorder = EQRecorder()
+        let (model, writer) = armedWriter(recorder)
+        _ = model
+        let target = modelReadyToApply()
+        try target.applyCoaching(using: writer)
+        let prior = try #require(target.appliedCoaching?.prior)
+
+        recorder.clock += 1
+        try target.undoAppliedCoaching(using: writer)
+        while writer.hasPendingWrites {
+            recorder.clock += 1
+            writer.tick()
+        }
+
+        let lastMessage = try #require(recorder.datagrams.last?.message)
+        #expect(lastMessage.address == "/main/st/eq/2")
+        guard case let .float(gainRaw) = lastMessage.arguments[2] else {
+            Issue.record("expected a float gain argument")
+            return
+        }
+        #expect(abs(Double(gainRaw) - ConsoleEQScale.rawGain(db: prior.gainDb)) < 1e-5)
+        #expect(target.eq?.bands[1] == prior)
+        #expect(target.appliedCoaching == nil)
+    }
+
+    @Test func undoWhileDisarmedKeepsApplied() throws {
+        let recorder = EQRecorder()
+        let (model, writer) = armedWriter(recorder)
+        let target = modelReadyToApply()
+        try target.applyCoaching(using: writer)
+        let appliedBefore = target.appliedCoaching
+
+        model.disarm()
+        do {
+            try target.undoAppliedCoaching(using: writer)
+            Issue.record("expected .disarmed")
+        } catch {
+            #expect(error == .disarmed)
+        }
+        #expect(target.appliedCoaching == appliedBefore)
+
+        do {
+            try target.undoAppliedCoaching(using: nil)
+            Issue.record("expected .disarmed")
+        } catch {
+            #expect(error == .disarmed)
+        }
+        #expect(target.appliedCoaching == appliedBefore)
+    }
+
+    @Test func undoWithNothingAppliedIsNoOp() throws {
+        let target = modelReadyToApply()
+        #expect(target.appliedCoaching == nil)
+
+        try target.undoAppliedCoaching(using: nil)
+        #expect(target.appliedCoaching == nil)
+    }
+
+    @Test func consoleIdentityChangeClearsAppliedCoaching() throws {
+        let recorder = EQRecorder()
+        let (model, writer) = armedWriter(recorder)
+        _ = model
+        let target = modelReadyToApply()
+        try target.applyCoaching(using: writer)
+        #expect(target.appliedCoaching != nil)
+
+        target.select(.channel(1))
+        #expect(target.appliedCoaching != nil)
+
+        target.consoleChanged(ConsoleIdentity(name: "Monitors", model: "X32"))
+        #expect(target.appliedCoaching == nil)
+    }
 }

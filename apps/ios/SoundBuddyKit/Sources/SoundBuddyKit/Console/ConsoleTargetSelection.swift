@@ -48,7 +48,9 @@ public enum ConsoleTargetMemory {
 /// injected: the #1666 adapter forwards the live session's console
 /// identity, `/node` reply lines, `/xremote` pushes and
 /// `ConsoleSessionModel.phase` here; the DEBUG fixture seed does the same by
-/// hand.
+/// hand. `applyCoaching(using:)` and `undoAppliedCoaching(using:)` (#1676)
+/// take an injected `ConsoleEQWriter?` so the one write path stays testable
+/// here without an armed `ConsoleSessionModel` in the loop.
 @Observable
 public final class ConsoleTargetModel {
     /// Shown by the picker and the EQ panel when "Follow desk select" is on
@@ -68,6 +70,11 @@ public final class ConsoleTargetModel {
     /// only — never persisted. Non-nil only while it's showing; `eqPanel`
     /// only turns it into a suggestion while Main LR is selected.
     public private(set) var coachingEvent: CoachingEvent?
+
+    /// The last coaching suggestion Apply actually wrote to Main LR (#1676),
+    /// in memory only — never persisted. Non-nil only until `undoAppliedCoaching`
+    /// reverts it or `consoleChanged` clears it for a new identity.
+    public private(set) var appliedCoaching: ConsoleCoachingApplied?
 
     /// Opt-in, in-memory only (never persisted): when on, a `/-stat/selidx`
     /// push from the desk switches `selected` to the matching strip, or
@@ -93,6 +100,7 @@ public final class ConsoleTargetModel {
         eq = nil
         deskSelectHint = nil
         coachingEvent = nil
+        appliedCoaching = nil
     }
 
     public func ingest(nodeLine: String) {
@@ -177,6 +185,52 @@ public final class ConsoleTargetModel {
     /// Removes the ghost without changing the selected target.
     public func clearCoaching() {
         coachingEvent = nil
+    }
+
+    /// Writes the current ghost suggestion to Main LR through `writer`
+    /// (#1676). A no-op, sending nothing, unless Main LR is selected, its EQ
+    /// has been read, and a suggestion is showing. With no armed `writer`
+    /// (nil, or disarmed), throws `.disarmed` and sends nothing — `submit`
+    /// itself re-checks armed state. Records Main LR's pre-session snapshot
+    /// first when the writer still needs one, since `submit` would otherwise
+    /// throw `.snapshotMissing`. Only after `submit` succeeds does this fold
+    /// the written band into `eq` (optimistic — a later desk push still
+    /// overwrites it, ADR-0161 §7), record `appliedCoaching`, and clear the
+    /// ghost.
+    public func applyCoaching(using writer: ConsoleEQWriter?) throws(ConsoleEQWriteError) {
+        guard selected == .mainLR, let eq, let suggestion = eqPanel.coaching else { return }
+        guard let writer else { throw .disarmed }
+
+        let applied = ConsoleCoachingMapper.applied(suggestion, to: eq)
+        if writer.needsSnapshot(for: .mainLR) {
+            writer.recordSnapshot(eq)
+        }
+        try writer.submit(.band(applied.bandNumber, suggestion.band, gestureStart: applied.prior), on: .mainLR)
+
+        var next = eq
+        next.bands[applied.bandIndex] = applied.written
+        self.eq = next
+        appliedCoaching = applied
+        coachingEvent = nil
+    }
+
+    /// Writes `appliedCoaching`'s prior band back to Main LR through
+    /// `writer`, the exact inverse of the Apply that produced it. A no-op
+    /// when nothing is applied. With no armed `writer`, throws `.disarmed`
+    /// and leaves `appliedCoaching` so the Undo stays visible. Only restores
+    /// `eq` locally while Main LR is still selected and read — Undo always
+    /// targets `.mainLR` regardless of what's currently selected.
+    public func undoAppliedCoaching(using writer: ConsoleEQWriter?) throws(ConsoleEQWriteError) {
+        guard let applied = appliedCoaching else { return }
+        guard let writer else { throw .disarmed }
+
+        try writer.submit(.band(applied.bandNumber, applied.prior, gestureStart: applied.written), on: .mainLR)
+
+        if selected == .mainLR, var current = eq {
+            current.bands[applied.bandIndex] = applied.prior
+            eq = current
+        }
+        appliedCoaching = nil
     }
 
     public var chipStatus: ConsoleChipStatus {

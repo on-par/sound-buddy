@@ -42,8 +42,10 @@ import UIKit
 ///
 /// A band-deviation coaching card gets a "Show on console" button while a
 /// console link is up (#1671): tapping it selects Main LR and shows a
-/// dashed ghost band/curve for the suggested change — read-only, nothing is
-/// written to the desk (ADR-0161; applying is a later slice, #1676).
+/// dashed ghost band/curve for the suggested change. Tapping Apply on that
+/// ghost (in the EQ panel) writes it to Main LR through an armed
+/// `ConsoleEQWriter` (#1676, ADR-0161); the coaching stack then shows an
+/// applied note with Undo, from `console.appliedCoaching`.
 ///
 /// iPad (#1659): AnalyzeLayout also picks tallPortrait (regular-width
 /// portrait — the RTA fills the height above the coaching cards instead of
@@ -65,6 +67,10 @@ struct AnalyzeView: View {
     let console: ConsoleTargetModel?
     let consoleFlagEnabled: Bool
     let consoleConsentGranted: Bool
+    /// Injected until the #1666/#1674 adapter hands over a live armed
+    /// writer; Release passes `nil`, so Apply always reads "Unlock to
+    /// apply" there.
+    var consoleEQWriter: ConsoleEQWriter? = nil
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var coachingPeekOpen = false
@@ -102,7 +108,7 @@ struct AnalyzeView: View {
         }
         .sheet(isPresented: $consoleEQOpen, onDismiss: { console?.clearCoaching() }) {
             if let console {
-                ConsoleEQPanel(console: console, analyze: model, showsTargetButton: true) { consoleEQOpen = false }
+                ConsoleEQPanel(console: console, analyze: model, showsTargetButton: true, eqWriter: consoleEQWriter) { consoleEQOpen = false }
                     .presentationDetents([.medium, .large])
             }
         }
@@ -170,6 +176,14 @@ struct AnalyzeView: View {
         ConsoleCoachingMapper.showsAction(for: event, consoleVisible: showsConsoleChip, phase: console?.phase ?? .idle)
     }
 
+    /// The same armed-writer-and-live-link gate `ConsoleEQPanel` uses for
+    /// Apply (#1676 rework) — Undo in the coaching stack shares it so a tap
+    /// while disarmed never fires the `.disarmed` throw into the void.
+    /// Delegates to `ConsoleCoachingMapper.isArmed` so the rule lives once.
+    private var canUndoApplied: Bool {
+        ConsoleCoachingMapper.isArmed(writer: consoleEQWriter, phase: console?.phase ?? .idle)
+    }
+
     /// Selects Main LR and stores the tapped event (#1671); on the sheet
     /// placement it also opens the sheet — on the side-column placement the
     /// panel is already on screen and just updates.
@@ -199,7 +213,10 @@ struct AnalyzeView: View {
             CoachingStackView(
                 model: model,
                 onShowOnConsole: { showOnConsole($0, placement: placement) },
-                showsConsoleAction: showsConsoleAction
+                showsConsoleAction: showsConsoleAction,
+                applied: console?.appliedCoaching,
+                canUndoApplied: canUndoApplied,
+                onUndoApplied: { try? console?.undoAppliedCoaching(using: consoleEQWriter) }
             )
             if !layout.rtaFillsHeight {
                 Spacer(minLength: 0)
@@ -289,7 +306,7 @@ struct AnalyzeView: View {
             ), let console {
                 HStack(spacing: Layout.landscapeSpacing) {
                     rta
-                    ConsoleEQPanel(console: console, analyze: model, showsTargetButton: false)
+                    ConsoleEQPanel(console: console, analyze: model, showsTargetButton: false, eqWriter: consoleEQWriter)
                         .frame(width: proxy.size.width * AnalyzeLayout.consoleEQColumnWidthFraction)
                 }
             } else {
@@ -314,7 +331,10 @@ struct AnalyzeView: View {
                             coachingPeekOpen = false
                         }
                     },
-                    showsConsoleAction: showsConsoleAction
+                    showsConsoleAction: showsConsoleAction,
+                    applied: console?.appliedCoaching,
+                    canUndoApplied: canUndoApplied,
+                    onUndoApplied: { try? console?.undoAppliedCoaching(using: consoleEQWriter) }
                 )
             }
         }
@@ -555,11 +575,21 @@ private struct CoachingPeekPanel: View {
     let maxHeight: CGFloat
     var onShowOnConsole: ((CoachingEvent) -> Void)? = nil
     var showsConsoleAction: (CoachingEvent) -> Bool = { _ in false }
+    var applied: ConsoleCoachingApplied? = nil
+    var canUndoApplied = false
+    var onUndoApplied: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: Layout.landscapeSpacing) {
             ScrollView {
-                CoachingStackView(model: model, onShowOnConsole: onShowOnConsole, showsConsoleAction: showsConsoleAction)
+                CoachingStackView(
+                    model: model,
+                    onShowOnConsole: onShowOnConsole,
+                    showsConsoleAction: showsConsoleAction,
+                    applied: applied,
+                    canUndoApplied: canUndoApplied,
+                    onUndoApplied: onUndoApplied
+                )
             }
             .frame(maxHeight: maxHeight)
             CoachingPeekHandle(model: model, isOpen: $isOpen)
@@ -739,12 +769,23 @@ struct CoachingStackView: View {
     let model: AnalyzeModel
     var onShowOnConsole: ((CoachingEvent) -> Void)? = nil
     var showsConsoleAction: (CoachingEvent) -> Bool = { _ in false }
+    /// The last coaching suggestion Apply wrote to Main LR (#1676), or `nil`
+    /// before any Apply (or after Undo/a console change clears it).
+    var applied: ConsoleCoachingApplied? = nil
+    /// The same armed-writer-and-live-link gate `ConsoleEQPanel` uses for
+    /// Apply (#1676 rework) — while false, Undo reads "Unlock to undo" and
+    /// is disabled, so a tap never fires the `.disarmed` throw into the void.
+    var canUndoApplied = false
+    var onUndoApplied: (() -> Void)? = nil
 
     var body: some View {
         let events = model.coaching
         VStack(alignment: .leading, spacing: Layout.cardSpacing) {
             Text("Coaching")
                 .font(.headline)
+            if let applied, let onUndoApplied {
+                AppliedCoachingNote(applied: applied, canUndo: canUndoApplied, onUndo: onUndoApplied)
+            }
             ForEach(0..<BandDeviationCoach.maxEvents, id: \.self) { slot in
                 if slot < events.count {
                     CoachingCard(event: events[slot], onShowOnConsole: onShowOnConsole, showsConsoleAction: showsConsoleAction)
@@ -759,6 +800,36 @@ struct CoachingStackView: View {
             }
         }
         .transaction { $0.animation = nil }
+    }
+}
+
+/// The applied-coaching note in the coaching stack (#1676): a checkmark, the
+/// confirmation copy, and an Undo button that writes that one band back to
+/// its prior value. `canUndo` gates the button the same way `canApply` gates
+/// Apply in `ConsoleEQPanel` (#1676 rework) — while false, the label reads
+/// "Unlock to undo" and the button is disabled.
+private struct AppliedCoachingNote: View {
+    let applied: ConsoleCoachingApplied
+    let canUndo: Bool
+    let onUndo: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: Layout.cardSpacing) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(Palette.accent)
+            Text(applied.confirmation)
+                .font(.subheadline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(ConsoleCoachingMapper.undoLabel(isArmed: canUndo), action: onUndo)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Palette.accent)
+                .disabled(!canUndo)
+                .accessibilityIdentifier("coaching.applied.undo")
+        }
+        .padding(.horizontal, Layout.cardPadding)
+        .frame(minHeight: Layout.coachingSlotMinHeight)
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: Layout.cornerRadius))
+        .accessibilityElement(children: .combine)
     }
 }
 

@@ -2,11 +2,15 @@ import Foundation
 
 /// Hand-rolled OSC 1.0 codec (`,i ,f ,s ,b`, big-endian, 4-byte padding),
 /// byte-for-byte identical to packages/console/src/index.ts
-/// (encodeOscMessage / decodeOscMessage). `encode` is the only serializer
-/// reachable from outside this file, and it always runs
-/// `ReadOnlyOSCGuard.check` before producing a single byte — there is no
-/// unguarded path to a write (ADR-0060, ADR-0161 item 2). `decode` never
-/// traps: every malformed input maps to a typed `OSCError`.
+/// (encodeOscMessage / decodeOscMessage). `encode` is the only *public*
+/// encoder, and it always runs `ReadOnlyOSCGuard.check` before producing a
+/// single byte — there is no unguarded public path to a write (ADR-0060,
+/// ADR-0161 item 2). The unguarded byte writer itself lives in `serialize`,
+/// which is `internal`: reachable only from inside SoundBuddyKit, and only
+/// after either `ReadOnlyOSCGuard.check` (via `encode`, the read path) or
+/// `ConsoleEQWriteAllowlist.check` (via `ConsoleEQWriteAllowlist.encode`, the
+/// EQ writer, ADR-0161). `decode` never traps: every malformed input maps to
+/// a typed `OSCError`.
 public enum OSCCodec {
     /// Largest datagram decode() will look at. The biggest read-path reply
     /// (a /meters push) is a few hundred bytes; anything past this is
@@ -84,7 +88,13 @@ public enum OSCCodec {
             throw .addressMustStartWithSlash(message.address)
         }
         try ReadOnlyOSCGuard.check(message)
+        return serialize(message)
+    }
 
+    /// The unguarded byte writer. `internal`, not `public`: the app target
+    /// cannot reach this directly, only through `encode`'s read guard or
+    /// `ConsoleEQWriteAllowlist.encode`'s EQ-only allowlist.
+    static func serialize(_ message: OSCMessage) -> Data {
         var out: [UInt8] = []
         appendPaddedString(message.address, to: &out)
         appendPaddedString(message.typeTags, to: &out)
