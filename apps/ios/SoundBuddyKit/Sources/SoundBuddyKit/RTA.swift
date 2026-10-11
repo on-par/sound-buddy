@@ -66,12 +66,12 @@ public struct RTAScale: Equatable, Sendable {
         self.tickStepDb = tickStepDb
     }
 
-    /// A quiet room reads roughly -100 to -90 dBFS per 1/6-octave band on the
-    /// Simulator's USB input; program material through a PA lands around
-    /// -60 to -30. The floor sits below room noise so the bars never flatline.
-    /// The ceiling is 0 dBFS, full scale (#1609): a -20 ceiling pinned loud
-    /// program at the top of the plot. Fixed window, no auto-ranging.
-    public static let standard = RTAScale(floorDb: -120, ceilingDb: 0, tickStepDb: 10)
+    /// The Absolute view's window (#1707, docs/rta-display-spec.md): −96…0
+    /// dBFS, 12 dB ticks, the same on every platform. A quiet room reads
+    /// roughly -100 to -90 dBFS per 1/6-octave band, so idle bars sit at the
+    /// floor without vanishing; the ceiling is 0 dBFS, full scale (#1609).
+    /// Fixed window, no auto-ranging. Also the target-handle drag clamp.
+    public static let standard = RTAScale.absolute
 
     /// Bar height in 0...1 for `db`, clamped to the window.
     public func fraction(db: Double) -> Double {
@@ -164,47 +164,6 @@ public enum RTATarget {
             count += 1
         }
         return count > 0 ? sum / Double(count) : nil
-    }
-}
-
-/// RTA ballistics: bars jump up instantly and fall at a fixed release rate;
-/// peak ticks hold, then fall. Pure value type, aged by the caller's clock.
-public struct RTAMeter: Equatable, Sendable {
-    /// How fast a bar falls once the signal drops (dB per second).
-    public static let releaseDbPerSecond = 40.0
-    /// How long a peak tick holds before it starts to fall.
-    public static let peakHoldSeconds = 1.5
-    /// How fast a peak tick falls after its hold (dB per second).
-    public static let peakReleaseDbPerSecond = 20.0
-
-    public private(set) var levels: [Double] = []
-    public private(set) var peaks: [Double] = []
-    private var peakAges: [Double] = []
-
-    public init() {}
-
-    public mutating func ingest(_ db: [Double], dt: Double) {
-        guard db.count == levels.count else {
-            levels = db
-            peaks = db
-            peakAges = Array(repeating: 0, count: db.count)
-            return
-        }
-        let step = max(0, dt)
-        for i in db.indices {
-            levels[i] = max(db[i], levels[i] - Self.releaseDbPerSecond * step)
-            peakAges[i] += step
-            if levels[i] >= peaks[i] {
-                peaks[i] = levels[i]
-                peakAges[i] = 0
-            } else if peakAges[i] > Self.peakHoldSeconds {
-                peaks[i] = max(levels[i], peaks[i] - Self.peakReleaseDbPerSecond * step)
-            }
-        }
-    }
-
-    public mutating func reset() {
-        self = RTAMeter()
     }
 }
 

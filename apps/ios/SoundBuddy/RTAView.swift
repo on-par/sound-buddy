@@ -2,49 +2,86 @@ import SoundBuddyKit
 import SwiftUI
 
 /// Console-style real-time analyzer: ~60 log-spaced 1/6-octave bars from
-/// 20 Hz to 20 kHz on a dBFS grid (numeric ticks only, no unit title —
-/// #1610), with peak-hold ticks, plus a dashed
-/// level-matched target line for the active ideal-EQ curve. Warm lows, cool
-/// mids/highs (RTAColor). When showsProblemMarkers is on (both Analyze
-/// layouts), pulsing amber/cyan regions hug the target line over each
-/// coaching problem band (#1553), text-free. Drawn in
-/// one Canvas pass — it redraws at the 20 Hz meter rate, and only this view
-/// reads the meter, so the rest of the screen does not re-render with it.
+/// 20 Hz to 20 kHz (numeric ticks only, no unit title, #1610), drawn per the
+/// shared RTA display spec (#1707, docs/rta-display-spec.md):
+/// - **Relative** (default): each bar is the band's deviation from the
+///   level-matched target, growing up or down from a solid 0 line on a
+///   ±15 dB grid; gray within ±3 dB, amber over, cyan under; values past
+///   ±15 clamp with a cap marker.
+/// - **Absolute**: dBFS bars on −96…0 with the dashed level-matched target
+///   line, warm lows and cool mids/highs (RTAColor). Target editing always
+///   draws Absolute.
+/// Bars are semi-transparent; peak ticks hold then fall in both views. When
+/// showsProblemMarkers is on, pulsing amber/cyan regions hug the target (the
+/// 0 line in Relative) over each coaching problem band (#1553), text-free.
+/// While live the canvas redraws every display frame (≥30 fps), stepping the
+/// ballistics from the latest 20 Hz analysis frame; only this view reads the
+/// meter, so the rest of the screen does not re-render with it.
 struct RTAView: View {
     let model: AnalyzeModel
-    var scale: RTAScale = .standard
     var fillsHeight: Bool = false
     var showsProblemMarkers: Bool = false
+    @AppStorage(RTAViewMode.defaultsKey) private var requestedMode = RTAViewMode.defaultValue
+    @State private var stepper = RTAFrameStepperBox()
+
+    private var mode: RTAViewMode {
+        RTAViewMode.effective(requested: requestedMode, isEditingTarget: model.isEditingTarget)
+    }
+
+    /// The handle drag clamp authority (#1559): editing always draws
+    /// Absolute, whose window is the model's `rtaScale`.
+    private var scale: RTAScale {
+        mode == .absolute ? model.rtaScale : mode.scale
+    }
 
     var body: some View {
-        let meter = model.rta
         let layout = model.rtaLayout
         let target = model.rtaTargetDb
         let isEditingTarget = model.isEditingTarget
+        let viewMode = self.mode
+        let isLive = model.state == .live
+        let input = model.rtaInput
+        let targetOffsets = model.rtaTargetOffsets
+        let ballistics = model.rtaBallistics.ballistics
         let spans = showsProblemMarkers ? RTAProblemMarkers.spans(for: model.problemMarkers, on: layout) : []
-        TimelineView(.animation(paused: spans.isEmpty)) { timeline in
+        TimelineView(.animation(paused: !isLive && spans.isEmpty)) { timeline in
+            let display = stepper.advance(
+                to: timeline.date.timeIntervalSinceReferenceDate,
+                input: input,
+                targetOffsets: targetOffsets,
+                ballistics: ballistics
+            )
             Canvas { context, size in
                 let plot = plotRect(in: size)
-                drawGrid(in: &context, plot: plot)
-                drawBars(in: &context, plot: plot, layout: layout, meter: meter)
-                if let target, target.count == layout.bands.count {
-                    if !spans.isEmpty {
-                        drawProblemMarkers(
-                            in: &context,
-                            plot: plot,
-                            layout: layout,
-                            target: target,
-                            spans: spans,
-                            opacity: RTAProblemMarkers.pulseOpacity(atSeconds: timeline.date.timeIntervalSinceReferenceDate)
-                        )
+                drawGrid(in: &context, plot: plot, mode: viewMode)
+                let pulse = RTAProblemMarkers.pulseOpacity(atSeconds: timeline.date.timeIntervalSinceReferenceDate)
+                switch viewMode {
+                case .relative:
+                    drawRelativeBars(in: &context, plot: plot, layout: layout, display: display)
+                    if target != nil {
+                        let zero = Array(repeating: 0.0, count: layout.bands.count)
+                        if !spans.isEmpty {
+                            drawProblemMarkers(in: &context, plot: plot, layout: layout, target: zero, spans: spans, opacity: pulse)
+                        }
+                        drawZeroLine(in: &context, plot: plot)
                     }
-                    drawTarget(in: &context, plot: plot, layout: layout, target: target, isEditing: isEditingTarget)
+                case .absolute:
+                    drawAbsoluteBars(in: &context, plot: plot, layout: layout, display: display)
+                    if let target, target.count == layout.bands.count {
+                        if !spans.isEmpty {
+                            drawProblemMarkers(in: &context, plot: plot, layout: layout, target: target, spans: spans, opacity: pulse)
+                        }
+                        drawTarget(in: &context, plot: plot, layout: layout, target: target, isEditing: isEditingTarget)
+                    }
                 }
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Real-time analyzer, 20 hertz to 20 kilohertz")
-        .accessibilityValue(accessibilityValue(layout: layout, meter: meter))
+        .accessibilityLabel(viewMode == .relative
+            ? "Real-time analyzer, relative to target, plus or minus 15 decibels, 20 hertz to 20 kilohertz"
+            : "Real-time analyzer, minus 96 to 0 dBFS, 20 hertz to 20 kilohertz")
+        .accessibilityValue(accessibilityValue(layout: layout, levels: model.rta.levels))
+        .accessibilityIdentifier("analyze.rta.\(viewMode.rawValue)")
         .overlay {
             if isEditingTarget {
                 GeometryReader { proxy in
@@ -123,7 +160,7 @@ struct RTAView: View {
         #endif
     }
 
-    private func drawGrid(in context: inout GraphicsContext, plot: CGRect) {
+    private func drawGrid(in context: inout GraphicsContext, plot: CGRect, mode: RTAViewMode) {
         let gridStyle = StrokeStyle(lineWidth: RTAMetrics.gridLineWidth)
         for db in scale.dbTicks {
             let lineY = y(db, in: plot)
@@ -131,8 +168,9 @@ struct RTAView: View {
             line.move(to: CGPoint(x: plot.minX, y: lineY))
             line.addLine(to: CGPoint(x: plot.maxX, y: lineY))
             context.stroke(line, with: .color(RTAPalette.grid), style: gridStyle)
+            let label = mode == .relative && db > 0 ? String(format: "+%.0f", db) : String(format: "%.0f", db)
             context.draw(
-                Text(String(format: "%.0f", db)).font(.system(size: RTAMetrics.labelFontSize).monospacedDigit())
+                Text(label).font(.system(size: RTAMetrics.labelFontSize).monospacedDigit())
                     .foregroundStyle(RTAPalette.label),
                 at: CGPoint(x: plot.minX - RTAMetrics.labelGap, y: lineY),
                 anchor: .trailing
@@ -153,32 +191,77 @@ struct RTAView: View {
         }
     }
 
-    private func drawBars(in context: inout GraphicsContext, plot: CGRect, layout: RTALayout, meter: RTAMeter) {
-        guard meter.levels.count == layout.bands.count else { return }
+    private func barRect(for band: RTABand, in plot: CGRect) -> (left: CGFloat, width: CGFloat) {
+        let left = x(band.lowHz, in: plot) + RTAMetrics.barGap / 2
+        let width = max(RTAMetrics.minBarWidth, x(band.highHz, in: plot) - x(band.lowHz, in: plot) - RTAMetrics.barGap)
+        return (left, width)
+    }
+
+    /// Absolute view: dBFS bars from the floor, warm lows and cool highs,
+    /// semi-transparent so the target line stays visible behind them.
+    private func drawAbsoluteBars(in context: inout GraphicsContext, plot: CGRect, layout: RTALayout, display: RTADisplayModel) {
+        guard display.levels.count == layout.bands.count else { return }
         for (i, band) in layout.bands.enumerated() {
-            let left = x(band.lowHz, in: plot) + RTAMetrics.barGap / 2
-            let width = max(RTAMetrics.minBarWidth, x(band.highHz, in: plot) - x(band.lowHz, in: plot) - RTAMetrics.barGap)
-            let fraction = scale.fraction(db: meter.levels[i])
+            let (left, width) = barRect(for: band, in: plot)
+            let fraction = scale.fraction(db: display.levels[i])
             if fraction > 0 {
-                let top = y(meter.levels[i], in: plot)
+                let top = y(display.levels[i], in: plot)
                 let bar = CGRect(x: left, y: top, width: width, height: plot.maxY - top)
                 let tone = RTAColor.hsb(hz: band.centerHz, fraction: fraction)
                 let color = Color(hue: tone.hue, saturation: tone.saturation, brightness: tone.brightness)
                 context.fill(
                     Path(bar),
                     with: .linearGradient(
-                        Gradient(colors: [color.opacity(RTAMetrics.barBaseOpacity), color]),
+                        Gradient(colors: [
+                            color.opacity(RTAMetrics.barBaseOpacity * RTAMetrics.barFillOpacity),
+                            color.opacity(RTAMetrics.barFillOpacity),
+                        ]),
                         startPoint: CGPoint(x: bar.midX, y: plot.maxY),
                         endPoint: CGPoint(x: bar.midX, y: top)
                     )
                 )
             }
-            if scale.fraction(db: meter.peaks[i]) > 0 {
-                let peakY = y(meter.peaks[i], in: plot)
-                let tick = CGRect(x: left, y: peakY - RTAMetrics.peakTickHeight, width: width, height: RTAMetrics.peakTickHeight)
-                context.fill(Path(tick), with: .color(RTAPalette.peak))
+            if scale.fraction(db: display.peaks[i]) > 0 {
+                drawPeakTick(in: &context, left: left, width: width, y: y(display.peaks[i], in: plot))
             }
         }
+    }
+
+    /// Relative view: each bar grows up or down from the 0 line to its
+    /// clamped deviation; gray within ±3 dB, amber over, cyan under. A value
+    /// past ±15 dB gets a cap marker at the edge it crossed.
+    private func drawRelativeBars(in context: inout GraphicsContext, plot: CGRect, layout: RTALayout, display: RTADisplayModel) {
+        guard display.deviations.count == layout.bands.count else { return }
+        let zeroY = y(0, in: plot)
+        for (i, band) in layout.bands.enumerated() {
+            let (left, width) = barRect(for: band, in: plot)
+            let deviation = display.deviations[i]
+            let clamped = scale.clamp(deviation)
+            let valueY = y(clamped.db, in: plot)
+            let color = RTAPalette.deviation(RTADeviationTone(deviationDb: deviation))
+            let bar = CGRect(x: left, y: min(zeroY, valueY), width: width, height: abs(valueY - zeroY))
+            context.fill(Path(bar), with: .color(color.opacity(RTAMetrics.barFillOpacity)))
+            if let overflow = clamped.overflow {
+                let capY = overflow == .above ? plot.minY : plot.maxY - RTAMetrics.overflowCapHeight
+                context.fill(Path(CGRect(x: left, y: capY, width: width, height: RTAMetrics.overflowCapHeight)), with: .color(color))
+            }
+            let peak = scale.clamp(display.deviationPeaks[i]).db
+            drawPeakTick(in: &context, left: left, width: width, y: y(peak, in: plot))
+        }
+    }
+
+    private func drawPeakTick(in context: inout GraphicsContext, left: CGFloat, width: CGFloat, y peakY: CGFloat) {
+        let tick = CGRect(x: left, y: peakY - RTAMetrics.peakTickHeight / 2, width: width, height: RTAMetrics.peakTickHeight)
+        context.fill(Path(tick), with: .color(RTAPalette.peak))
+    }
+
+    /// Relative view's solid 0 line: the level-matched target itself.
+    private func drawZeroLine(in context: inout GraphicsContext, plot: CGRect) {
+        var line = Path()
+        let zeroY = y(0, in: plot)
+        line.move(to: CGPoint(x: plot.minX, y: zeroY))
+        line.addLine(to: CGPoint(x: plot.maxX, y: zeroY))
+        context.stroke(line, with: .color(RTAPalette.target), style: StrokeStyle(lineWidth: RTAMetrics.targetLineWidth))
     }
 
     /// Dashed while it's a fixed reference; solid and slightly thicker while
@@ -256,9 +339,9 @@ struct RTAView: View {
         }
     }
 
-    private func accessibilityValue(layout: RTALayout, meter: RTAMeter) -> String {
+    private func accessibilityValue(layout: RTALayout, levels: [Double]) -> String {
         guard model.state == .live,
-              let loudest = meter.levels.indices.max(by: { meter.levels[$0] < meter.levels[$1] }),
+              let loudest = levels.indices.max(by: { levels[$0] < levels[$1] }),
               loudest < layout.bands.count
         else { return "not listening" }
         let hz = layout.bands[loudest].centerHz
@@ -285,6 +368,11 @@ private enum RTAMetrics {
     static let peakTickHeight: CGFloat = 2
     /// Bars fade toward the floor, like a lit LED column.
     static let barBaseOpacity = 0.45
+    /// Spec fill opacity (0.55 to 0.7): semi-transparent, so the target and
+    /// EQ curve stay visible behind the bars (#1707).
+    static let barFillOpacity = 0.6
+    /// The cap marker on a Relative bar past ±15 dB.
+    static let overflowCapHeight: CGFloat = 2
     static let targetLineWidth: CGFloat = 1.5
     static let targetDash: [CGFloat] = [5, 4]
     /// Thicker than the dashed reference line, so an editable target reads
@@ -314,4 +402,32 @@ enum RTAPalette {
     static let overTargetMarker = Color(red: 1.0, green: 0.66, blue: 0.2)
     /// Under-target problem markers (#1553): cool cyan, boost suggested.
     static let underTargetMarker = Color(red: 0.25, green: 0.85, blue: 1.0)
+    /// Relative-view bar within ±3 dB of the target (#1707).
+    static let neutralDeviation = Color(white: 0.62)
+
+    /// Relative-view bar color: amber #FFA833 over, cyan #40D9FF under (the
+    /// problem-marker palette), neutral gray within ±3 dB.
+    static func deviation(_ tone: RTADeviationTone) -> Color {
+        switch tone {
+        case .neutral: neutralDeviation
+        case .over: overTargetMarker
+        case .under: underTargetMarker
+        }
+    }
+}
+
+/// Holds the render-rate RTA stepper across body evaluations. A reference
+/// type on purpose: it advances once per TimelineView frame and must not
+/// invalidate the view when it does.
+final class RTAFrameStepperBox {
+    private var stepper = RTAFrameStepper()
+
+    func advance(to time: TimeInterval, input: [Double], targetOffsets: [Double], ballistics: RTABallistics) -> RTADisplayModel {
+        if input.isEmpty {
+            stepper.reset()
+        } else {
+            stepper.advance(to: time, input: input, targetOffsets: targetOffsets, ballistics: ballistics)
+        }
+        return stepper.display
+    }
 }

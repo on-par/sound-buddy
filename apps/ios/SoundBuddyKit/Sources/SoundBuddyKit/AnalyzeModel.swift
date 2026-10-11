@@ -77,7 +77,18 @@ public final class AnalyzeModel {
 
     public private(set) var state: State = .idle
     public private(set) var bandLevels: BandLevels = .silent
-    public private(set) var rta = RTAMeter()
+    /// The RTA display state at the analysis rate (#1707): smoothed levels,
+    /// deviations and peaks. The level-match of the dashed target reads it.
+    /// RTAView steps its own copy per rendered frame from `rtaInput`.
+    public private(set) var rta = RTADisplayModel()
+    /// The latest raw RTA frame (dBFS per `rtaLayout` band), unsmoothed:
+    /// RTAView's render-rate input. Empty when not live.
+    public private(set) var rtaInput: [Double] = []
+    /// The RTA's smoothing choice (Settings, persisted by the view). Display
+    /// only: coaching never reads it.
+    public var rtaBallistics: RTABallisticsMode = .defaultValue {
+        didSet { rta.ballistics = rtaBallistics.ballistics }
+    }
     /// Broadband level of the latest reading in dBFS; nil when not live or at
     /// or below overallLevelFloorDb (never a fake 0).
     public private(set) var overallDb: Double?
@@ -138,7 +149,7 @@ public final class AnalyzeModel {
     private let now: () -> Date
     /// `target` resampled onto `rtaLayout`'s band centers, recomputed whenever
     /// `target` changes.
-    private var rtaTargetOffsets: [Double]
+    public private(set) var rtaTargetOffsets: [Double]
     private var targetEditor = TargetCurveEditor()
     /// The one active target-handle drag (#1559); nil when no finger holds a
     /// handle. Freezes the level-match shift for its duration so the handle
@@ -531,6 +542,7 @@ public final class AnalyzeModel {
         lastCoachingAt = nil
         bandLevels = .silent
         rta.reset()
+        rtaInput = []
         overallDb = nil
         handleDrag = nil
         contentClassifier.reset()
@@ -547,7 +559,8 @@ public final class AnalyzeModel {
         lastReadingAt = time
         bandLevels = reading.bands
         overallDb = reading.overallDb > Self.overallLevelFloorDb ? reading.overallDb : nil
-        rta.ingest(reading.rtaDb, dt: step)
+        rtaInput = reading.rtaDb
+        rta.step(input: reading.rtaDb, targetOffsets: rtaTargetOffsets, dt: step)
 
         if let features = reading.programFeatures {
             programMode = modeTracker.update(contentClassifier.classify(features), at: time)

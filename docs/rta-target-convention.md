@@ -1,5 +1,7 @@
 # RTA target convention vs band-sum bars (#1726)
 
+Part of the shared RTA display spec: [rta-display-spec.md](rta-display-spec.md), section 3.
+
 ## Two conventions
 
 - **Target curves** (`IdealCurve.dbOffsets`, the Mac 48-point curve, spectrum.py

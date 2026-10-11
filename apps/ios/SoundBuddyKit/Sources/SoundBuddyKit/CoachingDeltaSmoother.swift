@@ -3,7 +3,7 @@ import Foundation
 /// Turns timestamped per-band coaching deltas (dB) into smoothed coaching
 /// deltas (#1697): a time-based exponential moving average per Band, so
 /// normal music dynamics don't swing coaching frame to frame. Independent of
-/// the live RTA (RTAMeter keeps reading raw readings). Smoothing a band's
+/// the live RTA (RTADisplayModel applies its own display-only ballistics to raw readings, #1707). Smoothing a band's
 /// level and smoothing its level-matched deviation are equivalent (the
 /// level match is linear), so callers may feed either.
 public struct CoachingDeltaSmoother: Equatable, Sendable {

@@ -82,6 +82,9 @@ struct AnalyzeView: View {
     @State private var consolePickerOpen = false
     @State private var consoleEQOpen = false
     @AppStorage(KeepAwakePolicy.defaultsKey) private var keepAwakeEnabled = KeepAwakePolicy.defaultValue
+    /// The RTA smoothing choice (#1707); pushed into the model, which steps
+    /// the analysis-rate display state the target line level-matches against.
+    @AppStorage(RTABallisticsMode.defaultsKey) private var rtaBallistics = RTABallisticsMode.defaultValue
 
     private var showsConsoleChip: Bool {
         ConsoleChipStatus.isVisible(flagEnabled: consoleFlagEnabled, consentGranted: consoleConsentGranted, console: console?.console)
@@ -123,6 +126,7 @@ struct AnalyzeView: View {
             keepAwake.release()
         }
         .onChange(of: keepAwakeEnabled) { _, _ in applyKeepAwake() }
+        .onChange(of: rtaBallistics, initial: true) { _, mode in model.rtaBallistics = mode }
         // No background audio mode in P0: release the mic when the app leaves
         // the foreground instead of letting the OS cut the engine, and pick it
         // back up on return. .inactive (permission alert, Control Center) is
@@ -447,10 +451,35 @@ private struct SettingsView: View {
     let micInputs: MicInputController
     let onSelectMic: (String?) -> Void
     @Environment(\.dismiss) private var dismiss
+    /// RTA display choices (#1707), read directly by RTAView and AnalyzeView.
+    @AppStorage(RTAViewMode.defaultsKey) private var rtaViewMode = RTAViewMode.defaultValue
+    @AppStorage(RTABallisticsMode.defaultsKey) private var rtaBallistics = RTABallisticsMode.defaultValue
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Picker("View", selection: $rtaViewMode) {
+                        ForEach(RTAViewMode.allCases, id: \.self) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("settings.rta.view")
+                    Picker("Smoothing", selection: $rtaBallistics) {
+                        ForEach(RTABallisticsMode.allCases, id: \.self) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("settings.rta.smoothing")
+                } header: {
+                    Text("Analyzer")
+                } footer: {
+                    Text("Relative shows each band above or below the target, ±15 dB. Absolute shows dBFS from −96 to 0 with the dashed target line. Target editing always uses Absolute.")
+                }
+                .listRowBackground(Palette.surface)
+
                 Section {
                     Toggle(KeepAwakePolicy.accessibilityLabel, isOn: $keepAwakeEnabled)
                         .tint(Palette.accent)
