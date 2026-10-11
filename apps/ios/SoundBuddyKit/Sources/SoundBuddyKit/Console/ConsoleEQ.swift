@@ -99,6 +99,17 @@ public enum ConsoleEQTarget: Hashable, Sendable {
             return nil
         }
     }
+
+    /// The `/node` scribble-strip config path: `/ch/NN/config` or
+    /// `/main/st/config`.
+    public var configPath: String {
+        switch self {
+        case .channel(let index):
+            return "/ch/\(String(format: "%0\(ConsoleEQTarget.channelIndexWidth)d", index))/config"
+        case .mainLR:
+            return "/main/st/config"
+        }
+    }
 }
 
 /// A console channel's or Main LR's EQ, in engineering units.
