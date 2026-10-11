@@ -11,9 +11,9 @@ import Foundation
 /// Swap it for the shared ADR 0028 template registry (exported as JSON) once
 /// that registry gains a per-band "band vs ideal curve" template, so Mac and
 /// iOS speak the same coaching dialect from one source.
-/// TODO(parity): the Mac compares on the 48-point curve (ProfileComparison in
-/// packages/audio-engine/src/profiles), not band-mean power. Switch once
-/// SpectrumAnalyzer produces that curve.
+/// Band targets come from `IdealCurve.bandTargets`, the same uniform-Hz
+/// power-mean reduction as the Mac's `bandTargetsFromProfile` (#1724), so one
+/// target curve means the same per-band levels on both platforms.
 public struct BandDeviationCoach: Sendable {
     /// Level-matched deviation (dB) a band needs before it gets a hint.
     public static let thresholdDb = 3.0

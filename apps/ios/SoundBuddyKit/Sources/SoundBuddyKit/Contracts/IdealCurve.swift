@@ -111,18 +111,52 @@ public struct IdealCurve: Codable, Equatable, Sendable {
         return a + (b - a) * t
     }
 
-    /// Mean target offset per band over the grid points inside it; bands
-    /// with no grid points get a neutral 0 dB target.
+    /// Uniform-Hz samples taken per band when reducing the curve to a band
+    /// target (BAND_TARGET_SAMPLES in the Mac's profiles/index.ts). Measured
+    /// band levels are mean power over uniformly spaced FFT bins, so the curve
+    /// is sampled the same way rather than on its own log grid; otherwise a
+    /// wide band would be weighted toward its low edge.
+    public static let bandTargetSamples = 256
+
+    /// One target level per band: the power-domain mean of the curve sampled
+    /// uniformly in Hz across the band, back in dB. A port of the Mac's
+    /// `bandTargetsFromProfile` (packages/audio-engine/src/profiles/index.ts),
+    /// pinned to it by the band-targets.v1.json golden fixture (#1724). An
+    /// empty or length-mismatched curve is treated as flat (all zeros), and a
+    /// band with no finite samples gets a neutral 0 dB, as on the Mac.
     public var bandTargets: [Band: Double] {
-        var sums: [Band: (total: Double, count: Int)] = [:]
-        for (hz, offset) in zip(freqs, dbOffsets) {
-            guard let band = Band.containing(hz: hz) else { continue }
-            let current = sums[band] ?? (0, 0)
-            sums[band] = (current.total + offset, current.count + 1)
-        }
+        let zero = Dictionary(uniqueKeysWithValues: Band.allCases.map { ($0, 0.0) })
+        guard !freqs.isEmpty, freqs.count == dbOffsets.count else { return zero }
+        let samples = Self.bandTargetSamples
         return Dictionary(uniqueKeysWithValues: Band.allCases.map { band in
-            let s = sums[band]
-            return (band, s.map { $0.total / Double($0.count) } ?? 0)
+            var powerSum = 0.0
+            var n = 0
+            for k in 0..<samples {
+                let hz = band.lowHz + (band.highHz - band.lowHz) * (Double(k) + 0.5) / Double(samples)
+                guard let db = finiteOffset(atHz: hz) else { continue }
+                powerSum += pow(10, db / 10)
+                n += 1
+            }
+            return (band, n > 0 ? 10 * log10(powerSum / Double(n)) : 0)
         })
+    }
+
+    /// `offset(atHz:)` with the Mac `profileDbAt`'s gap handling: a
+    /// non-finite offset is skipped (its finite neighbour stands in, or nil
+    /// when neither is finite), and a degenerate grid segment (duplicate or
+    /// non-positive frequencies) holds the lower value instead of yielding NaN.
+    /// Callers guarantee a non-empty curve with matching lengths.
+    func finiteOffset(atHz hz: Double) -> Double? {
+        let n = freqs.count
+        func finite(_ x: Double) -> Double? { x.isFinite ? x : nil }
+        if hz <= freqs[0] { return finite(dbOffsets[0]) }
+        if hz >= freqs[n - 1] { return finite(dbOffsets[n - 1]) }
+        var i = 1
+        while i < n - 1 && freqs[i] < hz { i += 1 }
+        let a = dbOffsets[i - 1]
+        let b = dbOffsets[i]
+        guard a.isFinite, b.isFinite else { return finite(a) ?? finite(b) }
+        let t = (log2(hz) - log2(freqs[i - 1])) / (log2(freqs[i]) - log2(freqs[i - 1]))
+        return t.isFinite ? a + (b - a) * t : a
     }
 }
