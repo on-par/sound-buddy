@@ -8,8 +8,9 @@ name: iOS
 # Runs on Ubuntu, so it cannot compile Swift: SoundBuddyKit imports Accelerate
 # and the app needs the iOS SDK, both Apple-only. There is deliberately no
 # xcodebuild here until a macOS runner is budgeted. It validates the shared
-# JSON contracts (apps/ios/Contracts) — the only iOS artifact Linux can check.
-# Swift is verified locally: see apps/ios/README.md.
+# JSON contracts (apps/ios/Contracts) and the project settings files
+# (project.yml, the generated project.pbxproj, Info.plist) — the iOS
+# artifacts Linux can check. Swift is verified locally: see apps/ios/README.md.
 
 on:
   push:
@@ -44,6 +45,10 @@ jobs:
       - name: Validator tests
         working-directory: apps/ios/scripts
         run: python test_validate_contracts.py
+
+      - name: Project settings tests
+        working-directory: apps/ios/scripts
+        run: python test_ios_device_family.py
 
       - name: Validate schemas and examples
         run: python apps/ios/scripts/validate_contracts.py

@@ -33,15 +33,19 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.soundbuddy.ios # Mac app is com.soundbuddy.app
-        # iPhone first; iPad (2) is a later slice — the views are size-class ready.
-        TARGETED_DEVICE_FAMILY: "1"
+        # Universal (iPhone + iPad). The layouts are size-based, so iPad, Split
+        # View and Stage Manager windows reuse portrait/landscape. iPad-specific
+        # layouts are a later slice (#1657).
+        TARGETED_DEVICE_FAMILY: "1,2"
         INFOPLIST_FILE: SoundBuddy/Info.plist
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Sound Buddy
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
-        # Landscape is RTA-first Analyze (#1548); upside-down stays excluded.
+        # Landscape is RTA-first Analyze (#1548); upside-down stays excluded on iPhone.
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        # iPad gets all four orientations.
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ENABLE_PREVIEWS: YES
