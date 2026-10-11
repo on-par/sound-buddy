@@ -3,9 +3,12 @@ import SwiftUI
 
 /// The console target picker (#1668): Main LR in its own full-width row
 /// above a grid of the 32 channel tiles, each showing the desk's own
-/// scribble-strip name and color. One tap selects and dismisses. Pure
-/// rendering — `ConsoleTargetModel` (SoundBuddyKit) owns the catalog and the
-/// selection.
+/// scribble-strip name and color. One tap selects and dismisses. A "Follow
+/// desk select" toggle (#1670, default off) lets the desk's own strip
+/// selection drive `selected` instead; when it picks an unsupported strip
+/// the hint below the toggle explains why nothing changed. Pure rendering —
+/// `ConsoleTargetModel` (SoundBuddyKit) owns the catalog, the selection and
+/// the follow state.
 struct ConsoleTargetPickerView: View {
     let model: ConsoleTargetModel
     let onDone: () -> Void
@@ -19,6 +22,18 @@ struct ConsoleTargetPickerView: View {
                             .font(.caption)
                             .foregroundStyle(Palette.secondaryText)
                             .accessibilityIdentifier("consolePicker.tooltip")
+                    }
+                    Toggle("Follow desk select", isOn: Binding(
+                        get: { model.followDeskSelect },
+                        set: { model.setFollowDeskSelect($0) }
+                    ))
+                    .tint(Palette.accent)
+                    .accessibilityIdentifier("consolePicker.followDeskSelect")
+                    if let hint = model.deskSelectHint {
+                        Text(hint)
+                            .font(.caption)
+                            .foregroundStyle(Palette.secondaryText)
+                            .accessibilityIdentifier("consolePicker.deskSelectHint")
                     }
                     if let mainLabel = model.catalog.labels.first {
                         ConsoleTargetTile(label: mainLabel, isSelected: mainLabel.target == model.selected, onSelect: select)

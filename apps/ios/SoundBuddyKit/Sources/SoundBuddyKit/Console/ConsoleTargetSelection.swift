@@ -51,6 +51,11 @@ public enum ConsoleTargetMemory {
 /// hand.
 @Observable
 public final class ConsoleTargetModel {
+    /// Shown by the picker and the EQ panel when "Follow desk select" is on
+    /// and the desk selects a strip we don't model (aux in, FX return, bus,
+    /// matrix, Mono/Center).
+    public static let unsupportedDeskSelectHint = "Not supported yet"
+
     private let defaults: UserDefaults
 
     public private(set) var console: ConsoleIdentity?
@@ -58,6 +63,12 @@ public final class ConsoleTargetModel {
     public private(set) var selected: ConsoleEQTarget = .mainLR
     public private(set) var eq: ConsoleEQ?
     public var phase: ConsoleSessionPhase = .idle
+
+    /// Opt-in, in-memory only (never persisted): when on, a `/-stat/selidx`
+    /// push from the desk switches `selected` to the matching strip, or
+    /// sets `deskSelectHint` when the strip isn't one we model.
+    public private(set) var followDeskSelect = false
+    public private(set) var deskSelectHint: String?
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -67,13 +78,15 @@ public final class ConsoleTargetModel {
     /// next resync repopulates it) and the EQ (the next resync repopulates
     /// it too). Re-reporting the same identity (a reconnect) does nothing,
     /// so names and values survive the drop while the next walk refreshes
-    /// them.
+    /// them. `followDeskSelect` is a session preference and survives the
+    /// switch; any stale hint from the previous console does not.
     public func consoleChanged(_ console: ConsoleIdentity?) {
         guard console != self.console else { return }
         self.console = console
         catalog = ConsoleTargetCatalog()
         selected = console.map { ConsoleTargetMemory.load(for: $0, in: defaults) } ?? .mainLR
         eq = nil
+        deskSelectHint = nil
     }
 
     public func ingest(nodeLine: String) {
@@ -81,9 +94,36 @@ public final class ConsoleTargetModel {
         fold { $0.apply(nodeLine: nodeLine) }
     }
 
-    /// Folds one decoded `/xremote` push into the selected target's EQ.
+    /// Folds one decoded `/xremote` push into the selected target's EQ,
+    /// unless it is a `/-stat/selidx` desk-select push — those are consumed
+    /// by `followDesk` instead and never folded into the EQ.
     public func ingest(push message: OSCMessage) {
+        if let deskSelect = ConsoleDeskSelect(push: message) {
+            followDesk(deskSelect)
+            return
+        }
         fold { $0.apply(push: message) }
+    }
+
+    /// Ignored unless `followDeskSelect` is on. A supported strip is
+    /// selected immediately (clearing the hint); an unsupported one keeps
+    /// the current target and sets the hint instead.
+    private func followDesk(_ deskSelect: ConsoleDeskSelect) {
+        guard followDeskSelect else { return }
+        switch deskSelect {
+        case .target(let target):
+            select(target)
+        case .unsupported:
+            deskSelectHint = Self.unsupportedDeskSelectHint
+        }
+    }
+
+    /// Turning follow off also clears any stale "Not supported yet" hint.
+    public func setFollowDeskSelect(_ on: Bool) {
+        followDeskSelect = on
+        if !on {
+            deskSelectHint = nil
+        }
     }
 
     /// `body` runs against a copy seeded from the current `eq` (or a flat
@@ -100,13 +140,15 @@ public final class ConsoleTargetModel {
     /// Ignores targets outside the 33-entry catalog; persists the pick
     /// under the current console's key, when there is one. Selecting a
     /// different target clears the EQ, since the new target's values are
-    /// unknown until the next read.
+    /// unknown until the next read. A manual pick (or a followed desk pick,
+    /// which also calls this) always clears any stale desk-select hint.
     public func select(_ target: ConsoleEQTarget) {
         guard ConsoleTargetCatalog.targets.contains(target) else { return }
         if target != selected {
             eq = nil
         }
         selected = target
+        deskSelectHint = nil
         if let console {
             ConsoleTargetMemory.store(target, for: console, in: defaults)
         }

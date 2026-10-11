@@ -209,4 +209,116 @@ private func freshDefaults() -> UserDefaults {
         model.ingest(push: OSCMessage("/ch/02/eq/1/g", [.float(0.9)]))
         #expect(model.eqPanel.bandRows[0].gainText == "0.0 dB")
     }
+
+    @Test func followDeskSelectDefaultsOff() {
+        let model = ConsoleTargetModel(defaults: freshDefaults())
+        #expect(model.followDeskSelect == false)
+        #expect(model.deskSelectHint == nil)
+    }
+
+    @Test func followOnDeskSelectChannel7SwitchesPanelToChannel7() {
+        let defaults = freshDefaults()
+        let model = ConsoleTargetModel(defaults: defaults)
+        model.consoleChanged(ConsoleIdentity(name: "FOH", model: "M32R"))
+        model.setFollowDeskSelect(true)
+
+        model.ingest(push: OSCMessage("/-stat/selidx", [.int(6)]))
+
+        #expect(model.selected == .channel(7))
+        #expect(model.eqPanel.target == .channel(7))
+        #expect(ConsoleTargetMemory.load(for: ConsoleIdentity(name: "FOH", model: "M32R"), in: defaults) == .channel(7))
+    }
+
+    @Test func followOnDeskSelectMainLRSelectsMainLR() {
+        let model = ConsoleTargetModel(defaults: freshDefaults())
+        model.consoleChanged(ConsoleIdentity(name: "FOH", model: "M32R"))
+        model.select(.channel(2))
+        model.setFollowDeskSelect(true)
+
+        model.ingest(push: OSCMessage("/-stat/selidx", [.int(70)]))
+
+        #expect(model.selected == .mainLR)
+    }
+
+    @Test func followOnDeskSelectBusKeepsTargetAndShowsNotSupportedHint() {
+        let model = ConsoleTargetModel(defaults: freshDefaults())
+        model.consoleChanged(ConsoleIdentity(name: "FOH", model: "M32R"))
+        model.select(.channel(2))
+        for line in ["/ch/02/eq ON", "/ch/02/eq/1 PEQ 250 +0.00 1.4", "/ch/02/eq/2 PEQ 1000 +0.00 2.0", "/ch/02/eq/3 PEQ 2500 +0.00 1.0", "/ch/02/eq/4 PEQ 8000 +0.00 3.0"] {
+            model.ingest(nodeLine: line)
+        }
+        let eqBefore = model.eq
+        model.setFollowDeskSelect(true)
+
+        model.ingest(push: OSCMessage("/-stat/selidx", [.int(48)]))
+
+        #expect(model.selected == .channel(2))
+        #expect(model.eq == eqBefore)
+        #expect(model.deskSelectHint == "Not supported yet")
+
+        model.ingest(push: OSCMessage("/-stat/selidx", [.int(3)]))
+        #expect(model.selected == .channel(4))
+        #expect(model.deskSelectHint == nil)
+    }
+
+    @Test func followOffDeskSelectChangesNothing() {
+        let model = ConsoleTargetModel(defaults: freshDefaults())
+        model.consoleChanged(ConsoleIdentity(name: "FOH", model: "M32R"))
+        model.select(.channel(2))
+        for line in ["/ch/02/eq ON", "/ch/02/eq/1 PEQ 250 +0.00 1.4", "/ch/02/eq/2 PEQ 1000 +0.00 2.0", "/ch/02/eq/3 PEQ 2500 +0.00 1.0", "/ch/02/eq/4 PEQ 8000 +0.00 3.0"] {
+            model.ingest(nodeLine: line)
+        }
+        let eqBefore = model.eq
+
+        model.ingest(push: OSCMessage("/-stat/selidx", [.int(6)]))
+        model.ingest(push: OSCMessage("/-stat/selidx", [.int(48)]))
+
+        #expect(model.selected == .channel(2))
+        #expect(model.eq == eqBefore)
+        #expect(model.deskSelectHint == nil)
+    }
+
+    @Test func turningFollowOffClearsHint() {
+        let model = ConsoleTargetModel(defaults: freshDefaults())
+        model.consoleChanged(ConsoleIdentity(name: "FOH", model: "M32R"))
+        model.setFollowDeskSelect(true)
+        model.ingest(push: OSCMessage("/-stat/selidx", [.int(48)]))
+        #expect(model.deskSelectHint == "Not supported yet")
+
+        model.setFollowDeskSelect(false)
+        #expect(model.deskSelectHint == nil)
+    }
+
+    @Test func manualSelectClearsHint() {
+        let model = ConsoleTargetModel(defaults: freshDefaults())
+        model.consoleChanged(ConsoleIdentity(name: "FOH", model: "M32R"))
+        model.setFollowDeskSelect(true)
+        model.ingest(push: OSCMessage("/-stat/selidx", [.int(48)]))
+        #expect(model.deskSelectHint == "Not supported yet")
+
+        model.select(.channel(5))
+        #expect(model.deskSelectHint == nil)
+    }
+
+    @Test func consoleChangeClearsHint() {
+        let model = ConsoleTargetModel(defaults: freshDefaults())
+        model.consoleChanged(ConsoleIdentity(name: "FOH", model: "M32R"))
+        model.setFollowDeskSelect(true)
+        model.ingest(push: OSCMessage("/-stat/selidx", [.int(48)]))
+        #expect(model.deskSelectHint == "Not supported yet")
+
+        model.consoleChanged(ConsoleIdentity(name: "Monitors", model: "X32"))
+        #expect(model.deskSelectHint == nil)
+    }
+
+    @Test func eqPushesStillFoldWithFollowOn() {
+        let model = ConsoleTargetModel(defaults: freshDefaults())
+        model.consoleChanged(ConsoleIdentity(name: "FOH", model: "M32R"))
+        for line in mainLREqLines { model.ingest(nodeLine: line) }
+        model.setFollowDeskSelect(true)
+
+        model.ingest(push: OSCMessage("/main/st/eq/2/g", [.float(0.6)]))
+
+        #expect(model.eqPanel.bandRows[1].gainText == "+3.0 dB")
+    }
 }
