@@ -122,6 +122,40 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         send(r)
     }
 
+    /// Default sustain: past the stabilizer's enter dwell plus one card refresh.
+    static let pastTheEnterDwell = CoachingStabilizer.enterDwellSeconds + AnalyzeModel.coachingRefreshSeconds + 0.5
+
+    /// Feeds `bands` at the ~20 Hz meter rate for `seconds`. Since #1715 a tip
+    /// only appears after a sustained off-target run (the enter dwell), so a
+    /// single reading no longer raises one.
+    func sustain(_ bands: BandLevels, seconds: Double = pastTheEnterDwell, rta: [Double] = [-40, -50]) throws {
+        for _ in 0..<Int((seconds / 0.05).rounded()) {
+            clock.advance(0.05)
+            try deliver(reading(bands, rta: rta))
+        }
+    }
+
+    /// What the stabilized path settles on for a constant `bands`: the bands
+    /// at or over the stabilizer's enter threshold, most severe first.
+    func settledCoaching(_ coach: BandDeviationCoach, _ bands: BandLevels) -> (events: [CoachingEvent], markers: [ProblemMarkerDescriptor]) {
+        let deviations = coach.deviations(for: bands)
+        let visible = Set(deviations.filter { abs($0.value) >= CoachingStabilizer.enterThresholdDb }.keys)
+        return (
+            coach.events(forDeviations: deviations, bands: visible, sessionTime: 0),
+            coach.problemMarkers(forDeviations: deviations, bands: visible)
+        )
+    }
+
+    /// Cards compared without their session time.
+    func content(_ events: [CoachingEvent]) -> [CoachingEvent] {
+        events.map {
+            CoachingEvent(
+                id: $0.id, ruleType: $0.ruleType, severity: $0.severity, band: $0.band,
+                message: $0.message, data: $0.data, source: $0.source, sessionTime: 0
+            )
+        }
+    }
+
     @Test func startsIdleWithSilentBandsAndThePhoneMicCue() {
         let m = model()
         #expect(m.state == .idle)
@@ -318,9 +352,11 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         try deliver(reading(bands, rta: [-40, -50]))
         #expect(m.bandLevels == bands)
         #expect(m.rta.levels == [-40, -50])
+        #expect(m.coaching.isEmpty, "one reading is not a sustained problem (#1715)")
+        try sustain(bands)
         let event = try #require(m.coaching.first)
         #expect(event.band == .lowMid)
-        #expect(event.sessionTime == 4)
+        #expect(event.sessionTime > 4 + CoachingStabilizer.enterDwellSeconds - 0.1)
     }
 
     /// Coaching text redrawn at the 20 Hz meter rate is unreadable; the stack
@@ -328,15 +364,17 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
     @Test func coachingRefreshesAtAReadablePace() async throws {
         let m = model()
         await m.appear()
-        try deliver(reading(levels([.lowMid: -22])))
+        try sustain(levels([.lowMid: -22]))
         let first = m.coaching
+        #expect(first.map(\.band) == [.lowMid])
         clock.advance(AnalyzeModel.coachingRefreshSeconds / 2)
-        try deliver(reading(levels([.presence: -10])))
+        try deliver(reading(levels([.lowMid: -10])))
         #expect(m.coaching == first, "too soon — keep the current stack")
-        #expect(m.bandLevels[.presence] == -10, "the meter still updates every reading")
+        #expect(m.bandLevels[.lowMid] == -10, "the meter still updates every reading")
         clock.advance(AnalyzeModel.coachingRefreshSeconds)
-        try deliver(reading(levels([.presence: -10])))
-        #expect(m.coaching.first?.band == .presence)
+        try deliver(reading(levels([.lowMid: -10])))
+        #expect(m.coaching.map(\.band) == [.lowMid])
+        #expect(m.coaching != first, "the card's number updates on the next refresh")
     }
 
     /// #1700: when a visible tip overtakes another, the coach re-sorts by
@@ -346,24 +384,20 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         let m = model()
         await m.appear()
         let first = levels([.bass: -18, .presence: -22])
-        try deliver(reading(first))
+        try sustain(first)
         let shownFirst = m.coaching.compactMap(\.band)
-        #expect(shownFirst.prefix(2) == [.bass, .presence])
+        #expect(shownFirst == [.bass, .presence])
 
-        clock.advance(AnalyzeModel.coachingRefreshSeconds)
         let second = levels([.bass: -21, .presence: -12])
         let coachOrder = BandDeviationCoach(ideal: m.coachingCurve)
             .events(for: second, sessionTime: 0).compactMap(\.band)
         try #require(coachOrder.prefix(2) == [.presence, .bass], "precondition: the raw coach re-sorts Presence first")
-        try deliver(reading(second))
+        try sustain(second, seconds: 15)
 
         let shownSecond = m.coaching.compactMap(\.band)
-        #expect(shownSecond.prefix(2) == [.bass, .presence], "cards hold position")
-        #expect(Set(shownSecond) == Set(coachOrder), "same tips as the coach")
-        let expected = BandDeviationCoach(ideal: m.coachingCurve).events(for: second, sessionTime: 1)
-        for card in m.coaching {
-            #expect(expected.first { $0.id == card.id }?.data == card.data, "\(card.id) shows the latest value")
-        }
+        #expect(shownSecond == [.bass, .presence], "cards hold position")
+        let magnitudes = m.problemMarkers.map(\.severityDb)
+        #expect(magnitudes[1] > magnitudes[0], "Presence is now worse, and its number updated in place")
         #expect(m.problemMarkers.map(\.band) == shownSecond, "markers follow the card order")
         #expect(m.coaching.count <= BandDeviationCoach.maxEvents)
     }
@@ -371,16 +405,17 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
     @Test func listeningAgainStartsTheCardOrderFresh() async throws {
         let m = model()
         await m.appear()
-        try deliver(reading(levels([.bass: -18, .presence: -22])))
+        try sustain(levels([.bass: -18, .presence: -22]))
+        #expect(!m.coaching.isEmpty)
         m.disappear()
         #expect(m.coaching.isEmpty)
         await m.appear()
-        clock.advance(AnalyzeModel.coachingRefreshSeconds)
         let second = levels([.bass: -21, .presence: -12])
-        try deliver(reading(second))
+        try sustain(second)
         let coachOrder = BandDeviationCoach(ideal: m.coachingCurve)
             .events(for: second, sessionTime: 0).compactMap(\.band)
-        #expect(m.coaching.compactMap(\.band) == coachOrder, "no order remembered from the last session")
+        #expect(m.coaching.compactMap(\.band) == [.presence, .bass], "no order remembered from the last session")
+        #expect(coachOrder.prefix(2) == [.presence, .bass], "the fresh order is the coach's severity order")
     }
 
     @Test func theRTAMeterAgesByWallClock() async throws {
@@ -420,7 +455,7 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
         let m = model(target: worship)
         await m.appear()
-        try deliver(reading(levels(base: -30)))
+        try sustain(levels(base: -30))
         #expect(!m.coaching.isEmpty)
         for event in m.coaching {
             #expect(!event.message.contains("SPL"))
@@ -499,10 +534,11 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         await flatModel.appear()
         try deliver(reading(levels(base: -30)))
         #expect(flatModel.coaching.isEmpty)
-        #expect(flatModel.coachingPlaceholder.contains("Balance looks close"))
+        #expect(flatModel.isMixOnTarget)
+        #expect(flatModel.coachingPlaceholder == CoachingStabilizer.onTargetMessage)
 
         await worshipModel.appear()
-        try deliver(reading(levels(base: -30)))
+        try sustain(levels(base: -30))
         #expect(worshipModel.coaching.count == BandDeviationCoach.maxEvents)
         #expect(worshipModel.coaching.first?.message.contains("gentle cut") == true)
     }
@@ -653,7 +689,7 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         let m = model()
         await m.appear()
         let bands = levels([.lowMid: -22])
-        try deliver(reading(bands))
+        try sustain(bands)
         let expected = BandDeviationCoach(ideal: m.coachingCurve).problemMarkers(for: bands)
         #expect(m.problemMarkers == expected)
         #expect(m.problemMarkers.map(\.band) == m.coaching.compactMap(\.band))
@@ -669,20 +705,22 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
     @Test func problemMarkersDoNotChangeWithinTheCoachingGate() async throws {
         let m = model()
         await m.appear()
-        try deliver(reading(levels([.lowMid: -22])))
+        try sustain(levels([.lowMid: -22]))
         let first = m.problemMarkers
+        #expect(first.map(\.band) == [.lowMid])
         clock.advance(AnalyzeModel.coachingRefreshSeconds / 2)
-        try deliver(reading(levels([.presence: -38])))
+        try deliver(reading(levels([.lowMid: -26])))
         #expect(m.problemMarkers == first, "too soon — keep the current markers")
         clock.advance(AnalyzeModel.coachingRefreshSeconds)
-        try deliver(reading(levels([.presence: -38])))
-        #expect(m.problemMarkers.map(\.band) == [.presence])
+        try deliver(reading(levels([.lowMid: -26])))
+        #expect(m.problemMarkers.map(\.band) == [.lowMid], "the tip holds its minimum time")
+        #expect(m.problemMarkers != first, "its severity updates on the next refresh")
     }
 
     @Test func disappearingClearsProblemMarkers() async throws {
         let m = model()
         await m.appear()
-        try deliver(reading(levels([.lowMid: -22])))
+        try sustain(levels([.lowMid: -22]))
         #expect(!m.problemMarkers.isEmpty)
         m.disappear()
         #expect(m.problemMarkers.isEmpty)
@@ -691,7 +729,7 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
     @Test func backgroundingClearsProblemMarkers() async throws {
         let m = model()
         await m.appear()
-        try deliver(reading(levels([.lowMid: -22])))
+        try sustain(levels([.lowMid: -22]))
         #expect(!m.problemMarkers.isEmpty)
         m.enterBackground()
         #expect(m.problemMarkers.isEmpty)
@@ -703,7 +741,7 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
     @Test func editModeHidesProblemMarkersViaAnalyzeLayout() async throws {
         let m = model()
         await m.appear()
-        try deliver(reading(levels([.lowMid: -22])))
+        try sustain(levels([.lowMid: -22]))
         let before = m.problemMarkers
         #expect(!before.isEmpty)
         #expect(AnalyzeLayout.landscape.showsProblemMarkers(isEditingTarget: m.isEditingTarget))
@@ -826,10 +864,11 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         #expect(m.target.id == TargetCurveHandles.customId)
 
         let bands = levels([.presence: -18])
-        try deliver(reading(bands))
-        let expectedCoach = BandDeviationCoach(ideal: m.target)
-        #expect(m.coaching == expectedCoach.events(for: bands, sessionTime: 0))
-        #expect(m.problemMarkers == expectedCoach.problemMarkers(for: bands))
+        try sustain(bands)
+        let expected = settledCoaching(BandDeviationCoach(ideal: m.target), bands)
+        #expect(!expected.events.isEmpty)
+        #expect(content(m.coaching) == content(expected.events))
+        #expect(m.problemMarkers == expected.markers)
     }
 
     @Test func cancelResumesCoachingAgainstTheOriginalCurve() async throws {
@@ -842,9 +881,10 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         #expect(m.coachingCurve == .flat)
 
         let bands = levels([.presence: -18])
-        try deliver(reading(bands))
-        let expectedCoach = BandDeviationCoach(ideal: .flat)
-        #expect(m.coaching == expectedCoach.events(for: bands, sessionTime: 0))
+        try sustain(bands)
+        let expected = settledCoaching(BandDeviationCoach(ideal: .flat), bands)
+        #expect(!expected.events.isEmpty)
+        #expect(content(m.coaching) == content(expected.events))
     }
 
     @Test func doneRecordsTheSessionCustomTarget() async throws {
