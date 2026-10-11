@@ -1361,6 +1361,111 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         #expect(m.activeTargetPresetId == nil, "not editing after commit")
     }
 
+    // MARK: Target tray: pick a target outside edit mode (#1745)
+
+    @Test func selectingABuiltInOutsideEditModeAppliesItAsAUserChoice() async throws {
+        let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
+        let m = model(target: IdealCurveLibrary.liveDefault(), targetIsAuto: true)
+        await m.appear()
+
+        #expect(m.selectTarget(id: IdealCurveLibrary.worshipServiceId))
+        #expect(m.target == worship)
+        #expect(!m.targetIsAuto)
+        #expect(m.coachingCurve == worship, "the coach is rebuilt immediately, no edit mode needed")
+        #expect(!m.isEditingTarget)
+        #expect(m.targetLegendText == "Target · Worship – Classic")
+        #expect(m.selectedTargetTrayId == IdealCurveLibrary.worshipServiceId)
+    }
+
+    @Test func coachingUsesThePickedCurveOnTheNextReadings() async throws {
+        let m = model()
+        await m.appear()
+        try deliver(reading(levels(base: -30)))
+        #expect(m.coaching.isEmpty, "flat levels are on a flat target")
+
+        #expect(m.selectTarget(id: IdealCurveLibrary.worshipServiceId))
+        #expect(m.coaching.isEmpty, "the switch clears the cards; the next readings judge the new curve")
+        try sustain(levels(base: -30))
+        #expect(m.coaching.count == BandDeviationCoach.maxEvents)
+        #expect(m.coaching.first?.message.contains("gentle cut") == true)
+    }
+
+    @Test func aPickedTargetIsNotSwitchedBySpeech() async throws {
+        let m = model(target: IdealCurveLibrary.liveDefault(), targetIsAuto: true)
+        await m.appear()
+        #expect(m.selectTarget(id: IdealCurveLibrary.worshipServiceId))
+
+        try deliverSustained(speechOverAPadFeatures(), bands: levels(base: -40), count: 130)
+        #expect(m.programMode == .speech)
+        #expect(m.target.id == IdealCurveLibrary.worshipServiceId)
+    }
+
+    @Test func pickingAutoRestoresTheProgramModeTarget() async throws {
+        let m = model(target: IdealCurveLibrary.liveDefault(), targetIsAuto: true)
+        await m.appear()
+        #expect(m.selectTarget(id: IdealCurveLibrary.worshipServiceId))
+        try deliverSustained(speechOverAPadFeatures(), bands: levels(base: -40), count: 130)
+        #expect(m.programMode == .speech)
+
+        #expect(m.selectAutoTarget())
+        #expect(m.targetIsAuto)
+        #expect(m.target.id == IdealCurveLibrary.speechPodcastId, "Auto in speech mode is the speech curve, right away")
+        #expect(m.coachingCurve.id == IdealCurveLibrary.speechPodcastId)
+        #expect(m.targetLegendText == "Target · Speech – Clear Voice (auto)")
+        #expect(m.selectedTargetTrayId == AnalyzeModel.autoTargetTrayId)
+    }
+
+    @Test func pickingAutoInMusicModeRestoresTheInitialAutoTarget() async throws {
+        let m = model(target: IdealCurveLibrary.liveDefault(), targetIsAuto: true)
+        await m.appear()
+        #expect(m.selectTarget(id: IdealCurveLibrary.flatId))
+        #expect(m.target.id == IdealCurveLibrary.flatId)
+
+        #expect(m.selectAutoTarget())
+        #expect(m.target.id == IdealCurveLibrary.worshipRoomId)
+        #expect(m.targetIsAuto)
+    }
+
+    @Test func trayPicksAreIgnoredWhileEditing() async throws {
+        let m = model(target: IdealCurveLibrary.liveDefault(), targetIsAuto: true)
+        await m.appear()
+        m.beginTargetEdit()
+        #expect(!m.selectTarget(id: IdealCurveLibrary.worshipServiceId))
+        #expect(!m.selectAutoTarget())
+        #expect(m.target.id == IdealCurveLibrary.worshipRoomId)
+        #expect(m.isEditingTarget)
+    }
+
+    @Test func anUnknownOrUnloadableTargetIsANoOp() async throws {
+        struct LoaderFailure: Error {}
+        let m = model(target: .flat, targetIsAuto: true, presetLoader: { _ in throw LoaderFailure() })
+        await m.appear()
+        #expect(!m.selectTarget(id: IdealCurveLibrary.worshipServiceId))
+        #expect(m.target == .flat)
+        #expect(m.targetIsAuto)
+    }
+
+    @Test func trayOptionsAreAutoThenTheBuiltIns() {
+        let m = model()
+        let options = m.targetTrayOptions
+        #expect(options.first?.id == AnalyzeModel.autoTargetTrayId)
+        #expect(options.first?.title == "Auto")
+        #expect(options.dropFirst().map(\.id) == TargetCurvePreset.all.map(\.id))
+        #expect(options.dropFirst().map(\.title) == TargetCurvePreset.all.map(\.title))
+        #expect(m.selectedTargetTrayId == AnalyzeModel.autoTargetTrayId)
+    }
+
+    @Test func theTrayEditButtonEntersTheSameEditModeAsTheLegend() async throws {
+        let m = model(target: IdealCurveLibrary.liveDefault(), targetIsAuto: true)
+        await m.appear()
+        m.beginTargetEdit()
+        #expect(m.isEditingTarget)
+        m.cancelTargetEdit()
+        #expect(!m.isEditingTarget)
+        #expect(m.target.id == IdealCurveLibrary.worshipRoomId)
+        #expect(m.targetIsAuto)
+    }
+
     // MARK: Copy
 
     @Test func coachingPlaceholderNeverAsksForATap() async {
