@@ -17,6 +17,18 @@ import {
   createRollingMax,
   formatEqRangeLabel,
   centroidFromBandDbs,
+  RTA_BANDS,
+  RTA_BANDS_PER_OCTAVE,
+  RTA_ANCHOR_HZ,
+  RTA_MIN_HZ,
+  RTA_MAX_HZ,
+  RTA_FFT_SIZE,
+  RTA_SMOOTHING_TIME_CONSTANT,
+  RTA_SILENCE_FLOOR_DB,
+  buildRtaBands,
+  configureRtaAnalyser,
+  blackmanFullScaleSinePower,
+  rtaBandLevelsDb,
 } from './eq-bands';
 
 describe('EQ_BAND_DEFS', () => {
@@ -330,5 +342,204 @@ describe('display window constants', () => {
     expect(EQ_HOT_DB).toBe(-24);
     expect(EQ_GRID_DB).toEqual([-60, -48, -36, -24, -12, -6]);
     expect(LIVE_AVG_WINDOW_MS).toBe(3000);
+  });
+});
+
+/* ── 1/6-octave RTA bands (#1718): mirrors iOS SpectrumAnalyzer.rtaLevels ── */
+
+describe('RTA_BANDS', () => {
+  it('has 59 bands spanning 20 Hz-20 kHz, anchored on 1 kHz', () => {
+    expect(RTA_BANDS).toHaveLength(59);
+    expect(RTA_BANDS[0].centerHz).toBeGreaterThanOrEqual(RTA_MIN_HZ);
+    expect(RTA_BANDS[RTA_BANDS.length - 1].centerHz).toBeLessThanOrEqual(RTA_MAX_HZ);
+    expect(RTA_BANDS.some((b) => Math.abs(b.centerHz - RTA_ANCHOR_HZ) < 1e-9)).toBe(true);
+  });
+
+  it('is contiguous: each band\'s highHz meets the next band\'s lowHz', () => {
+    for (let i = 1; i < RTA_BANDS.length; i += 1) {
+      expect(Math.abs(RTA_BANDS[i].lowHz - RTA_BANDS[i - 1].highHz)).toBeLessThan(1e-9);
+    }
+  });
+
+  it('is log-spaced at 1/6-octave steps', () => {
+    const step = Math.pow(2, 1 / RTA_BANDS_PER_OCTAVE);
+    for (let i = 1; i < RTA_BANDS.length; i += 1) {
+      expect(RTA_BANDS[i].centerHz / RTA_BANDS[i - 1].centerHz).toBeCloseTo(step, 9);
+    }
+  });
+
+  it('buildRtaBands with the default bandsPerOctave reproduces RTA_BANDS', () => {
+    expect(buildRtaBands()).toEqual(RTA_BANDS);
+  });
+});
+
+describe('configureRtaAnalyser', () => {
+  it('sets fftSize 8192 and smoothingTimeConstant 0 on the RTA analyser', () => {
+    const node = { fftSize: 2048, smoothingTimeConstant: 0.8 };
+    const result = configureRtaAnalyser(node);
+    expect(result).toBe(node);
+    expect(result.fftSize).toBe(RTA_FFT_SIZE);
+    expect(result.smoothingTimeConstant).toBe(RTA_SMOOTHING_TIME_CONSTANT);
+    expect(RTA_FFT_SIZE).toBe(8192);
+    expect(RTA_SMOOTHING_TIME_CONSTANT).toBe(0);
+  });
+});
+
+describe('blackmanFullScaleSinePower', () => {
+  it('equals windowEnergy / (4 * fftSize) for the Web Audio Blackman window', () => {
+    const fftSize = 8192;
+    const alpha = 0.16;
+    const a0 = (1 - alpha) / 2;
+    const a1 = 0.5;
+    const a2 = alpha / 2;
+    let windowEnergy = 0;
+    for (let n = 0; n < fftSize; n += 1) {
+      const w = a0 - a1 * Math.cos((2 * Math.PI * n) / fftSize) + a2 * Math.cos((4 * Math.PI * n) / fftSize);
+      windowEnergy += w * w;
+    }
+    const expected = windowEnergy / (4 * fftSize);
+    expect(blackmanFullScaleSinePower(fftSize)).toBeCloseTo(expected, 9);
+    expect(windowEnergy / fftSize).toBeCloseTo(0.3046, 4);
+    expect(blackmanFullScaleSinePower(fftSize)).toBeCloseTo(0.3046 / 4, 4);
+  });
+});
+
+describe('rtaBandLevelsDb', () => {
+  const SAMPLE_RATE = 48000;
+
+  /**
+   * Emulates AnalyserNode.getFloatFrequencyData with smoothingTimeConstant 0:
+   * a Blackman-windowed DFT of `signal` (length = fftSize), in dB, -Infinity
+   * on a zero bin. Only computes bins within +/-64 of `focusBin` (the rest
+   * are filled with -Infinity) so a direct DFT over an 8192-sample frame
+   * stays fast in a test; `focusBin` must cover whatever the test inspects.
+   */
+  function webAudioBinDbs(signal: Float64Array, focusBin: number): number[] {
+    const fftSize = signal.length;
+    const alpha = 0.16;
+    const a0 = (1 - alpha) / 2;
+    const a1 = 0.5;
+    const a2 = alpha / 2;
+    const windowed = new Float64Array(fftSize);
+    for (let n = 0; n < fftSize; n += 1) {
+      const w = a0 - a1 * Math.cos((2 * Math.PI * n) / fftSize) + a2 * Math.cos((4 * Math.PI * n) / fftSize);
+      windowed[n] = w * signal[n];
+    }
+    const binCount = fftSize / 2;
+    const lo = Math.max(0, focusBin - 64);
+    const hi = Math.min(binCount - 1, focusBin + 64);
+    const out = new Array<number>(binCount).fill(Number.NEGATIVE_INFINITY);
+    for (let k = lo; k <= hi; k += 1) {
+      let re = 0;
+      let im = 0;
+      for (let n = 0; n < fftSize; n += 1) {
+        const phase = (2 * Math.PI * k * n) / fftSize;
+        re += windowed[n] * Math.cos(phase);
+        im -= windowed[n] * Math.sin(phase);
+      }
+      re /= fftSize;
+      im /= fftSize;
+      const magnitude = Math.sqrt(re * re + im * im);
+      out[k] = magnitude > 0 ? 20 * Math.log10(magnitude) : Number.NEGATIVE_INFINITY;
+    }
+    return out;
+  }
+
+  it('reads a half-scale 1 kHz sine within 0.5 dB of the iOS reference', () => {
+    const fftSize = 8192;
+    const binHz = SAMPLE_RATE / fftSize;
+    const focusBin = Math.round(1000 / binHz);
+    const signal = new Float64Array(fftSize);
+    for (let n = 0; n < fftSize; n += 1) {
+      signal[n] = 0.5 * Math.sin((2 * Math.PI * 1000 * n) / SAMPLE_RATE);
+    }
+    const binDbs = webAudioBinDbs(signal, focusBin);
+    const levels = rtaBandLevelsDb(binDbs, SAMPLE_RATE);
+    const targetIndex = RTA_BANDS.findIndex((b) => Math.abs(b.centerHz - 1000) < 1e-9);
+    const IOS_RTA_HALF_SCALE_1KHZ_REFERENCE_DB = 20 * Math.log10(0.5);
+
+    expect(Math.abs(levels[targetIndex] - IOS_RTA_HALF_SCALE_1KHZ_REFERENCE_DB)).toBeLessThan(0.5);
+    expect(loudestBandIndex(levels)).toBe(targetIndex);
+  });
+
+  it('interpolates power density for a low band narrower than one bin', () => {
+    const fftSize = 8192;
+    const binHz = SAMPLE_RATE / fftSize;
+    const band = RTA_BANDS[0];
+    expect(band.highHz - band.lowHz).toBeLessThan(binHz);
+
+    const binCount = fftSize / 2;
+    const binDbs = new Array<number>(binCount).fill(-60);
+    const position = band.centerHz / binHz;
+    const k0 = Math.floor(position);
+    const k1 = k0 + 1;
+    const t = position - k0;
+    binDbs[k0] = -40;
+    binDbs[k1] = -50;
+
+    const levels = rtaBandLevelsDb(binDbs, SAMPLE_RATE);
+    expect(levels).toHaveLength(RTA_BANDS.length);
+    for (const level of levels) {
+      expect(Number.isFinite(level)).toBe(true);
+    }
+    expect(levels[0]).not.toBe(RTA_SILENCE_FLOOR_DB);
+
+    const p0 = Math.pow(10, -40 / 10);
+    const p1 = Math.pow(10, -50 / 10);
+    const density = p0 * (1 - t) + p1 * t;
+    const bandPower = (density * (band.highHz - band.lowHz)) / binHz;
+    const expected = 10 * Math.log10(bandPower / blackmanFullScaleSinePower(fftSize));
+    expect(levels[0]).toBeCloseTo(expected, 9);
+  });
+
+  it('reads the silence floor for an all-silent (-Infinity) spectrum', () => {
+    const binDbs = new Array<number>(4096).fill(Number.NEGATIVE_INFINITY);
+    const levels = rtaBandLevelsDb(binDbs, SAMPLE_RATE);
+    expect(levels).toHaveLength(RTA_BANDS.length);
+    for (const level of levels) {
+      expect(level).toBe(RTA_SILENCE_FLOOR_DB);
+    }
+  });
+
+  it('reads the silence floor for bands at or above Nyquist', () => {
+    const sampleRate = 16000;
+    const binDbs = new Array<number>(4096).fill(-30);
+    const levels = rtaBandLevelsDb(binDbs, sampleRate);
+    RTA_BANDS.forEach((band, i) => {
+      if (band.lowHz >= sampleRate / 2) {
+        expect(levels[i]).toBe(RTA_SILENCE_FLOOR_DB);
+      }
+    });
+    expect(RTA_BANDS.some((b) => b.lowHz >= sampleRate / 2)).toBe(true);
+  });
+
+  it('reads the silence floor for invalid input (empty bins, zero/NaN sample rate)', () => {
+    const allFloor = RTA_BANDS.map(() => RTA_SILENCE_FLOOR_DB);
+    expect(rtaBandLevelsDb([], SAMPLE_RATE)).toEqual(allFloor);
+    const someBins = new Array<number>(4096).fill(-30);
+    expect(rtaBandLevelsDb(someBins, 0)).toEqual(allFloor);
+    expect(rtaBandLevelsDb(someBins, Number.NaN)).toEqual(allFloor);
+    expect(rtaBandLevelsDb(someBins, -48000)).toEqual(allFloor);
+    expect(rtaBandLevelsDb([], SAMPLE_RATE)).toHaveLength(RTA_BANDS.length);
+  });
+
+  it('power-sums bins rather than averaging dB: two bins at -20 dB read 3.01 dB louder than one', () => {
+    const fftSize = 8192;
+    const binHz = SAMPLE_RATE / fftSize;
+    const band = RTA_BANDS.find((b) => b.highHz - b.lowHz > 3 * binHz);
+    if (!band) throw new Error('expected a band wide enough for this test');
+    const binCount = fftSize / 2;
+    const lo = Math.ceil(band.lowHz / binHz);
+
+    const oneBin = new Array<number>(binCount).fill(Number.NEGATIVE_INFINITY);
+    oneBin[lo] = -20;
+    const twoBins = new Array<number>(binCount).fill(Number.NEGATIVE_INFINITY);
+    twoBins[lo] = -20;
+    twoBins[lo + 1] = -20;
+
+    const bandIndex = RTA_BANDS.indexOf(band);
+    const oneLevel = rtaBandLevelsDb(oneBin, SAMPLE_RATE)[bandIndex];
+    const twoLevel = rtaBandLevelsDb(twoBins, SAMPLE_RATE)[bandIndex];
+    expect(twoLevel - oneLevel).toBeCloseTo(10 * Math.log10(2), 2);
   });
 });

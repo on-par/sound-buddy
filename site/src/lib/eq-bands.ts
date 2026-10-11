@@ -73,6 +73,7 @@ export const EQ_GRID_DB = [-60, -48, -36, -24, -12, -6];
 // Silence floor used whenever a level is non-finite (e.g. getFloatFrequencyData
 // on an empty/idle analyser returns -Infinity).
 const SILENCE_FLOOR_DB = -120;
+export const RTA_SILENCE_FLOOR_DB = SILENCE_FLOOR_DB;
 
 /** Clamp a dB value into [EQ_DB_MIN, EQ_DB_MAX] and map it linearly to 0-100. */
 export function eqBarPercent(db: number): number {
@@ -213,4 +214,131 @@ export function createRollingMax(windowMs: number): RollingMax {
       samples = [];
     },
   };
+}
+
+/* ── 1/6-octave RTA bands: mirrors iOS SpectrumAnalyzer.rtaLevels ──
+ * Parameters and math only, ported from
+ * apps/ios/SoundBuddyKit/Sources/SoundBuddyKit/RTA.swift (RTALayout) and
+ * SpectrumAnalyzer.swift (rtaLevels) — no code is shared across the
+ * MIT/proprietary boundary. This is the data layer only: no DOM/AudioContext
+ * here, and nothing in this module reads from or renders to a canvas. The
+ * AnalyserNode itself is injected into configureRtaAnalyser, not imported.
+ */
+
+export const RTA_FFT_SIZE = 8192;
+export const RTA_SMOOTHING_TIME_CONSTANT = 0;
+export const RTA_ANCHOR_HZ = 1000;
+export const RTA_MIN_HZ = 20;
+export const RTA_MAX_HZ = 20000;
+export const RTA_BANDS_PER_OCTAVE = 6;
+
+// Web Audio's required Blackman analysis window (same coefficients the spec
+// mandates for AnalyserNode): w[n] = a0 - a1*cos(2*pi*n/N) + a2*cos(4*pi*n/N).
+const BLACKMAN_ALPHA = 0.16;
+const BLACKMAN_A0 = (1 - BLACKMAN_ALPHA) / 2;
+const BLACKMAN_A1 = 0.5;
+const BLACKMAN_A2 = BLACKMAN_ALPHA / 2;
+
+export interface RtaBand {
+  lowHz: number;
+  centerHz: number;
+  highHz: number;
+}
+
+export interface AnalyserConfigTarget {
+  fftSize: number;
+  smoothingTimeConstant: number;
+}
+
+/**
+ * Log-spaced fractional-octave band grid anchored on 1 kHz, 20 Hz-20 kHz —
+ * exact port of RTALayout.init. `bandsPerOctave = 6` (the default) yields 59
+ * bands, one centered exactly on 1000 Hz.
+ */
+export function buildRtaBands(bandsPerOctave: number = RTA_BANDS_PER_OCTAVE): RtaBand[] {
+  const first = Math.ceil(bandsPerOctave * Math.log2(RTA_MIN_HZ / RTA_ANCHOR_HZ));
+  const last = Math.floor(bandsPerOctave * Math.log2(RTA_MAX_HZ / RTA_ANCHOR_HZ));
+  const halfBand = Math.pow(2, 1 / (2 * bandsPerOctave));
+  const bands: RtaBand[] = [];
+  for (let k = first; k <= last; k += 1) {
+    const centerHz = RTA_ANCHOR_HZ * Math.pow(2, k / bandsPerOctave);
+    bands.push({ lowHz: centerHz / halfBand, centerHz, highHz: centerHz * halfBand });
+  }
+  return bands;
+}
+
+export const RTA_BANDS: RtaBand[] = buildRtaBands();
+
+/** Sets the Web Audio parameters the RTA feed needs: a wide FFT and no built-in smoothing (ballistics own the smoothing instead). */
+export function configureRtaAnalyser<T extends AnalyserConfigTarget>(node: T): T {
+  node.fftSize = RTA_FFT_SIZE;
+  node.smoothingTimeConstant = RTA_SMOOTHING_TIME_CONSTANT;
+  return node;
+}
+
+/**
+ * Summed one-sided power an AnalyserNode reports for a full-scale sine,
+ * given its Blackman analysis window — the normalizer so a full-scale tone
+ * reads 0 dBFS. Web Audio computes X[k] = (1/N) * sum(w[n]*x[n]*e^-2pi*i*k*n/N),
+ * so by Parseval the summed one-sided power of an amplitude-1 sine is
+ * windowEnergy / (4*N), where windowEnergy = sum(w[n]^2).
+ */
+export function blackmanFullScaleSinePower(fftSize: number): number {
+  let windowEnergy = 0;
+  for (let n = 0; n < fftSize; n += 1) {
+    const w = BLACKMAN_A0 - BLACKMAN_A1 * Math.cos((2 * Math.PI * n) / fftSize) + BLACKMAN_A2 * Math.cos((4 * Math.PI * n) / fftSize);
+    windowEnergy += w * w;
+  }
+  return windowEnergy / (4 * fftSize);
+}
+
+/** Power of one dB-domain FFT bin; getFloatFrequencyData reports -Infinity for a silent bin. */
+function binPower(binDb: number): number {
+  return Number.isFinite(binDb) ? Math.pow(10, binDb / 10) : 0;
+}
+
+/** Summed power of the bins inside one RTA band, or a center-interpolated density fallback when the band is narrower than one bin — mirrors rtaLevels. */
+function bandPower(band: RtaBand, binDbs: ArrayLike<number>, binHz: number, lastBin: number): number {
+  const lo = Math.ceil(band.lowHz / binHz);
+  const hi = Math.min(lastBin, Math.ceil(band.highHz / binHz) - 1);
+  if (lo <= hi) {
+    let sum = 0;
+    for (let i = lo; i <= hi; i += 1) {
+      sum += binPower(binDbs[i]);
+    }
+    return sum;
+  }
+  const position = band.centerHz / binHz;
+  const k0 = Math.min(lastBin, Math.floor(position));
+  const k1 = Math.min(lastBin, k0 + 1);
+  const t = position - k0;
+  const density = binPower(binDbs[k0]) * (1 - t) + binPower(binDbs[k1]) * t;
+  return (density * (band.highHz - band.lowHz)) / binHz;
+}
+
+/**
+ * Per-RTA-band level in dBFS, power-summed (not dB-averaged) from
+ * AnalyserNode-style `binDbs` (getFloatFrequencyData output) — a port of
+ * SpectrumAnalyzer.rtaLevels. A full-scale sine reads ~0 dBFS in its band.
+ * Bands above Nyquist, silence, and invalid input all read RTA_SILENCE_FLOOR_DB.
+ */
+export function rtaBandLevelsDb(
+  binDbs: ArrayLike<number>,
+  sampleRate: number,
+  bands: readonly RtaBand[] = RTA_BANDS,
+): number[] {
+  if (binDbs.length === 0 || !Number.isFinite(sampleRate) || sampleRate <= 0) {
+    return bands.map(() => RTA_SILENCE_FLOOR_DB);
+  }
+  const fftSize = 2 * binDbs.length;
+  const binHz = sampleRate / fftSize;
+  const lastBin = binDbs.length - 1;
+  const nyquist = sampleRate / 2;
+  const fullScale = blackmanFullScaleSinePower(fftSize);
+
+  return bands.map((band) => {
+    if (band.lowHz >= nyquist) return RTA_SILENCE_FLOOR_DB;
+    const power = bandPower(band, binDbs, binHz, lastBin);
+    return power > 0 ? Math.max(RTA_SILENCE_FLOOR_DB, 10 * Math.log10(power / fullScale)) : RTA_SILENCE_FLOOR_DB;
+  });
 }

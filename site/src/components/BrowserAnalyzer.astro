@@ -237,6 +237,7 @@
     createRollingAverager,
     createRollingMax,
     centroidFromBandDbs,
+    configureRtaAnalyser,
     type BandKey,
   } from '../lib/eq-bands';
   import {
@@ -907,7 +908,9 @@
 
       leftAnalyser.fftSize = 2048;
       rightAnalyser.fftSize = 2048;
-      monoAnalyser.fftSize = 2048;
+      // The mono (L+R) analyser is the 1/6-octave RTA feed (#1718): fftSize
+      // 8192, no built-in smoothing. Left/right stay at 2048 for the 7-band readout.
+      configureRtaAnalyser(monoAnalyser);
 
       source.connect(splitter);
       splitter.connect(leftAnalyser, 0);
