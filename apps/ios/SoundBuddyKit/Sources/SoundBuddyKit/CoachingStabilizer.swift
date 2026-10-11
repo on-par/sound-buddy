@@ -24,6 +24,8 @@ public struct CoachingStabilizer: Equatable, Sendable {
     public static let onTargetMessage = "Mix is on target"
 
     public private(set) var visible: Set<Band> = []
+    /// The Speech/Music target the current tip state was judged against (#1701).
+    public private(set) var activeMode: ProgramMode = .music
     private var offSince: [Band: Date] = [:]
     private var shownAt: [Band: Date] = [:]
     private var recoveringSince: [Band: Date] = [:]
@@ -90,6 +92,22 @@ public struct CoachingStabilizer: Equatable, Sendable {
     /// Returns the stabilizer to its initial empty state.
     public mutating func reset() {
         self = CoachingStabilizer()
+    }
+
+    /// Speech-aware Analyze's hook for a Speech/Music target switch (#1701).
+    /// Deltas fed so far were measured against the old target, so a real
+    /// mode change drops every dwell and every visible tip: a band has to
+    /// earn the full enter dwell again under the new target. The same mode
+    /// is a no-op, so callers may forward the mode every frame. `lastTime` is
+    /// kept so a late frame from before the switch is still ignored.
+    public mutating func targetDidSwitch(to mode: ProgramMode) {
+        guard mode != activeMode else { return }
+        activeMode = mode
+        visible = []
+        offSince = [:]
+        shownAt = [:]
+        recoveringSince = [:]
+        hasReading = false
     }
 
     /// The calm 'Mix is on target' state (#1699): true when the last accepted
