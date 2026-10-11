@@ -543,10 +543,13 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         let targetMean = target.reduce(0, +) / Double(count)
         #expect(abs(targetMean - measuredMean) < 1e-6)
 
-        // Levels rise instantly (no release lag), so a uniform +10 dB gain
-        // shows up on the very next reading.
+        // #1707: levels rise with the 0.05 s attack tau, so a uniform +10 dB
+        // gain held for 1 s (20 taus) has fully arrived.
         let shifted = measured.map { $0 + 10 }
-        try deliver(reading(.silent, rta: shifted))
+        for _ in 0..<20 {
+            clock.advance(0.05)
+            try deliver(reading(.silent, rta: shifted))
+        }
         let shiftedTarget = try #require(m.rtaTargetDb)
         for (before, after) in zip(target, shiftedTarget) {
             #expect(abs(after - (before + 10)) < 1e-6)
