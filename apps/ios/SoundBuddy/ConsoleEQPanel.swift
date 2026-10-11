@@ -48,6 +48,12 @@ struct ConsoleEQPanel: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
                 header(state: state)
+                if let hint = console.deskSelectHint {
+                    Text(hint)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Palette.secondaryText)
+                        .accessibilityIdentifier("consoleEQ.deskSelectHint")
+                }
                 if let statusPill = state.statusPill {
                     Text(statusPill)
                         .font(.caption.weight(.semibold))
