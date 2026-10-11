@@ -58,6 +58,12 @@ targets:
         # companion is parked. Pick your own team in Xcode to run on a device.
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: ""
+        # testflight.sh (#1696) hands the App Store profile to the app target
+        # only, through this variable: a command-line
+        # PROVISIONING_PROFILE_SPECIFIER would also reach the SoundBuddyKit
+        # package targets, which reject provisioning profiles. Empty (no
+        # profile) for everyday builds.
+        PROVISIONING_PROFILE_SPECIFIER: $(SOUNDBUDDY_PROVISIONING_PROFILE)
 schemes:
   SoundBuddy:
     build:

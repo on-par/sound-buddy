@@ -97,7 +97,11 @@ class CommandAssemblyTests(unittest.TestCase):
         self.assertIn("CODE_SIGN_STYLE=Manual", args)
         self.assertIn(f"DEVELOPMENT_TEAM={TEAM}", args)
         self.assertIn(f"CODE_SIGN_IDENTITY={IDENTITY}", args)
-        self.assertIn(f"PROVISIONING_PROFILE_SPECIFIER={PROFILE}", args)
+        self.assertIn(f"SOUNDBUDDY_PROVISIONING_PROFILE={PROFILE}", args)
+        # A global PROVISIONING_PROFILE_SPECIFIER also hits the SoundBuddyKit
+        # package targets, which fail the archive ("does not support
+        # provisioning profiles"); only the app target may get the profile.
+        self.assertFalse(any(a.startswith("PROVISIONING_PROFILE_SPECIFIER=") for a in args), args)
         self.assertIn(f"OTHER_CODE_SIGN_FLAGS=--keychain {signing.keychain}", args)
         self.assertIn("CURRENT_PROJECT_VERSION=13", args)
         self.assertEqual(args[0], "archive")
@@ -117,7 +121,7 @@ class CommandAssemblyTests(unittest.TestCase):
     def test_overrides_reach_the_commands(self):
         signing = default_signing(profile="Other Profile", keychain="/tmp/flag.keychain-db", team="FLAGTEAM99")
         args = self.archive(signing)
-        self.assertIn("PROVISIONING_PROFILE_SPECIFIER=Other Profile", args)
+        self.assertIn("SOUNDBUDDY_PROVISIONING_PROFILE=Other Profile", args)
         self.assertIn("OTHER_CODE_SIGN_FLAGS=--keychain /tmp/flag.keychain-db", args)
         self.assertIn("DEVELOPMENT_TEAM=FLAGTEAM99", args)
         self.assertEqual(ts.export_options(signing)["provisioningProfiles"], {BUNDLE: "Other Profile"})
@@ -165,6 +169,21 @@ class PreflightParsingTests(unittest.TestCase):
             }
             found = ts.find_profile(default_signing(), dirs=(folder,), decode=lambda p: plistlib.dumps(decoded[p.name]))
             self.assertEqual(found, "b.mobileprovision")
+
+
+class PreflightTests(unittest.TestCase):
+    def test_a_locked_keychain_fails_preflight(self):
+        ok, lines = ts.preflight(default_signing(), unlocked=lambda _path: False)
+        if any("skipped" in line for line in lines):
+            self.skipTest("security is not available")
+        self.assertFalse(ok)
+        self.assertTrue(any("keychain unlocked:         NO" in line for line in lines), lines)
+
+    def test_unknown_lock_state_does_not_block(self):
+        lines = ts.preflight(default_signing(), unlocked=lambda _path: None)[1]
+        if any("skipped" in line for line in lines):
+            self.skipTest("security is not available")
+        self.assertTrue(any("keychain unlocked:         unknown" in line for line in lines), lines)
 
 
 # --- end-to-end dry-run against stub binaries ---------------------------------
@@ -286,7 +305,7 @@ class DryRunScriptTests(unittest.TestCase):
         self.assertIn("provisioning profile:  Other Profile", out)
         self.assertIn("team:                  FLAGTEAM99", out)
         self.assertIn("keychain:              /tmp/flag.keychain-db", out)
-        self.assertIn("PROVISIONING_PROFILE_SPECIFIER='Other Profile'", out)
+        self.assertIn("'SOUNDBUDDY_PROVISIONING_PROFILE=Other Profile'", out)
         self.assertIn("--keychain /tmp/flag.keychain-db", out)
         self.assert_no_build_or_upload(calls)
 
@@ -307,6 +326,20 @@ class DryRunScriptTests(unittest.TestCase):
     def test_unknown_flag_fails(self):
         result, _ = self.run_script("--bogus")
         self.assertNotEqual(result.returncode, 0)
+
+
+class ProjectRoutingTests(unittest.TestCase):
+    """The app target (and only it) reads the profile from SOUNDBUDDY_PROVISIONING_PROFILE."""
+
+    def test_project_yml_routes_the_profile_through_the_variable(self):
+        text = (SCRIPTS.parent / "project.yml").read_text()
+        self.assertIn("PROVISIONING_PROFILE_SPECIFIER: $(SOUNDBUDDY_PROVISIONING_PROFILE)", text)
+
+    def test_generated_project_routes_the_profile_for_debug_and_release(self):
+        text = (SCRIPTS.parent / "SoundBuddy.xcodeproj" / "project.pbxproj").read_text()
+        self.assertEqual(
+            text.count('PROVISIONING_PROFILE_SPECIFIER = "$(SOUNDBUDDY_PROVISIONING_PROFILE)";'), 2
+        )
 
 
 class ScriptSourceTests(unittest.TestCase):

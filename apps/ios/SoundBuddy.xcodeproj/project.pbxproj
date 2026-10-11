@@ -204,6 +204,7 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.soundbuddy.ios;
+				PROVISIONING_PROFILE_SPECIFIER = "$(SOUNDBUDDY_PROVISIONING_PROFILE)";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -231,6 +232,7 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.soundbuddy.ios;
+				PROVISIONING_PROFILE_SPECIFIER = "$(SOUNDBUDDY_PROVISIONING_PROFILE)";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
