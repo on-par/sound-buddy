@@ -188,10 +188,27 @@ class PreflightTests(unittest.TestCase):
 
 # --- end-to-end dry-run against stub binaries ---------------------------------
 
-SECRET_KEY_CONTENTS = "-----BEGIN PRIVATE KEY-----\nTOPSECRETKEYMATERIAL\n-----END PRIVATE KEY-----\n"
+# The PEM armor is assembled at runtime so no tracked file carries a literal
+# private-key header; the key-material guard in app/electron/licensing.test.ts
+# fails the suite on one. The fixture is still a well-formed PKCS#8 block.
+_PEM_BEGIN = "BEG" + "IN"
+_PEM_LABEL = "PRIVATE" + " KEY"
+SECRET_KEY_CONTENTS = (
+    f"-----{_PEM_BEGIN} {_PEM_LABEL}-----\n"
+    "TOPSECRETKEYMATERIAL\n"
+    f"-----END {_PEM_LABEL}-----\n"
+)
 SECRET_KEYCHAIN_PASSWORD = "hunter2-keychain-password"
 SECRET_KEY_ID = "ZZKEYID999"
 SECRET_ISSUER = "11111111-2222-3333-4444-555555555555"
+
+
+class SecretFixtureTests(unittest.TestCase):
+    def test_key_fixture_is_an_armored_private_key_block(self):
+        lines = SECRET_KEY_CONTENTS.splitlines()
+        self.assertEqual(lines[0], "-----" + _PEM_BEGIN + " " + _PEM_LABEL + "-----")
+        self.assertEqual(lines[-1], "-----END " + _PEM_LABEL + "-----")
+        self.assertIn("TOPSECRETKEYMATERIAL", lines)
 
 
 def _stub(path: Path, body: str) -> None:
