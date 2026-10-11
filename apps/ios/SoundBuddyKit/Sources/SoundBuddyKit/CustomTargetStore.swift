@@ -39,6 +39,18 @@ public final class CustomTargetStore {
         case unsupportedSchemaVersion(Int)
     }
 
+    /// Typed refusal for operations that would change a built-in curve (#1757).
+    public enum Refusal: Error, Equatable, LocalizedError {
+        case builtInReadOnly(id: String)
+
+        public var errorDescription: String? {
+            switch self {
+            case .builtInReadOnly(let id):
+                "\"\(id)\" is a built-in target and can't be changed — duplicate it to make an editable copy."
+            }
+        }
+    }
+
     public init(
         defaults: UserDefaults = .standard,
         makeId: @escaping () -> String = CustomTargetStore.makeDefaultId,
@@ -86,7 +98,8 @@ public final class CustomTargetStore {
     }
 
     @discardableResult
-    public func update(id: String, curve: IdealCurve) -> IdealCurve? {
+    public func update(id: String, curve: IdealCurve) throws -> IdealCurve? {
+        try refuseIfBuiltIn(id)
         guard let index = all.firstIndex(where: { $0.id == id }) else { return nil }
         let old = all[index]
         let updated = IdealCurve(
@@ -101,11 +114,39 @@ public final class CustomTargetStore {
         return updated
     }
 
-    public func delete(id: String) {
+    public func delete(id: String) throws {
+        try refuseIfBuiltIn(id)
         let before = all.count
         all.removeAll { $0.id == id }
         if all.count != before {
             persist()
+        }
+    }
+
+    /// Renames a custom curve's label, keeping id, description, freqs and
+    /// dbOffsets unchanged. Built-in ids are refused before any lookup, so a
+    /// refused call never reaches `persist()`. Name validation (trim / empty
+    /// / length cap) is not this slice's concern — see #1759.
+    @discardableResult
+    public func rename(id: String, to name: String) throws -> IdealCurve? {
+        try refuseIfBuiltIn(id)
+        guard let index = all.firstIndex(where: { $0.id == id }) else { return nil }
+        let old = all[index]
+        let renamed = IdealCurve(
+            id: old.id,
+            label: name,
+            description: old.description,
+            freqs: old.freqs,
+            dbOffsets: old.dbOffsets
+        )
+        all[index] = renamed
+        persist()
+        return renamed
+    }
+
+    private func refuseIfBuiltIn(_ id: String) throws {
+        if IdealCurveLibrary.builtInIds.contains(id) {
+            throw Refusal.builtInReadOnly(id: id)
         }
     }
 
