@@ -103,14 +103,14 @@ function shape(...terms: Array<(f: number) => number>): number[] {
 export const PROFILES: IdealProfile[] = [
   {
     id: "flat",
-    label: "Flat / neutral",
+    label: "Flat",
     description: "Neutral reference — no target tilt.",
     freqs: GRID_FREQS,
     dbOffsets: GRID_FREQS.map(() => 0),
   },
   {
     id: "music-fullrange",
-    label: "Music (full-range)",
+    label: "Music – Balanced",
     description: "Balanced mix: gentle low warmth and a soft presence lift.",
     freqs: GRID_FREQS,
     dbOffsets: shape(
@@ -121,7 +121,7 @@ export const PROFILES: IdealProfile[] = [
   },
   {
     id: "worship-service",
-    label: "Worship service",
+    label: "Worship – Classic",
     description: "Reference target captured from a full worship service mix.",
     freqs: GRID_FREQS,
     dbOffsets: [
@@ -131,7 +131,7 @@ export const PROFILES: IdealProfile[] = [
     ],
   },
   {
-    // Measured on the iPad mic at FOH from a mix Patrick called good-sounding
+    // Provenance: measured on the iPad mic at FOH from a mix Patrick called good-sounding
     // (Oct 11 2026 reference recording, #1725): long-term spectrum on this
     // grid, in the dbOffsets convention. iOS uses it as the Music auto target;
     // the Mac live default stays worship-service. Advisory tolerances for
@@ -140,8 +140,8 @@ export const PROFILES: IdealProfile[] = [
     // 100 Hz and above 12 kHz, where iPad mic roll-off and the recording's
     // AAC low-pass make the measurement less trustworthy.
     id: "worship-room",
-    label: "Worship (room mic)",
-    description: "Reference target from a good-sounding worship mix measured on the iPad mic at FOH.",
+    label: "Worship – Full Band",
+    description: "Shape of a good-sounding full-band worship mix (Oct 11 2026 reference).",
     freqs: GRID_FREQS,
     dbOffsets: [
       -8.0, -7.5, -6.0, -3.5, -1.0, 1.5, 4.0, 6.5, 9.0, 11.0, 12.0, 12.0, 10.5, 8.5, 6.5, 5.5, 4.5, 4.0, 4.0,
@@ -151,7 +151,7 @@ export const PROFILES: IdealProfile[] = [
   },
   {
     id: "speech-podcast",
-    label: "Speech / podcast",
+    label: "Speech – Clear Voice",
     description: "Intelligibility: high-pass tilt, 2–5 kHz presence bump.",
     freqs: GRID_FREQS,
     dbOffsets: shape(
@@ -162,7 +162,7 @@ export const PROFILES: IdealProfile[] = [
   },
   {
     id: "broadcast",
-    label: "Broadcast (speech)",
+    label: "Speech – Broadcast",
     description: "Loudness-normalized speech: controlled lows, gentle presence.",
     freqs: GRID_FREQS,
     dbOffsets: shape(

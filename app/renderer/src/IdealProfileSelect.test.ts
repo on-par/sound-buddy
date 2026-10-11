@@ -43,8 +43,8 @@ describe('IdealProfileSelect', () => {
     expect(html).toContain('id="ideal-profile-select"');
     expect(html).toContain('aria-label="Ideal EQ profile"');
     expect(html).toContain('<option value="">Auto (by content)</option>');
-    expect(html).toContain('<option value="flat" selected="">Flat / neutral</option>');
-    expect(html).toContain('<option value="music-fullrange">Music (full-range)</option>');
+    expect(html).toContain('<option value="flat" selected="">Flat</option>');
+    expect(html).toContain('<option value="music-fullrange">Music – Balanced</option>');
     expect(html).toContain('<option value="__new">Create new curve…</option>');
     expect(html).not.toContain('<optgroup');
   });
@@ -110,7 +110,7 @@ describe('IdealProfileSelect', () => {
 
       const html = renderMarkup();
 
-      expect(html).toContain('<option value="flat">Flat / neutral</option>');
+      expect(html).toContain('<option value="flat">Flat</option>');
       expect(html).toContain('<option value="custom:sanctuary-ref" selected="">Sanctuary reference</option>');
     });
   });

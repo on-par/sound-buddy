@@ -53,7 +53,7 @@ describe('createGradeContextResolver', () => {
 
   it('liveBaseline carries the live default profile label and its band targets', () => {
     const b = resolver().liveBaseline()!;
-    expect(b.label).toBe('Worship service');
+    expect(b.label).toBe('Worship – Classic');
     expect(b.isAuto).toBe(true);
     expect(b.bandTargets.subBass).toBeGreaterThan(b.bandTargets.brilliance);
     const c = resolver('custom:sanctuary', [custom]).liveBaseline()!;
@@ -64,7 +64,7 @@ describe('createGradeContextResolver', () => {
 
   it('the app resolver reads the real stores (defaults: Auto, no settings)', () => {
     expect(gradeContext.forSpectrum(null).idealProfile?.id).toBe('worship-service');
-    expect(gradeContext.liveBaseline()?.label).toBe('Worship service');
+    expect(gradeContext.liveBaseline()?.label).toBe('Worship – Classic');
   });
 });
 

@@ -992,7 +992,7 @@ describe('gradeBaselineFor', () => {
   it('carries the profile label/id/auto flag and its 7-band targets', () => {
     const worship = getProfile('worship-service')!;
     const b = gradeBaselineFor({ idealProfile: worship, isAutoProfile: true })!;
-    expect(b.label).toBe('Worship service');
+    expect(b.label).toBe('Worship – Classic');
     expect(b.profileId).toBe('worship-service');
     expect(b.isAuto).toBe(true);
     expect(Object.keys(b.bandTargets).sort()).toEqual(['bass', 'brilliance', 'highMid', 'lowMid', 'mid', 'presence', 'subBass']);
@@ -1058,7 +1058,7 @@ describe('reportCardSourceFromAnalysis with a GradeContext', () => {
 
   it('with the worship profile: baseline attached, symptoms measured over the ideal curve (nothing fires)', () => {
     const src = sourceFromAnalysisWithCtx(analysis, { idealProfile: worship, isAutoProfile: true })!;
-    expect(src.baseline?.label).toBe('Worship service');
+    expect(src.baseline?.label).toBe('Worship – Classic');
     expect(src.baseline?.isAuto).toBe(true);
     expect(src.symptoms).toEqual([]);
   });

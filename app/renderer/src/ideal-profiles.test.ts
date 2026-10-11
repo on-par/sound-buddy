@@ -136,19 +136,19 @@ describe('curveEditorInit', () => {
     const init = curveEditorInit('', [], usableSpectrum('speech'), curves);
     expect(init.editingId).toBeNull();
     expect(init.title).toBe('Create Ideal Curve');
-    expect(init.name).toBe('Copy of Speech / podcast');
+    expect(init.name).toBe('Copy of Speech – Clear Voice');
     expect(init.canDelete).toBe(false);
     expect(init.bands).toHaveLength(7);
   });
 
-  it('starts a new curve named after the live default ("Copy of Worship service") with no spectrum and no selection', () => {
+  it('starts a new curve named after the live default ("Copy of Worship – Classic") with no spectrum and no selection', () => {
     const init = curveEditorInit('', [], null, curves);
-    expect(init.name).toBe('Copy of Worship service');
+    expect(init.name).toBe('Copy of Worship – Classic');
   });
 
-  it('starts a new curve named "Copy of Flat / neutral" when flat is explicitly selected', () => {
+  it('starts a new curve named "Copy of Flat" when flat is explicitly selected', () => {
     const init = curveEditorInit('flat', [], null, curves);
-    expect(init.name).toBe('Copy of Flat / neutral');
+    expect(init.name).toBe('Copy of Flat');
   });
 
   it('edits the selected custom profile', () => {

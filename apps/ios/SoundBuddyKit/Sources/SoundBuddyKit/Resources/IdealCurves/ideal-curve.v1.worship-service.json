@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "worship-service",
-  "label": "Worship service",
+  "label": "Worship – Classic",
   "description": "Reference target captured from a full worship service mix.",
   "freqs": [
     20,

@@ -15,7 +15,7 @@ const { makeSrc, flatBands } = require('./fixtures.js');
 const PINK_BANDS = { subBass: -60, bass: -64.9, lowMid: -69.7, mid: -74, highMid: -78.8, presence: -81, brilliance: -84.8 };
 // The same shape expressed as relative targets (level-invariant).
 const PINK_TARGETS = { subBass: 12, bass: 7.1, lowMid: 2.3, mid: -2, highMid: -6.8, presence: -9, brilliance: -12.8 };
-const BASELINE = { label: 'Worship service', bandTargets: PINK_TARGETS };
+const BASELINE = { label: 'Worship – Classic', bandTargets: PINK_TARGETS };
 
 // The crowd-mic live window from the report that motivated this rubric change
 // (window #135) and the worship-service profile's 7-band targets exactly as
@@ -77,7 +77,7 @@ describe('grade against an ideal-curve baseline', () => {
     const [d] = grading.explainGrade(src).deductions;
     expect(d.rule).toBe('Band imbalance');
     expect(d.measured).toBe('+16.0 dB');
-    expect(d.target).toBe('≤ +15 dB vs. Worship service');
+    expect(d.target).toBe('≤ +15 dB vs. Worship – Classic');
     expect(d.letterImpact).toBe('Drops one letter');
     expect(grading.computeRecommendations(src)).toContain(
       'Cut the low-mids (250-500 Hz) about 10 dB on the main EQ.',
@@ -104,7 +104,7 @@ describe('grade against an ideal-curve baseline', () => {
     expect(grading.explainGrade(live).deductions.map((d) => d.rule)).toEqual(['Band imbalance']);
     expect(grading.computeGrade(live)).toBe('B');
     // Worship-service baseline: every band within tolerance, no band deduction.
-    const graded = { ...live, baseline: { label: 'Worship service', bandTargets: WORSHIP_TARGETS } };
+    const graded = { ...live, baseline: { label: 'Worship – Classic', bandTargets: WORSHIP_TARGETS } };
     expect(grading.explainGrade(graded).deductions).toEqual([]);
     expect(grading.computeGrade(graded)).toBe('A');
     const recs = grading.computeRecommendations(graded);
