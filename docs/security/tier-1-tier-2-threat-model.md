@@ -4,7 +4,7 @@
 - **Source:** Council deliberation 2026-07-14 (Security Engineer proposal, 9/9)
 - **Epic:** [#383](https://github.com/on-par/sound-buddy/issues/383)
 - **Date:** 2026-07-18
-- **Status:** Draft — pending review/approval
+- **Status:** Approved — Patrick, 2026-10-10 CT (amended by ADR-0161)
 - **Related:** [#371](https://github.com/on-par/sound-buddy/issues/371) (OSC feasibility
   spike — blocked on this doc), [#378](https://github.com/on-par/sound-buddy/issues/378)
   (consent modal), [#383](https://github.com/on-par/sound-buddy/issues/383) (epic)
@@ -27,7 +27,12 @@ mitigations.
   M32/X32 console on the church LAN. New attack surface. Must not ship before the #378
   consent modal and this doc's mitigations exist. Read-only OSC only; anything requiring
   **write** access to the console (e.g. one-knob novice mode applying settings) is out
-  of scope for v1 entirely, not merely Tier 2.
+  of scope for v1 entirely, not merely Tier 2. **Amended 2026-10-10 by
+  [ADR-0161](../adr/0161-ios-may-write-console-eq-only-through-a-separate-armed-writer-with-delta-limits-auto-relock-and-pre-session-undo-the-read-only-path-stays-unable-to-write.md)
+  (Patrick approved, [#1660](https://github.com/on-par/sound-buddy/issues/1660)):** the iOS
+  app may write channel and Main LR **EQ only**, through a separate armed writer with
+  delta limits, auto-relock and pre-session undo. All other writes, and every write from
+  the Mac app, remain out of scope.
 
 **Key boundary nuance:** importing a `.scn` **file** is Tier 1 (file parsing, no
 network); reading the same data **live over OSC** is Tier 2. Several features therefore
@@ -181,6 +186,8 @@ above — there is no cloud relay, and console data never leaves the LAN session
 2. **Read-only OSC enforced in code.** Allowlist of query address patterns; no
    write/set commands exist anywhere in the codebase (#378 "read-only scope enforced
    in code"). Addresses: unauthenticated/unencrypted protocol (1), untrusted input (3).
+   *Amended by ADR-0161: the iOS EQ-only writer (`ConsoleEQWriter`) is the single exception;
+   the read-only path still cannot produce a write.*
 3. **Local-subnet-only enforcement.** Console IP must be RFC 1918 and on-link;
    public/off-subnet addresses are refused with an actionable error. Addresses:
    user-supplied console address (4).
@@ -210,6 +217,7 @@ Acceptance criteria from #379:
 - [x] Tier 1 and Tier 2 data-flow diagrams exist.
 - [x] Tier 2 attack surface is analyzed.
 - [x] Mitigations are documented and mapped to the surfaces they address.
-- [ ] **Reviewed and approved before Tier 2 development begins.** — left unchecked;
-  a human (Patrick / council) must check this box. Until it is checked, no Tier 2
-  build work and no #371 spike work may start.
+- [x] **Reviewed and approved before Tier 2 development begins.** — approved by Patrick
+  on 2026-10-10 CT, together with the iOS EQ-only write tier
+  ([ADR-0161](../adr/0161-ios-may-write-console-eq-only-through-a-separate-armed-writer-with-delta-limits-auto-relock-and-pre-session-undo-the-read-only-path-stays-unable-to-write.md),
+  [#1660](https://github.com/on-par/sound-buddy/issues/1660)).
