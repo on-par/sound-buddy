@@ -4,7 +4,8 @@ python apps/ios/scripts/test_ios_device_family.py
 Pins project.yml and the generated project.pbxproj (both Debug and Release) to
 a universal (iPhone + iPad) target with all four iPad orientations, the
 iPhone orientation list unchanged, a device-neutral mic usage string, and no
-UIRequiresFullScreen opt-out. Stdlib only.
+UIRequiresFullScreen opt-out, and the export-compliance declaration
+(ITSAppUsesNonExemptEncryption = NO). Stdlib only.
 """
 
 from __future__ import annotations
@@ -124,6 +125,12 @@ class IosDeviceFamilyTest(unittest.TestCase):
     def test_does_not_opt_out_of_multitasking(self) -> None:
         self.assertNotIn("UIRequiresFullScreen", self.project_yml)
         self.assertNotIn("UIRequiresFullScreen", _read(INFO_PLIST))
+
+    def test_declares_no_non_exempt_encryption(self) -> None:
+        # Without this key every TestFlight build stalls on "Missing Compliance".
+        with INFO_PLIST.open("rb") as f:
+            plist = plistlib.load(f)
+        self.assertIs(plist["ITSAppUsesNonExemptEncryption"], False)
 
 
 if __name__ == "__main__":
