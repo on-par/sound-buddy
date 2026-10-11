@@ -18,7 +18,7 @@ private final class Recorder {
 @Suite struct ConsoleSessionModelTests {
     @Test func sendForwardsEffectsInOrderAndUpdatesPublishedState() {
         let recorder = Recorder()
-        let model = ConsoleSessionModel(now: { recorder.clock }, perform: recorder.perform)
+        let model = ConsoleSessionModel(now: { recorder.clock }, isConsentGranted: { true }, perform: recorder.perform)
 
         #expect(model.phase == .idle)
         #expect(model.isStale == false)
@@ -48,7 +48,7 @@ private final class Recorder {
 
     @Test func isStaleReflectsSnapshotAfterBackgrounding() {
         let recorder = Recorder()
-        let model = ConsoleSessionModel(now: { recorder.clock }, perform: recorder.perform)
+        let model = ConsoleSessionModel(now: { recorder.clock }, isConsentGranted: { true }, perform: recorder.perform)
 
         model.send(.connect(foh))
         model.send(.identityReceived(foh))
@@ -64,7 +64,7 @@ private final class Recorder {
 
     @Test func noEffectsAreForwardedForANoOpEvent() {
         let recorder = Recorder()
-        let model = ConsoleSessionModel(now: { recorder.clock }, perform: recorder.perform)
+        let model = ConsoleSessionModel(now: { recorder.clock }, isConsentGranted: { true }, perform: recorder.perform)
 
         model.send(.statusReply) // idle, socket closed: no-op
         #expect(recorder.effects.isEmpty)
@@ -73,7 +73,7 @@ private final class Recorder {
 
     @Test func armReturnsNilUnlessLinkUp() {
         let recorder = Recorder()
-        let model = ConsoleSessionModel(now: { recorder.clock }, perform: recorder.perform)
+        let model = ConsoleSessionModel(now: { recorder.clock }, isConsentGranted: { true }, perform: recorder.perform)
 
         #expect(model.arm() == nil)
         #expect(model.isArmed == false)
@@ -96,7 +96,7 @@ private final class Recorder {
 
     @Test func eqWriterIsNilWhenDisarmedAndSameInstanceOnReArm() {
         let recorder = Recorder()
-        let model = ConsoleSessionModel(now: { recorder.clock }, perform: recorder.perform)
+        let model = ConsoleSessionModel(now: { recorder.clock }, isConsentGranted: { true }, perform: recorder.perform)
 
         #expect(model.eqWriter == nil)
 
@@ -119,7 +119,7 @@ private final class Recorder {
 
     @Test func disarmedSessionEmitsNoEQSetDatagram() throws {
         let capture = EQDatagramCapture()
-        let model = ConsoleSessionModel(now: { capture.clock }, perform: capture.perform, sendDatagram: capture.sendDatagram)
+        let model = ConsoleSessionModel(now: { capture.clock }, isConsentGranted: { true }, perform: capture.perform, sendDatagram: capture.sendDatagram)
 
         model.send(.connect(foh))
         model.send(.identityReceived(foh))

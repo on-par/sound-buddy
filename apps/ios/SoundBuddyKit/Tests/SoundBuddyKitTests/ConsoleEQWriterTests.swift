@@ -25,7 +25,7 @@ private final class EQRecorder {
 /// Drives a `ConsoleSessionModel` to `.live` and arms it, per the spec's
 /// helper: `connect -> identityReceived -> syncCompleted`, then `arm()`.
 private func armedWriter(_ recorder: EQRecorder) -> (ConsoleSessionModel, ConsoleEQWriter) {
-    let model = ConsoleSessionModel(now: { recorder.clock }, perform: recorder.perform, sendDatagram: recorder.sendDatagram)
+    let model = ConsoleSessionModel(now: { recorder.clock }, isConsentGranted: { true }, perform: recorder.perform, sendDatagram: recorder.sendDatagram)
     model.send(.connect(foh))
     model.send(.identityReceived(foh))
     model.send(.syncCompleted)

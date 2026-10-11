@@ -5,6 +5,12 @@ import Observation
 /// following `AnalyzeModel`'s injected `now:` idiom. Owns no timers and no
 /// socket itself: the future transport adapter (#1666) drives `.tick` from
 /// its own clock and performs the returned effects against the real socket.
+///
+/// Gated by a required, injected `isConsentGranted` closure (#1665, ADR-0161
+/// §8): while it returns `false`, `.connect` is ignored, every effect except
+/// `.closeSocket`/`.returnToConnectFlow` is dropped, and no datagram (EQ
+/// writer included) reaches `sendDatagram`. The gate is structural, not a
+/// default — there is no way to construct a model that skips it.
 @Observable
 public final class ConsoleSessionModel {
     public private(set) var state: ConsoleSessionState = .idle
@@ -15,6 +21,7 @@ public final class ConsoleSessionModel {
     public private(set) var isArmed = false
 
     private let now: () -> TimeInterval
+    private let isConsentGranted: () -> Bool
     private let perform: (ConsoleSessionEffect) -> Void
     private let sendDatagram: (Data) -> Void
 
@@ -25,12 +32,14 @@ public final class ConsoleSessionModel {
 
     public init(
         now: @escaping () -> TimeInterval,
+        isConsentGranted: @escaping () -> Bool,
         perform: @escaping (ConsoleSessionEffect) -> Void,
         sendDatagram: @escaping (Data) -> Void = { _ in }
     ) {
         self.now = now
+        self.isConsentGranted = isConsentGranted
         self.perform = perform
-        self.sendDatagram = sendDatagram
+        self.sendDatagram = { data in if isConsentGranted() { sendDatagram(data) } }
     }
 
     public var phase: ConsoleSessionPhase { state.phase }
@@ -39,13 +48,38 @@ public final class ConsoleSessionModel {
 
     /// Folds `event` through the reducer at the injected clock's current
     /// time, stores the resulting state, then forwards each effect to the
-    /// injected performer in order.
+    /// injected performer in order. Without consent, `.connect` is ignored
+    /// outright (the phase never leaves `.idle`); every other event still
+    /// reduces normally but only `.closeSocket`/`.returnToConnectFlow`
+    /// effects reach `perform` — see `isAllowedWithoutConsent`.
     public func send(_ event: ConsoleSessionEvent) {
+        let granted = isConsentGranted()
+        if !granted, case .connect = event { return }
         let (nextState, effects) = ConsoleSessionReducer.reduce(state, event, now: now())
         state = nextState
-        for effect in effects {
+        let allowed = granted ? effects : effects.filter(Self.isAllowedWithoutConsent)
+        for effect in allowed {
             perform(effect)
         }
+    }
+
+    /// Exhaustive, no `default`: a new `ConsoleSessionEffect` case fails to
+    /// compile here until someone decides whether it's safe without consent.
+    private static func isAllowedWithoutConsent(_ effect: ConsoleSessionEffect) -> Bool {
+        switch effect {
+        case .closeSocket, .returnToConnectFlow:
+            true
+        case .openSocket, .sendXInfo, .sendStatus, .sendXRemote, .requestFullResync, .resyncTarget:
+            false
+        }
+    }
+
+    /// The app calls this when Settings > Revoke access fires: disarms (so
+    /// `eqWriter` goes back to `nil`) then disconnects, which closes an open
+    /// socket and returns the phase to `.idle`.
+    public func consentRevoked() {
+        disarm()
+        send(.disconnect)
     }
 
     /// Arms the session for EQ writes. Returns `nil`, and leaves `isArmed`

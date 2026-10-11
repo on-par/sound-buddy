@@ -416,7 +416,7 @@ private func freshDefaults() -> UserDefaults {
     /// `ConsoleEQWriterTests` (its own is file-private there).
     private func armedWriter(_ recorder: EQRecorder) -> (ConsoleSessionModel, ConsoleEQWriter) {
         let identity = ConsoleIdentity(name: "FOH", model: "M32R")
-        let model = ConsoleSessionModel(now: { recorder.clock }, perform: recorder.perform, sendDatagram: recorder.sendDatagram)
+        let model = ConsoleSessionModel(now: { recorder.clock }, isConsentGranted: { true }, perform: recorder.perform, sendDatagram: recorder.sendDatagram)
         model.send(.connect(identity))
         model.send(.identityReceived(identity))
         model.send(.syncCompleted)

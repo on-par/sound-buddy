@@ -65,11 +65,13 @@ struct AnalyzeView: View {
     let model: AnalyzeModel
     let keepAwake: KeepAwakeController
     let micInputs: MicInputController
-    /// Injected until #1665 (consent) and #1666 (transport/connect) land:
-    /// Release passes `console: nil`, so the chip never shows there.
+    /// Injected until #1666 (transport/connect) lands: Release passes
+    /// `console: nil`, so the chip never shows there.
     let console: ConsoleTargetModel?
     let featureFlags: FeatureFlags
-    let consoleConsentGranted: Bool
+    let consoleConsent: ConsoleConsentStore
+    var onConsoleConsentRevoked: () -> Void = {}
+    var onConsoleConnect: () -> Void = {}
     /// Injected until the #1666/#1674 adapter hands over a live armed
     /// writer; Release passes `nil`, so Apply always reads "Unlock to
     /// apply" there.
@@ -86,7 +88,7 @@ struct AnalyzeView: View {
     @AppStorage(RTABallisticsMode.defaultsKey) private var rtaBallistics = RTABallisticsMode.defaultValue
 
     private var showsConsoleChip: Bool {
-        ConsoleChipStatus.isVisible(flagEnabled: featureFlags.isEnabled(.console), consentGranted: consoleConsentGranted, console: console?.console)
+        ConsoleChipStatus.isVisible(flagEnabled: featureFlags.isEnabled(.console), consentGranted: consoleConsent.isGranted, console: console?.console)
     }
 
     var body: some View {
@@ -105,7 +107,10 @@ struct AnalyzeView: View {
             SettingsView(
                 keepAwakeEnabled: $keepAwakeEnabled,
                 micInputs: micInputs,
-                showsConsoleSection: featureFlags.isEnabled(.console)
+                showsConsoleSection: featureFlags.isEnabled(.console),
+                consent: consoleConsent,
+                onConnect: onConsoleConnect,
+                onRevoke: onConsoleConsentRevoked
             ) { id in
                 micInputs.select(id)
                 Task { await model.restartListening() }
@@ -461,11 +466,15 @@ private struct SettingsView: View {
     @Binding var keepAwakeEnabled: Bool
     let micInputs: MicInputController
     let showsConsoleSection: Bool
+    let consent: ConsoleConsentStore
+    let onConnect: () -> Void
+    let onRevoke: () -> Void
     let onSelectMic: (String?) -> Void
     @Environment(\.dismiss) private var dismiss
     /// RTA display choices (#1707), read directly by RTAView and AnalyzeView.
     @AppStorage(RTAViewMode.defaultsKey) private var rtaViewMode = RTAViewMode.defaultValue
     @AppStorage(RTABallisticsMode.defaultsKey) private var rtaBallistics = RTABallisticsMode.defaultValue
+    @State private var consentSheetOpen = false
 
     var body: some View {
         NavigationStack {
@@ -522,10 +531,32 @@ private struct SettingsView: View {
 
                 if showsConsoleSection {
                     Section {
+                        if consent.isGranted {
+                            LabeledContent("Access", value: ConsoleConsentCopy.grantedStatus)
+                                .accessibilityIdentifier("settings.console.status")
+                            Button(ConsoleConsentCopy.revokeButton, role: .destructive) {
+                                consent.revoke()
+                                onRevoke()
+                            }
+                            .accessibilityIdentifier("settings.console.revoke")
+                        } else {
+                            Button(ConsoleConsentCopy.connectTitle) {
+                                switch consent.connectStep() {
+                                case .showConsentSheet: consentSheetOpen = true
+                                case .proceed: onConnect()
+                                }
+                            }
+                            .accessibilityIdentifier("settings.console.connect")
+                        }
                     } header: {
                         Text(ConsoleSettingsCopy.sectionTitle)
                     } footer: {
-                        Text(ConsoleSettingsCopy.footer)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(ConsoleSettingsCopy.footer)
+                            if consent.isGranted {
+                                Text(ConsoleConsentCopy.revokeFooter)
+                            }
+                        }
                     }
                     .accessibilityIdentifier("settings.console")
                     .listRowBackground(Palette.surface)
@@ -551,6 +582,16 @@ private struct SettingsView: View {
             micInputs.refresh()
         }
         #endif
+        .sheet(isPresented: $consentSheetOpen) {
+            ConsoleConsentView(
+                onAllow: {
+                    consent.grant()
+                    consentSheetOpen = false
+                    onConnect()
+                },
+                onCancel: { consentSheetOpen = false }
+            )
+        }
     }
 }
 

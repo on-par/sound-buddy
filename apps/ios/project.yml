@@ -54,8 +54,10 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ENABLE_PREVIEWS: YES
         # No team and no entitlements file: Simulator builds need no signing,
-        # and there is deliberately no local-network entitlement while the LAN
-        # companion is parked. Pick your own team in Xcode to run on a device.
+        # and there is no multicast entitlement yet (the console link uses
+        # unicast only until Apple grants
+        # com.apple.developer.networking.multicast). Pick your own team in
+        # Xcode to run on a device.
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: ""
         # testflight.sh (#1696) hands the App Store profile to the app target
