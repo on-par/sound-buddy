@@ -465,6 +465,54 @@ public final class AnalyzeModel {
         return true
     }
 
+    // MARK: Target tray (#1745)
+
+    /// One choice in the iPad Target tray's picker.
+    public struct TargetTrayOption: Identifiable, Equatable, Sendable {
+        public let id: String
+        public let title: String
+    }
+
+    /// The tray id for "Auto" (the program-mode target, #1690).
+    public static let autoTargetTrayId = "auto"
+    static let autoTargetTrayTitle = "Auto"
+
+    /// The tray picker: Auto, then the built-in presets. Saved customs join
+    /// here once a custom-target store lands (#1743).
+    public var targetTrayOptions: [TargetTrayOption] {
+        [TargetTrayOption(id: Self.autoTargetTrayId, title: Self.autoTargetTrayTitle)]
+            + TargetCurvePreset.all.map { TargetTrayOption(id: $0.id, title: $0.title) }
+    }
+
+    /// Which tray option is current: Auto while the target is auto,
+    /// otherwise the active curve's id (a custom drag has its own id that
+    /// matches no option).
+    public var selectedTargetTrayId: String {
+        targetIsAuto ? Self.autoTargetTrayId : target.id
+    }
+
+    /// Applies the built-in curve `id` directly, outside edit mode, as a user
+    /// choice (`targetIsAuto` false). Rebuilds the coach and restarts
+    /// coaching right away, the same way Done does. Returns false (no-op)
+    /// while editing or when the curve can't be loaded.
+    @discardableResult
+    public func selectTarget(id: String) -> Bool {
+        guard !isEditingTarget, let curve = try? presetLoader(id) else { return false }
+        apply(target: curve, isAuto: false)
+        lastCoachingAt = nil
+        return true
+    }
+
+    /// Returns the target to Auto: the program-mode target (#1690) for the
+    /// current mode, applied immediately. Returns false (no-op) while editing.
+    @discardableResult
+    public func selectAutoTarget() -> Bool {
+        guard !isEditingTarget else { return false }
+        apply(target: autoTargetForProgramMode(), isAuto: true)
+        lastCoachingAt = nil
+        return true
+    }
+
     // MARK: Lifecycle
 
     /// The Analyze screen is on screen: start listening.
@@ -602,17 +650,22 @@ public final class AnalyzeModel {
     /// to auto, or after halt.
     private func syncAutoTarget() {
         guard targetIsAuto, !isEditingTarget else { return }
-        let desired: IdealCurve
-        switch programMode {
-        case .speech, .speechOverBed:
-            // Speech + bed keeps the speech curve: the voice is what's coached.
-            desired = loadSpeechTarget() ?? autoMusicTarget
-        case .music:
-            desired = autoMusicTarget
-        }
+        let desired = autoTargetForProgramMode()
         guard desired != target else { return }
         apply(target: desired, isAuto: true)
         lastCoachingAt = nil
+    }
+
+    /// The auto target for the current `programMode`: the speech curve for
+    /// Speech and Speech + bed (the voice is what's coached), otherwise the
+    /// music target from init.
+    private func autoTargetForProgramMode() -> IdealCurve {
+        switch programMode {
+        case .speech, .speechOverBed:
+            loadSpeechTarget() ?? autoMusicTarget
+        case .music:
+            autoMusicTarget
+        }
     }
 
     /// Loads and caches the speech-podcast curve on first use; a load

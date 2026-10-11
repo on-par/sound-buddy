@@ -138,6 +138,13 @@ check it runs natively rather than in the iPhone compatibility window:
    to the right of the legend. The legend row, the pencil, Cancel, Done and
    each preset pill are at least 44 pt tall, so they are easy to hit at FOH
    (#1744; sizes in `TargetControlMetrics`).
+   In landscape, a **Target tray** sits at the top of the right column
+   (#1745): the current target with an "auto" badge, **Edit curve**, and a
+   picker (Auto, then the built-in curves). Picking a curve applies it at
+   once (the legend drops "(auto)" and coaching restarts against it); Auto
+   returns to the Speech/Music target. Edit curve enters the same edit mode
+   as the legend. With the console EQ panel shown, the tray is one row above
+   it. The RTA's width does not change.
 4. Tap the gear. The Settings sheet presents (a form sheet on iPad is
    expected), the microphone picker and **Keep screen awake** toggle work,
    and dismissing it returns to Analyze, still listening.
