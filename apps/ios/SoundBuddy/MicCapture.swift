@@ -1,4 +1,5 @@
 import AVFAudio
+import OSLog
 import SoundBuddyKit
 
 /// Record-permission prompt via AVAudioApplication (iOS 17+).
@@ -49,6 +50,40 @@ final class SystemMicInputSession: MicInputSession {
         try session.setPreferredInput(port)
     }
 
+    // MARK: Polar pattern (#1708)
+
+    /// The routed input's data sources, only when it's the built-in mic.
+    private var routedBuiltInMic: AVAudioSessionPortDescription? {
+        session.currentRoute.inputs.first { $0.portType == .builtInMic }
+    }
+
+    func builtInMicDataSources() -> [MicDataSource] {
+        guard routedBuiltInMic != nil else { return [] }
+        return (session.inputDataSources ?? []).map { source in
+            MicDataSource(
+                id: source.dataSourceID.intValue,
+                name: source.dataSourceName,
+                supportedPolarPatterns: (source.supportedPolarPatterns ?? []).map { MicPolarPattern(rawValue: $0.rawValue) },
+                selectedPolarPattern: source.selectedPolarPattern.map { MicPolarPattern(rawValue: $0.rawValue) }
+            )
+        }
+    }
+
+    func selectedBuiltInDataSourceID() -> Int? {
+        routedBuiltInMic?.selectedDataSource?.dataSourceID.intValue ?? session.inputDataSource?.dataSourceID.intValue
+    }
+
+    /// Selects the pattern on the data source and makes it the routed
+    /// input's source, without pinning the built-in mic as the preferred
+    /// input (a USB mic plugged in later still takes over, #1601).
+    func applyPolarPattern(_ choice: MicPolarChoice) throws {
+        guard routedBuiltInMic != nil,
+              let source = session.inputDataSources?.first(where: { $0.dataSourceID.intValue == choice.dataSourceID })
+        else { throw InputUnavailable() }
+        try source.setPreferredPolarPattern(AVAudioSession.PolarPattern(rawValue: choice.pattern.rawValue))
+        try session.setInputDataSource(source)
+    }
+
     private static func options(for port: AVAudioSessionPortDescription) -> [MicInputOption] {
         guard port.portType == .builtInMic, let sources = port.dataSources, sources.count > 1 else {
             return [MicInputOption(portUID: port.uid, dataSourceID: nil, name: port.portName)]
@@ -90,6 +125,7 @@ final class MicCapture: LiveAudioSource {
     static let tapBufferFrames: AVAudioFrameCount = 1024
     /// Ring holds this many FFT frames of history.
     static let ringFrames = 4
+    private static let logger = Logger(subsystem: "com.soundbuddy.ios", category: "mic")
 
     /// Rebuilt on every start: after a route change the old engine's input
     /// node can keep the unplugged device's format.
@@ -119,6 +155,11 @@ final class MicCapture: LiveAudioSource {
         let engine = AVAudioEngine()
         self.engine = engine
         let input = engine.inputNode
+        // #1708: never let voice processing (and its AGC / speech EQ) onto
+        // the analysis path; .measurement mode already asks for that.
+        if input.isVoiceProcessingEnabled {
+            try? input.setVoiceProcessingEnabled(false)
+        }
         let format = input.outputFormat(forBus: 0)
         do {
             // The Simulator can report a 0 Hz / 0-channel input; refuse it
@@ -136,10 +177,14 @@ final class MicCapture: LiveAudioSource {
             }
         } catch {
             engine.stop()
+            inputs.recordDiagnostics(nil)
             Self.releaseSession()
             throw error
         }
         self.ring = ring
+        let diagnostics = Self.diagnostics(input: input, sampleRate: format.sampleRate)
+        inputs.recordDiagnostics(diagnostics)
+        Self.logger.info("\(diagnostics.logLine, privacy: .public)")
 
         let interval = Duration.seconds(1 / Self.meterRefreshHz)
         meterTask = Task { @MainActor in
@@ -163,7 +208,36 @@ final class MicCapture: LiveAudioSource {
         }
     }
 
+    /// What the running capture actually got (#1708): the session's category,
+    /// mode and route, and the input node's voice-processing state.
+    private static func diagnostics(input: AVAudioInputNode, sampleRate: Double) -> MicSessionDiagnostics {
+        #if os(iOS)
+        let session = AVAudioSession.sharedInstance()
+        let port = session.currentRoute.inputs.first
+        let source = port?.selectedDataSource ?? session.inputDataSource
+        return MicSessionDiagnostics(
+            category: session.category.rawValue,
+            mode: session.mode.rawValue,
+            inputPortType: port?.portType.rawValue,
+            inputPortName: port?.portName,
+            dataSource: source?.dataSourceName,
+            polarPattern: source?.selectedPolarPattern?.rawValue,
+            sampleRate: sampleRate,
+            isVoiceProcessingEnabled: input.isVoiceProcessingEnabled,
+            isVoiceProcessingAGCEnabled: input.isVoiceProcessingAGCEnabled,
+            isInputGainSettable: session.isInputGainSettable
+        )
+        #else
+        return MicSessionDiagnostics(
+            category: "n/a", mode: "n/a", inputPortType: nil, inputPortName: nil, dataSource: nil,
+            polarPattern: nil, sampleRate: sampleRate, isVoiceProcessingEnabled: input.isVoiceProcessingEnabled,
+            isVoiceProcessingAGCEnabled: nil, isInputGainSettable: false
+        )
+        #endif
+    }
+
     func stop() {
+        inputs.recordDiagnostics(nil)
         meterTask?.cancel()
         meterTask = nil
         engine.inputNode.removeTap(onBus: 0)

@@ -28,8 +28,16 @@ struct SoundBuddyApp: App {
             source = SpeechBedDemoSource()
         }
         #endif
+        var permission: MicPermission = SystemMicPermission()
+        #if DEBUG
+        // Simulator proofs: demo sources (and -skipMicPrompt) never show the
+        // record-permission alert over the screen being captured.
+        if DebugLaunchOptions.skipsMicPermissionPrompt(ProcessInfo.processInfo.arguments) {
+            permission = PreGrantedMicPermission()
+        }
+        #endif
         let analyze = AnalyzeModel(
-            permission: SystemMicPermission(),
+            permission: permission,
             source: source,
             target: target
         )
