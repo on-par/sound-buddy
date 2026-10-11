@@ -389,7 +389,11 @@ public final class AnalyzeModel {
     /// arrived).
     public var rtaTargetHandles: [RTATargetHandle] {
         guard isEditingTarget, state == .live, let shift = currentLevelShift else { return [] }
-        return TargetCurveHandles.handles(for: target).map { RTATargetHandle(handle: $0, displayDb: $0.offsetDb + shift) }
+        return TargetCurveHandles.handles(for: target).map {
+            // Handles draw on the bandwidth-corrected line (#1726); their
+            // stored offsetDb stays in the per-bin convention.
+            RTATargetHandle(handle: $0, displayDb: RTATarget.displayOffsetDb($0.offsetDb, atHz: $0.hz) + shift)
+        }
     }
 
     /// The ordinal of the handle currently held by a finger, or nil.
@@ -405,7 +409,12 @@ public final class AnalyzeModel {
         guard isEditingTarget, handleDrag == nil, let shift = currentLevelShift else { return false }
         let handles = TargetCurveHandles.handles(for: target)
         guard handles.indices.contains(handle) else { return false }
-        handleDrag = TargetHandleDrag(handle: handle, startOffsetDb: handles[handle].offsetDb, levelShiftDb: shift)
+        handleDrag = TargetHandleDrag(
+            handle: handle,
+            startOffsetDb: handles[handle].offsetDb,
+            levelShiftDb: shift,
+            displayCorrectionDb: RTATarget.bandwidthCorrectionDb(atHz: handles[handle].hz)
+        )
         return true
     }
 
