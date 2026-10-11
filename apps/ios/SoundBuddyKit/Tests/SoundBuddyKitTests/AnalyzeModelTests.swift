@@ -564,11 +564,11 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         let shiftedTargets = Dictionary(uniqueKeysWithValues: Band.allCases.map { ($0, speechPodcast.bandTargets[$0]! - 40) })
         let bands = levels(shiftedTargets)
 
-        try deliverSustained(speechOverAPadFeatures(), bands: bands, count: 60) // 3 s: short of the dwell
+        try deliverSustained(speechOverAPadFeatures(), bands: bands, count: 110) // 5.5 s: short of the 6 s evidence
         #expect(m.targetLegendText == "Target · Worship service (auto)")
         #expect(m.programMode == .music)
 
-        try deliverSustained(speechOverAPadFeatures(), bands: bands, count: 60) // 6 s total: past the 4 s dwell
+        try deliverSustained(speechOverAPadFeatures(), bands: bands, count: 20) // 6.5 s total: past the 6 s evidence
         #expect(m.programMode == .speech)
         #expect(m.programModeChipText == "Speech")
         #expect(m.targetLegendText == "Target · Speech / podcast (auto)")
@@ -583,11 +583,13 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         let m = model(target: worship, targetIsAuto: true)
         await m.appear()
 
-        try deliverSustained(speechOverAPadFeatures(), bands: levels(base: -40), count: 120) // 6 s of speech
+        try deliverSustained(speechOverAPadFeatures(), bands: levels(base: -40), count: 130) // 6.5 s of speech
         #expect(m.programMode == .speech)
         #expect(m.target.id == IdealCurveLibrary.speechPodcastId)
 
-        try deliverSustained(musicFeatures(), bands: levels(base: -30), count: 60) // 3 s of music: past the 2 s dwell
+        // Music: past the 6 s evidence, and past the 10 s minimum hold since
+        // the switch into speech (#1702).
+        try deliverSustained(musicFeatures(), bands: levels(base: -30), count: 210) // 10.5 s of music
         #expect(m.programMode == .music)
         #expect(m.programModeChipText == "Music")
         #expect(m.target.id == IdealCurveLibrary.worshipServiceId)
@@ -599,7 +601,7 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         let m = model(target: worship, targetIsAuto: false)
         await m.appear()
 
-        try deliverSustained(speechOverAPadFeatures(), bands: levels(base: -40), count: 120)
+        try deliverSustained(speechOverAPadFeatures(), bands: levels(base: -40), count: 130)
         #expect(m.programMode == .speech, "the chip still shows the detected mode")
         #expect(m.target == worship, "a user-chosen target is never switched")
         #expect(m.coachingCurve == worship)
@@ -612,7 +614,7 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         await m.appear()
         m.beginTargetEdit()
 
-        try deliverSustained(speechOverAPadFeatures(), bands: levels(base: -40), count: 120)
+        try deliverSustained(speechOverAPadFeatures(), bands: levels(base: -40), count: 130)
         #expect(m.programMode == .speech, "the chip still shows the detected mode")
         #expect(m.target == worship, "the draft never auto-switches while editing")
         #expect(m.coachingCurve == worship)
@@ -630,7 +632,7 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         let m = model(target: worship, targetIsAuto: true, presetLoader: { _ in throw LoaderFailure() })
         await m.appear()
 
-        try deliverSustained(speechOverAPadFeatures(), bands: levels(base: -40), count: 120)
+        try deliverSustained(speechOverAPadFeatures(), bands: levels(base: -40), count: 130)
         #expect(m.programMode == .speech)
         #expect(m.target == worship, "a load failure keeps the music target rather than crashing")
         #expect(m.targetLegendText == "Target · Worship service (auto)")
@@ -652,7 +654,7 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         let m = model(target: worship, targetIsAuto: true)
         await m.appear()
 
-        try deliverSustained(speechOverAPadFeatures(), bands: levels(base: -40), count: 120)
+        try deliverSustained(speechOverAPadFeatures(), bands: levels(base: -40), count: 130)
         #expect(m.programMode == .speech)
         #expect(m.target.id == IdealCurveLibrary.speechPodcastId)
 
@@ -665,6 +667,7 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
     @Test func programModeAccessibilityLabelReflectsAutoVsUserTargetAndEditing() {
         let auto = model(target: .flat, targetIsAuto: true)
         #expect(auto.programModeAccessibilityLabel == "Program: music, target switched automatically")
+        #expect(auto.programModeChipText == "Music")
 
         let userChosen = model(target: .flat, targetIsAuto: false)
         #expect(userChosen.programModeAccessibilityLabel == "Program: music")
