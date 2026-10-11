@@ -1,12 +1,50 @@
+import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
 import { OscError, decodeOscMessage, encodeOscMessage, replyAddressMatches } from './index.js'
+import type { OscArg } from './index.js'
 
 function toHex(bytes: Uint8Array): string {
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+function fromHex(hex: string): Uint8Array {
+  return new Uint8Array(hex.match(/.{2}/g)!.map((pair) => parseInt(pair, 16)))
+}
+
 function pad4(len: number): number {
   return (4 - (len % 4)) % 4
+}
+
+interface ParityFixtureArg {
+  type: 'f' | 'i' | 's' | 'b'
+  value: number | string
+}
+
+interface EncodeParityFixture {
+  name: string
+  address: string
+  args: ParityFixtureArg[]
+  hex: string
+}
+
+interface DecodeParityFixture {
+  name: string
+  hex: string
+  address: string
+  args: ParityFixtureArg[]
+}
+
+interface OscParityFixtures {
+  encode: EncodeParityFixture[]
+  decode: DecodeParityFixture[]
+}
+
+function toOscArgs(args: ParityFixtureArg[]): OscArg[] {
+  return args.map((arg) =>
+    arg.type === 'b'
+      ? { type: 'b', value: fromHex(arg.value as string) }
+      : ({ type: arg.type, value: arg.value } as OscArg),
+  )
 }
 
 describe('encodeOscMessage — AC1 byte-exact vector', () => {
@@ -204,5 +242,26 @@ describe('decodeOscMessage error paths', () => {
   it('throws when a string arg has no NUL terminator before the buffer end', () => {
     const packet = new Uint8Array([0x2f, 0x78, 0x00, 0x00, 0x2c, 0x73, 0x00, 0x00, 0x61, 0x62, 0x63])
     expect(() => decodeOscMessage(packet)).toThrow(/NUL terminator/)
+  })
+})
+
+describe('shared OSC parity fixtures (iOS SoundBuddyKit reads the same file)', () => {
+  const fixtures: OscParityFixtures = JSON.parse(
+    readFileSync(new URL('./osc-parity-fixtures.json', import.meta.url), 'utf-8'),
+  )
+
+  it('encodes every fixture to its pinned hex', () => {
+    for (const fixture of fixtures.encode) {
+      const bytes = encodeOscMessage({ address: fixture.address, args: toOscArgs(fixture.args) })
+      expect(toHex(bytes), fixture.name).toBe(fixture.hex)
+    }
+  })
+
+  it('decodes every fixture to its address and arguments', () => {
+    for (const fixture of fixtures.decode) {
+      const decoded = decodeOscMessage(fromHex(fixture.hex))
+      expect(decoded.address, fixture.name).toBe(fixture.address)
+      expect(decoded.args, fixture.name).toEqual(toOscArgs(fixture.args))
+    }
   })
 })
