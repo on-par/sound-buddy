@@ -181,6 +181,15 @@ private func quantizedQ(_ band: Band) -> Double {
         #expect(ConsoleCoachingMapper.showsAction(for: other, consoleVisible: true, phase: .live) == false)
     }
 
+    @Test func isArmedRequiresBothWriterAndLiveLink() {
+        let writer = ConsoleEQWriter(now: { 0 }, isArmed: { true }, send: { _ in })
+
+        #expect(ConsoleCoachingMapper.isArmed(writer: nil, phase: .live) == false)
+        #expect(ConsoleCoachingMapper.isArmed(writer: writer, phase: .idle) == false)
+        #expect(ConsoleCoachingMapper.isArmed(writer: writer, phase: .live) == true)
+        #expect(ConsoleCoachingMapper.isArmed(writer: writer, phase: .liveDegraded) == true)
+    }
+
     @Test func applyLabelReadsUnlockToApplyWhenDisarmed() {
         #expect(ConsoleCoachingMapper.applyLabel(isArmed: false) == ConsoleCoachingMapper.applyLabelDisarmed)
         #expect(ConsoleCoachingMapper.applyLabel(isArmed: false) == "Unlock to apply")

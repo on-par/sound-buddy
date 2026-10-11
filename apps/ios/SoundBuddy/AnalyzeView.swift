@@ -170,8 +170,9 @@ struct AnalyzeView: View {
     /// The same armed-writer-and-live-link gate `ConsoleEQPanel` uses for
     /// Apply (#1676 rework) — Undo in the coaching stack shares it so a tap
     /// while disarmed never fires the `.disarmed` throw into the void.
+    /// Delegates to `ConsoleCoachingMapper.isArmed` so the rule lives once.
     private var canUndoApplied: Bool {
-        consoleEQWriter != nil && (console?.phase.isLinkUp ?? false)
+        ConsoleCoachingMapper.isArmed(writer: consoleEQWriter, phase: console?.phase ?? .idle)
     }
 
     /// Selects Main LR and stores the tapped event (#1671); on the sheet

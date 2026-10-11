@@ -148,6 +148,14 @@ public enum ConsoleCoachingMapper {
         return ConsoleCoachingApplied(bandIndex: suggestion.bandIndex, prior: prior, written: written, confirmation: confirmation, beforeAfter: beforeAfter)
     }
 
+    /// The single armed-writer-and-live-link gate for Apply and Undo
+    /// (#1676 rework): true only with a non-nil writer and a live link.
+    /// `ConsoleEQPanel` and `AnalyzeView` both call this rather than
+    /// re-deriving the rule, so the two can't drift.
+    public static func isArmed(writer: ConsoleEQWriter?, phase: ConsoleSessionPhase) -> Bool {
+        writer != nil && phase.isLinkUp
+    }
+
     /// "Apply" once armed, or "Unlock to apply" (disabled) otherwise.
     public static func applyLabel(isArmed: Bool) -> String {
         isArmed ? applyLabelArmed : applyLabelDisarmed

@@ -85,7 +85,7 @@ struct ConsoleEQPanel: View {
     }
 
     private func valuesBody(state: ConsoleEQPanelState) -> some View {
-        let canApply = eqWriter != nil && state.phase.isLinkUp
+        let canApply = ConsoleCoachingMapper.isArmed(writer: eqWriter, phase: state.phase)
         return VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
             EQCurveView(eqPanel: state, analyze: analyze)
             if let hpfText = state.hpfText {
