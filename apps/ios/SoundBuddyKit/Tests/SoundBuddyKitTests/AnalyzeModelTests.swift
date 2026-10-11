@@ -596,6 +596,26 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         #expect(m.targetLegendText == "Target · Worship service (auto)")
     }
 
+    /// #1725: the app seeds Analyze with `IdealCurveLibrary.liveDefault()`, so
+    /// Music auto is the room-mic reference; Speech auto stays speech-podcast,
+    /// and sustained music brings the target back to worship-room.
+    @Test func theLiveDefaultMusicTargetIsWorshipRoomAndSpeechStaysSpeechPodcast() async throws {
+        let m = model(target: IdealCurveLibrary.liveDefault(), targetIsAuto: true)
+        await m.appear()
+        #expect(m.target.id == IdealCurveLibrary.worshipRoomId)
+        #expect(m.targetLegendText == "Target · Worship (room mic) (auto)")
+
+        try deliverSustained(speechOverAPadFeatures(), bands: levels(base: -40), count: 130) // 6.5 s of speech
+        #expect(m.programMode == .speech)
+        #expect(m.target.id == IdealCurveLibrary.speechPodcastId)
+        #expect(m.targetLegendText == "Target · Speech / podcast (auto)")
+
+        try deliverSustained(musicFeatures(), bands: levels(base: -30), count: 210) // 10.5 s of music
+        #expect(m.programMode == .music)
+        #expect(m.target.id == IdealCurveLibrary.worshipRoomId)
+        #expect(m.targetLegendText == "Target · Worship (room mic) (auto)")
+    }
+
     @Test func aUserChosenTargetIsNeverSwitchedBySpeech() async throws {
         let worship = try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId)
         let m = model(target: worship, targetIsAuto: false)

@@ -36,9 +36,15 @@ function expectTargets(actual: Record<string, number>, expected: Record<string, 
 }
 
 describe("iOS band-target fixture (#1724)", () => {
-  it("covers the four curves SoundBuddyKit bundles", () => {
+  it("covers the five curves SoundBuddyKit bundles", () => {
     expect(fixture.schemaVersion).toBe(1);
-    expect(fixture.builtIn.map((c) => c.id)).toEqual(["flat", "music-fullrange", "worship-service", "speech-podcast"]);
+    expect(fixture.builtIn.map((c) => c.id)).toEqual([
+      "flat",
+      "music-fullrange",
+      "worship-service",
+      "speech-podcast",
+      "worship-room",
+    ]);
   });
 
   it.each(fixture.builtIn.map((c) => [c.id, c] as const))("%s matches bandTargetsFromProfile", (id, c) => {

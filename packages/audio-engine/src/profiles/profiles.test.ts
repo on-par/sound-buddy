@@ -11,10 +11,17 @@ import {
   LIVE_CAPTURE_DEFAULT_PROFILE_ID,
 } from "./index.js";
 
+// The Oct 11 2026 FOH reference (#1725), 20 Hz to 20 kHz on GRID_FREQS.
+const WORSHIP_ROOM_OFFSETS = [
+  -8.0, -7.5, -6.0, -3.5, -1.0, 1.5, 4.0, 6.5, 9.0, 11.0, 12.0, 12.0, 10.5, 8.5, 6.5, 5.5, 4.5, 4.0, 4.0, 4.5,
+  4.5, 4.5, 4.5, 4.5, 3.5, 2.5, 1.0, -0.5, -2.0, -3.5, -5.5, -7.5, -11.0, -13.5, -16.5, -19.0, -21.0, -22.5,
+  -23.5, -24.5, -26.0, -27.0, -28.5, -30.0, -31.5, -33.0, -34.5, -35.0,
+];
+
 describe("ideal profiles", () => {
-  it("ships flat, music-fullrange, speech-podcast, broadcast, worship-service on the 48-pt grid", () => {
+  it("ships flat, music-fullrange, speech-podcast, broadcast, worship-service, worship-room on the 48-pt grid", () => {
     const ids = PROFILES.map((p) => p.id).sort();
-    expect(ids).toEqual(["broadcast", "flat", "music-fullrange", "speech-podcast", "worship-service"]);
+    expect(ids).toEqual(["broadcast", "flat", "music-fullrange", "speech-podcast", "worship-room", "worship-service"]);
     const worship = getProfile("worship-service")!;
     expect(worship.freqs).toEqual(GRID_FREQS);
     expect(worship.freqs).toHaveLength(GRID_POINTS);
@@ -24,6 +31,25 @@ describe("ideal profiles", () => {
       expect(p.dbOffsets).toHaveLength(GRID_POINTS);
       expect(p.freqs).toEqual(GRID_FREQS);
     }
+  });
+
+  it("ships worship-room exactly as measured from the Oct 11 2026 FOH reference mix (#1725)", () => {
+    const room = getProfile("worship-room")!;
+    expect(room).toBeDefined();
+    expect(room.label).toBe("Worship (room mic)");
+    expect(room.description).toBe(
+      "Reference target from a good-sounding worship mix measured on the iPad mic at FOH.",
+    );
+    expect(room.freqs).toEqual(GRID_FREQS);
+    expect(room.dbOffsets).toEqual(WORSHIP_ROOM_OFFSETS);
+  });
+
+  it("leaves the Mac live default and worship-service data untouched (#1725)", () => {
+    expect(defaultProfileForLiveCapture()).toBe("worship-service");
+    expect(LIVE_CAPTURE_DEFAULT_PROFILE_ID).toBe("worship-service");
+    const worship = getProfile("worship-service")!;
+    expect(worship.dbOffsets.slice(0, 6)).toEqual([3.0, 3.0, 3.0, 15.0, 15.0, 18]);
+    expect(worship.dbOffsets.at(-1)).toBe(-18);
   });
 
   it("matches the python geomspace(20, 20000, 48) grid endpoints", () => {

@@ -59,6 +59,31 @@ private func levels(base: Double = -30, _ overrides: [Band: Double] = [:]) -> Ba
         #expect(event.id == "band-deviation-bass")
     }
 
+    /// The Oct 11 2026 FOH reference (#1725): median level-normalized 7-band
+    /// levels of a mix Patrick called good-sounding, measured on the iPad mic.
+    static var oct11ReferenceMix: BandLevels { levels(base: 0, [
+        .subBass: 9.8, .bass: 17.5, .lowMid: 12.4, .mid: 8.0,
+        .highMid: -7.9, .presence: -16.6, .brilliance: -23.6,
+    ]) }
+
+    @Test func worshipRoomStaysCalmOnTheOct11ReferenceMix() throws {
+        let room = BandDeviationCoach(ideal: try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipRoomId))
+        let deviations = room.deviations(for: Self.oct11ReferenceMix)
+        #expect(deviations.count == Band.allCases.count)
+        for band in Band.allCases {
+            let d = try #require(deviations[band])
+            #expect(abs(d) <= 2.0, "\(band.rawValue) is \(d) dB off worship-room on the good mix")
+        }
+        #expect(room.events(for: Self.oct11ReferenceMix, sessionTime: 0).isEmpty, "no band reaches the 3 dB tip threshold")
+    }
+
+    @Test func worshipServiceFalselyCoachesTheOct11ReferenceMix() throws {
+        let service = BandDeviationCoach(ideal: try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId))
+        let deviations = service.deviations(for: Self.oct11ReferenceMix)
+        let tipped = Band.allCases.filter { abs(deviations[$0] ?? 0) >= BandDeviationCoach.thresholdDb }
+        #expect(tipped.count >= 4, "worship-service tips \(tipped.map(\.rawValue)) on a mix that sounded right")
+    }
+
     @Test func worshipServiceCurveCoachesAFlatRoom() throws {
         let worship = BandDeviationCoach(ideal: try IdealCurveLibrary.builtIn(id: IdealCurveLibrary.worshipServiceId))
         let room = levels(base: -30)
