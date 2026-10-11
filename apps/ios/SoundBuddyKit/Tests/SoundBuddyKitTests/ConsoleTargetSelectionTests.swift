@@ -9,6 +9,16 @@ private let captureConfigLines = [
     "/main/st/config \"\" 66 WH",
 ]
 
+private let mainLREqLines = [
+    "/main/st/eq ON",
+    "/main/st/eq/1 LShv 80 +0.00 0.7",
+    "/main/st/eq/2 PEQ 250 +0.00 1.4",
+    "/main/st/eq/3 PEQ 1000 +0.00 2.0",
+    "/main/st/eq/4 PEQ 2500 +0.00 1.0",
+    "/main/st/eq/5 PEQ 8000 +0.00 3.0",
+    "/main/st/eq/6 HShv 12000 +0.00 0.7",
+]
+
 private func freshDefaults() -> UserDefaults {
     // One suite per test, so stored picks never leak across tests.
     UserDefaults(suiteName: UUID().uuidString)!
@@ -134,5 +144,69 @@ private func freshDefaults() -> UserDefaults {
         model.ingest(nodeLine: "/ch/02/config \"Vox 1\" 1 MG 2")
         model.select(.channel(2))
         #expect(model.chipTitle == "M32R · Vox 1")
+    }
+
+    @Test func band2GainPushUpdatesReadoutAndCurveImmediately() {
+        let model = ConsoleTargetModel(defaults: freshDefaults())
+        model.consoleChanged(ConsoleIdentity(name: "FOH", model: "M32R"))
+        for line in mainLREqLines { model.ingest(nodeLine: line) }
+
+        let before = model.eqPanel.curveDb
+        model.ingest(push: OSCMessage("/main/st/eq/2/g", [.float(0.6)]))
+
+        #expect(model.eqPanel.bandRows[1].gainText == "+3.0 dB")
+        #expect(model.eqPanel.curveDb != before)
+    }
+
+    @Test func reconnectingKeepsLastValuesDimmedThenResyncRefreshes() {
+        let model = ConsoleTargetModel(defaults: freshDefaults())
+        model.consoleChanged(ConsoleIdentity(name: "FOH", model: "M32R"))
+        for line in mainLREqLines { model.ingest(nodeLine: line) }
+        model.phase = .live
+
+        let liveRows = model.eqPanel.bandRows
+        model.phase = .reconnecting
+        #expect(model.eqPanel.bandRows == liveRows)
+        #expect(model.eqPanel.isDimmed == true)
+        #expect(model.eqPanel.statusPill == "Reconnecting…")
+
+        model.ingest(nodeLine: "/main/st/eq/2 PEQ 250 +6.00 1.4")
+        model.phase = .live
+        #expect(model.eqPanel.bandRows[1].gainText == "+6.0 dB")
+        #expect(model.eqPanel.isDimmed == false)
+        #expect(model.eqPanel.statusPill == nil)
+    }
+
+    @Test func selectingAnotherTargetClearsEq() {
+        let model = ConsoleTargetModel(defaults: freshDefaults())
+        model.consoleChanged(ConsoleIdentity(name: "FOH", model: "M32R"))
+        for line in mainLREqLines { model.ingest(nodeLine: line) }
+        #expect(model.eq != nil)
+
+        model.select(.channel(3))
+        #expect(model.eq == nil)
+    }
+
+    @Test func differentConsoleClearsEqSameConsoleKeepsIt() {
+        let model = ConsoleTargetModel(defaults: freshDefaults())
+        let console = ConsoleIdentity(name: "FOH", model: "M32R")
+        model.consoleChanged(console)
+        for line in mainLREqLines { model.ingest(nodeLine: line) }
+        #expect(model.eq != nil)
+
+        model.consoleChanged(console)
+        #expect(model.eq != nil)
+
+        model.consoleChanged(ConsoleIdentity(name: "Monitors", model: "X32"))
+        #expect(model.eq == nil)
+    }
+
+    @Test func pushForNonSelectedTargetIsIgnored() {
+        let model = ConsoleTargetModel(defaults: freshDefaults())
+        model.consoleChanged(ConsoleIdentity(name: "FOH", model: "M32R"))
+        for line in mainLREqLines { model.ingest(nodeLine: line) }
+
+        model.ingest(push: OSCMessage("/ch/02/eq/1/g", [.float(0.9)]))
+        #expect(model.eqPanel.bandRows[0].gainText == "0.0 dB")
     }
 }

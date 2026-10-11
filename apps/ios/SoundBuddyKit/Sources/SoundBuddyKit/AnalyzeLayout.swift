@@ -7,8 +7,18 @@ public enum AnalyzeLayout: Equatable, Sendable {
     case portrait
     case landscape
 
+    /// Where the read-only console EQ panel (#1669) renders: a sheet from
+    /// the console chip, or a fixed-fraction column beside the RTA.
+    public enum ConsoleEQPlacement: Equatable, Sendable {
+        case sheet
+        case sideColumn
+    }
+
     /// Minimum vertical drag (points) on the peek handle that opens or closes the peek.
     public static let peekDragThreshold = 24.0
+    /// Fraction of the landscape width the console EQ side column takes,
+    /// leaving the RTA the majority of the space.
+    public static let consoleEQColumnWidthFraction = 0.36
     static let coachingPeekTitle = "Coaching"
     static let coachingPeekSeparator = " · "
 
@@ -40,6 +50,13 @@ public enum AnalyzeLayout: Equatable, Sendable {
     /// strip always keeps the listening indicator — so entering or leaving
     /// target-edit mode never moves the RTA (#1565).
     public var targetControlsUnderRTA: Bool { true }
+
+    /// `.sideColumn` only in landscape on a regular-width size class (iPad
+    /// landscape); every other combination — including iPhone landscape,
+    /// which stays compact-width — gets the sheet.
+    public func consoleEQPlacement(isRegularWidth: Bool) -> ConsoleEQPlacement {
+        self == .landscape && isRegularWidth ? .sideColumn : .sheet
+    }
 
     /// Label on the landscape peek handle: "Coaching · 2", or just "Coaching" when there are none.
     public static func coachingPeekLabel(count: Int) -> String {
