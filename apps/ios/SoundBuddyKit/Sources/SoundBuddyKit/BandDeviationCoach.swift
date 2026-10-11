@@ -48,8 +48,16 @@ public struct BandDeviationCoach: Sendable {
     /// (#1715: CoachingDeltaSmoother -> CoachingStabilizer). Empty when the
     /// reading is below `minimumSignalDb`: too little signal to judge.
     public func deviations(for levels: BandLevels) -> [Band: Double] {
+        deviations(for: levels, in: Set(Band.allCases))
+    }
+
+    /// Like `deviations(for:)`, but level-matched over `bands` only and
+    /// returning only those bands (#1702): in Speech + bed the underscore's
+    /// hot low end and air must not shift the voice bands' level match.
+    public func deviations(for levels: BandLevels, in bands: Set<Band>) -> [Band: Double] {
         guard levels[levels.loudest] >= Self.minimumSignalDb else { return [:] }
-        let raw = Band.allCases.map { ($0, levels[$0] - (targets[$0] ?? 0)) }
+        let raw = Band.allCases.filter(bands.contains).map { ($0, levels[$0] - (targets[$0] ?? 0)) }
+        guard !raw.isEmpty else { return [:] }
         let mean = raw.reduce(0) { $0 + $1.1 } / Double(raw.count)
         return Dictionary(uniqueKeysWithValues: raw.map { ($0.0, $0.1 - mean) })
     }

@@ -24,6 +24,9 @@ struct SoundBuddyApp: App {
         if CoachingDemoSource.isRequested(by: ProcessInfo.processInfo.arguments) {
             source = CoachingDemoSource(target: target)
         }
+        if SpeechBedDemoSource.isRequested(by: ProcessInfo.processInfo.arguments) {
+            source = SpeechBedDemoSource()
+        }
         #endif
         _model = State(initialValue: AnalyzeModel(
             permission: SystemMicPermission(),
@@ -198,6 +201,86 @@ private final class CoachingDemoSource: LiveAudioSource {
             (db[band] ?? Self.baseDb) - 6 + 1.5 * sin(t * 11 + Double(index) * 0.7)
         }
         return SpectrumReading(bands: BandLevels(db: db), rtaDb: rta, overallDb: -18)
+    }
+}
+#endif
+
+#if DEBUG
+/// `-speechBedDemo`: replaces the mic with a synthetic speech-over-underscore
+/// reading stream (#1702) so the Speech + bed state can be recorded on a
+/// simulator with no audio input. A voice talks at ~4 syllables per second
+/// with a phrase pause every 3.2 s over a quiet pad. Each reading carries
+/// ProgramFeatures shaped like the real analyzer's for that moment (voice
+/// band heavy on the words, the pad's low end in the gaps), and the real
+/// classifier and tracker decide the state. Against the speech curve the
+/// pad's sub-bass, bass and air read +10 to +14 dB hot and the voice is a
+/// little thin in the mids, so in Speech + bed only the Mid tip shows.
+///
+/// Compiles out of Release, like `-coachingDemo`.
+@MainActor
+private final class SpeechBedDemoSource: LiveAudioSource {
+    static func isRequested(by arguments: [String]) -> Bool {
+        arguments.contains("-speechBedDemo")
+    }
+
+    private static let readingsPerSecond = 20.0
+    private static let baseDb = -40.0
+    private static let offsets: [Band: Double] = [.subBass: 14, .bass: 12, .brilliance: 10, .mid: -7]
+    private let targets: [Band: Double]
+    private let rtaBands: [Band]
+    private var task: Task<Void, Never>?
+
+    init() {
+        let speech = try? IdealCurveLibrary.builtIn(id: IdealCurveLibrary.speechPodcastId)
+        targets = speech?.bandTargets ?? [:]
+        rtaBands = RTALayout.standard.bands.map { Band.containing(hz: $0.centerHz) ?? .brilliance }
+    }
+
+    func start(onReading: @escaping @MainActor (SpectrumReading) -> Void) throws {
+        stop()
+        let interval = Duration.seconds(1 / Self.readingsPerSecond)
+        let started = Date()
+        task = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: interval)
+                guard let self else { return }
+                onReading(self.reading(at: Date().timeIntervalSince(started)))
+            }
+        }
+    }
+
+    func stop() {
+        task?.cancel()
+        task = nil
+    }
+
+    /// Syllable envelope in dB (0 = peak), nil between words and phrases.
+    private static func voiceDb(at t: Double) -> Double? {
+        if t.truncatingRemainder(dividingBy: 3.2) > 2.6 { return nil }
+        if t.truncatingRemainder(dividingBy: 0.25) > 0.17 { return nil }
+        return -6 * (0.5 + 0.5 * sin(t * 5.3))
+    }
+
+    private func reading(at t: Double) -> SpectrumReading {
+        let voice = Self.voiceDb(at: t)
+        let features = voice.map { envelope in
+            ProgramFeatures(
+                speechBandFraction: 0.9, subFraction: 0.025, airFraction: 0.002,
+                centroidHz: 3_000, flatness: 0.001, levelDb: -29 + envelope
+            )
+        } ?? ProgramFeatures(
+            speechBandFraction: 0.1, subFraction: 0.6, airFraction: 0.05,
+            centroidHz: 700, flatness: 0.001, levelDb: -50 + 1.5 * sin(t * 0.4)
+        )
+        var db: [Band: Double] = [:]
+        for band in Band.allCases {
+            let jitter = 0.4 * sin(t * 7.3 + Double(Band.allCases.firstIndex(of: band) ?? 0))
+            db[band] = Self.baseDb + (targets[band] ?? 0) + (Self.offsets[band] ?? 0) + jitter
+        }
+        let rta = rtaBands.enumerated().map { index, band in
+            (db[band] ?? Self.baseDb) - 6 + 1.5 * sin(t * 11 + Double(index) * 0.7)
+        }
+        return SpectrumReading(bands: BandLevels(db: db), rtaDb: rta, overallDb: features.levelDb, programFeatures: features)
     }
 }
 #endif
