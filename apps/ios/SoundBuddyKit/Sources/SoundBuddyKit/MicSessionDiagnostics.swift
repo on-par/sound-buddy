@@ -184,7 +184,7 @@ public enum MicPolarPatternPolicy {
 public enum DebugLaunchOptions {
     /// Demo sources never touch the mic, and `-skipMicPrompt` runs the real
     /// capture path without the system alert covering the screen.
-    public static let micPromptSkippingFlags: Set<String> = ["-coachingDemo", "-speechBedDemo", "-skipMicPrompt"]
+    public static let micPromptSkippingFlags: Set<String> = ["-coachingDemo", "-speechBedDemo", "-skipMicPrompt", "-testNoise"]
     public static let openSettingsFlag = "-openSettings"
 
     public static func skipsMicPermissionPrompt(_ arguments: [String]) -> Bool {
