@@ -65,11 +65,10 @@ struct AnalyzeView: View {
     let model: AnalyzeModel
     let keepAwake: KeepAwakeController
     let micInputs: MicInputController
-    /// Injected until #1662 (flag), #1665 (consent) and #1666
-    /// (transport/connect) land: Release passes `console: nil`, so the chip
-    /// never shows there.
+    /// Injected until #1665 (consent) and #1666 (transport/connect) land:
+    /// Release passes `console: nil`, so the chip never shows there.
     let console: ConsoleTargetModel?
-    let consoleFlagEnabled: Bool
+    let featureFlags: FeatureFlags
     let consoleConsentGranted: Bool
     /// Injected until the #1666/#1674 adapter hands over a live armed
     /// writer; Release passes `nil`, so Apply always reads "Unlock to
@@ -84,7 +83,7 @@ struct AnalyzeView: View {
     @AppStorage(KeepAwakePolicy.defaultsKey) private var keepAwakeEnabled = KeepAwakePolicy.defaultValue
 
     private var showsConsoleChip: Bool {
-        ConsoleChipStatus.isVisible(flagEnabled: consoleFlagEnabled, consentGranted: consoleConsentGranted, console: console?.console)
+        ConsoleChipStatus.isVisible(flagEnabled: featureFlags.isEnabled(.console), consentGranted: consoleConsentGranted, console: console?.console)
     }
 
     var body: some View {
@@ -100,7 +99,11 @@ struct AnalyzeView: View {
         .background(Palette.background.ignoresSafeArea())
         .preferredColorScheme(.dark)
         .sheet(isPresented: $settingsOpen) {
-            SettingsView(keepAwakeEnabled: $keepAwakeEnabled, micInputs: micInputs) { id in
+            SettingsView(
+                keepAwakeEnabled: $keepAwakeEnabled,
+                micInputs: micInputs,
+                showsConsoleSection: featureFlags.isEnabled(.console)
+            ) { id in
                 micInputs.select(id)
                 Task { await model.restartListening() }
             }
@@ -445,6 +448,7 @@ private struct SettingsButton: View {
 private struct SettingsView: View {
     @Binding var keepAwakeEnabled: Bool
     let micInputs: MicInputController
+    let showsConsoleSection: Bool
     let onSelectMic: (String?) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -476,6 +480,17 @@ private struct SettingsView: View {
                         .accessibilityIdentifier("settings.mic.honesty")
                 }
                 .listRowBackground(Palette.surface)
+
+                if showsConsoleSection {
+                    Section {
+                    } header: {
+                        Text(ConsoleSettingsCopy.sectionTitle)
+                    } footer: {
+                        Text(ConsoleSettingsCopy.footer)
+                    }
+                    .accessibilityIdentifier("settings.console")
+                    .listRowBackground(Palette.surface)
+                }
             }
             .scrollContentBackground(.hidden)
             .background(Palette.background.ignoresSafeArea())

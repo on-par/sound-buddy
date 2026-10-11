@@ -1,4 +1,5 @@
 import SoundBuddyKit
+import StoreKit
 import SwiftUI
 import UIKit
 
@@ -7,10 +8,10 @@ struct SoundBuddyApp: App {
     @State private var model: AnalyzeModel
     @State private var micInputs: MicInputController
     @State private var keepAwake = KeepAwakeController(timer: UIApplication.shared)
-    /// nil until #1662 (flag), #1665 (consent) and #1666 (transport/connect)
-    /// wire a real console model in; the chip stays hidden without one.
+    /// nil until #1665 (consent) and #1666 (transport/connect) wire a real
+    /// console model in; the chip stays hidden without one.
     @State private var console: ConsoleTargetModel?
-    @State private var consoleFlagEnabled = false
+    @State private var featureFlags: FeatureFlags
     @State private var consoleConsentGranted = false
 
     init() {
@@ -41,10 +42,11 @@ struct SoundBuddyApp: App {
         #if DEBUG
         if let demo = ConsoleDemoSeed.fromLaunchArguments(ProcessInfo.processInfo.arguments) {
             _console = State(initialValue: demo)
-            _consoleFlagEnabled = State(initialValue: true)
             _consoleConsentGranted = State(initialValue: true)
         }
         #endif
+
+        _featureFlags = State(initialValue: FeatureFlags.resolve(Self.launchEnvironment(store: nil)))
     }
 
     var body: some Scene {
@@ -54,10 +56,40 @@ struct SoundBuddyApp: App {
                 keepAwake: keepAwake,
                 micInputs: micInputs,
                 console: console,
-                consoleFlagEnabled: consoleFlagEnabled,
+                featureFlags: featureFlags,
                 consoleConsentGranted: consoleConsentGranted
             )
+            .task {
+                let store = await Self.storeEnvironment()
+                featureFlags = FeatureFlags.resolve(Self.launchEnvironment(store: store))
+            }
         }
+    }
+
+    private static func launchEnvironment(store: StoreEnvironment?) -> FeatureFlagEnvironment {
+        FeatureFlagEnvironment(
+            isDebugBuild: isDebugBuild,
+            storeEnvironment: store,
+            launchArguments: ProcessInfo.processInfo.arguments
+        )
+    }
+
+    private static var isDebugBuild: Bool {
+        #if DEBUG
+        true
+        #else
+        false
+        #endif
+    }
+
+    /// TestFlight and the App Store ship the same binary (ADR-0161 §8), so
+    /// this is the only way to tell a TestFlight install apart from a
+    /// production one. Any throw or unverified result keeps flags off.
+    private static func storeEnvironment() async -> StoreEnvironment? {
+        guard let result = try? await AppTransaction.shared, case .verified(let transaction) = result else {
+            return nil
+        }
+        return StoreEnvironment(rawValue: transaction.environment.rawValue)
     }
 }
 
