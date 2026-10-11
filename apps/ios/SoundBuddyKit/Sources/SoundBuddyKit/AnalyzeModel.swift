@@ -70,9 +70,10 @@ public final class AnalyzeModel {
     static let halfDisplayStep = 0.05
     static let targetLegendPrefix = "Target · "
     static let targetAutoSuffix = " (auto)"
-    /// The program-mode chip's two labels (#1690).
+    /// The program-mode chip's labels (#1690, #1702).
     static let programChipSpeech = "Speech"
     static let programChipMusic = "Music"
+    static let programChipSpeechOverBed = "Speech + bed"
 
     public private(set) var state: State = .idle
     public private(set) var bandLevels: BandLevels = .silent
@@ -114,9 +115,11 @@ public final class AnalyzeModel {
     /// and in memory only — never persisted or synced.
     public private(set) var sessionCustomTarget: IdealCurve?
 
-    /// The detected speech/music program mode (#1690), from the live
-    /// readings' ProgramFeatures through ProgramContentClassifier and
-    /// ProgramModeTracker. Drives the chip and, while the target is auto and
+    /// The detected program state (#1690, #1702): Music, Speech, or Speech +
+    /// bed (talk over a quiet underscore), from the live readings'
+    /// ProgramFeatures through ProgramContentClassifier and
+    /// ProgramModeTracker. Drives the chip, which bands get coached (Speech +
+    /// bed coaches the voice bands only), and, while the target is auto and
     /// not being edited, the auto target itself.
     public private(set) var programMode: ProgramMode = .music
 
@@ -285,18 +288,23 @@ public final class AnalyzeModel {
     /// Only shown while live — there is nothing to classify otherwise.
     public var showsProgramModeChip: Bool { state == .live }
 
-    /// "Speech" or "Music", next to the target legend.
+    /// "Speech", "Music" or "Speech + bed", next to the target legend.
     public var programModeChipText: String {
         switch programMode {
         case .speech: Self.programChipSpeech
         case .music: Self.programChipMusic
+        case .speechOverBed: Self.programChipSpeechOverBed
         }
     }
 
     /// Spells out that the auto target follows this mode when it actually
     /// does (auto target, not mid-edit); otherwise just reports the mode.
     public var programModeAccessibilityLabel: String {
-        let mode = programMode == .speech ? "speech" : "music"
+        let mode = switch programMode {
+        case .speech: "speech"
+        case .music: "music"
+        case .speechOverBed: "speech over a music bed"
+        }
         guard targetIsAuto, !isEditingTarget else { return "Program: \(mode)" }
         return "Program: \(mode), target switched automatically"
     }
@@ -535,8 +543,8 @@ public final class AnalyzeModel {
         if let features = reading.programFeatures {
             programMode = modeTracker.update(contentClassifier.classify(features), at: time)
         }
-        // A Speech/Music switch drops every tip and dwell (#1701, #1715),
-        // whether or not the auto target follows the mode.
+        // Any state switch (Music, Speech, Speech + bed) drops every tip and
+        // dwell (#1701, #1715, #1702), whether or not the auto target follows.
         if programMode != stabilizer.activeMode {
             resetCoaching()
         }
@@ -546,7 +554,9 @@ public final class AnalyzeModel {
         // Every reading feeds the smoother and the stabilizer, so dwell
         // timing is measured at the meter rate; the cards refresh at most
         // once per coachingRefreshSeconds, or at once when the tip set changes.
-        let deviations = coach.deviations(for: reading.bands)
+        // Speech + bed coaches the voice bands only, level-matched among
+        // themselves: the bed's lows and air are not the voice's (#1702).
+        let deviations = coach.deviations(for: reading.bands, in: programMode.coachedBands)
         let smoothed = deviations.isEmpty ? [:] : deltaSmoother.ingest(deviations, at: time)
         let previouslyVisible = stabilizer.visible
         let visible = stabilizer.ingest(smoothed, at: time)
@@ -572,7 +582,8 @@ public final class AnalyzeModel {
         guard targetIsAuto, !isEditingTarget else { return }
         let desired: IdealCurve
         switch programMode {
-        case .speech:
+        case .speech, .speechOverBed:
+            // Speech + bed keeps the speech curve: the voice is what's coached.
             desired = loadSpeechTarget() ?? autoMusicTarget
         case .music:
             desired = autoMusicTarget
