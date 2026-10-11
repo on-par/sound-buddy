@@ -8,17 +8,18 @@ struct SoundBuddyApp: App {
     @State private var model: AnalyzeModel
     @State private var micInputs: MicInputController
     @State private var keepAwake = KeepAwakeController(timer: UIApplication.shared)
-    /// nil until #1665 (consent) and #1666 (transport/connect) wire a real
-    /// console model in; the chip stays hidden without one.
+    /// nil until #1666 (transport/connect) wires a real console model in;
+    /// the chip stays hidden without one.
     @State private var console: ConsoleTargetModel?
     @State private var featureFlags: FeatureFlags
-    @State private var consoleConsentGranted = false
+    @State private var consoleConsent: ConsoleConsentStore
 
     init() {
         // One controller shared by capture (applies the choice) and Settings
         // (lists and changes it).
         let inputs = MicInputController(session: SystemMicInputSession())
         _micInputs = State(initialValue: inputs)
+        _consoleConsent = State(initialValue: ConsoleConsentStore())
         let target = IdealCurveLibrary.liveDefault()
         var source: LiveAudioSource = MicCapture(inputs: inputs)
         #if DEBUG
@@ -42,7 +43,12 @@ struct SoundBuddyApp: App {
         #if DEBUG
         if let demo = ConsoleDemoSeed.fromLaunchArguments(ProcessInfo.processInfo.arguments) {
             _console = State(initialValue: demo)
-            _consoleConsentGranted = State(initialValue: true)
+            // DEBUG-only fixture seed so the demo can be screenshotted without
+            // tapping through the consent sheet; the Release grant path is
+            // only ConsoleConsentView's Allow button.
+            let demoConsent = ConsoleConsentStore(defaults: UserDefaults(suiteName: "consoleDemo") ?? .standard)
+            demoConsent.grant()
+            _consoleConsent = State(initialValue: demoConsent)
         }
         #endif
 
@@ -57,7 +63,16 @@ struct SoundBuddyApp: App {
                 micInputs: micInputs,
                 console: console,
                 featureFlags: featureFlags,
-                consoleConsentGranted: consoleConsentGranted
+                consoleConsent: consoleConsent,
+                onConsoleConsentRevoked: {
+                    // #1666 will also call ConsoleSessionModel.consentRevoked()
+                    // here once a live session model exists.
+                    console = nil
+                },
+                onConsoleConnect: {
+                    // Connect/transport flow is #1666; consent alone has
+                    // nothing to continue into yet.
+                }
             )
             .task {
                 let store = await Self.storeEnvironment()

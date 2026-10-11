@@ -109,8 +109,8 @@ public struct FeatureFlags: Equatable, Sendable {
     }
 }
 
-/// Settings copy for the flag-gated, currently empty "Console (beta)" section.
+/// Settings copy for the flag-gated "Console (beta)" section.
 public enum ConsoleSettingsCopy {
     public static let sectionTitle = "Console (beta)"
-    public static let footer = "Console features for testers. Nothing to set up yet."
+    public static let footer = "Console features for testers. Access is granted only from the connect screen; this section can only revoke it."
 }
