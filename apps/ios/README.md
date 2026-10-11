@@ -122,17 +122,28 @@ check it runs natively rather than in the iPhone compatibility window:
 2. While Analyze is listening, rotate through all four orientations
    (portrait, landscape left, upside-down portrait, landscape right).
    "Listening" never flickers and there is no restart or permission re-prompt.
-   Landscape (in any rotation) shows the same RTA-first layout with the
-   Coaching peek as on iPhone. Upside-down portrait renders the portrait
-   layout, same as right-side-up portrait.
-3. Tap the gear. The Settings sheet presents (a form sheet on iPad is
+   Landscape (in any rotation) shows the big RTA on the left, about 70% of
+   the width and nearly the full height, with the Coaching cards inline in a
+   column on the right and no Coaching peek (#1659). With a console linked
+   (Debug, chip visible), the right column widens to about 36% and shows the
+   read-only console EQ panel (#1669) on top with the Coaching cards
+   scrolling beneath it; the RTA keeps the rest (about 64%). Portrait (either way up)
+   shows the brand header, an RTA that grows to fill the height, and the
+   Coaching cards directly under it with no empty band below.
+3. In either orientation, tap the Target legend. The Editing chip and preset
+   pills appear under the RTA, the problem-marker pulses hide and the
+   Coaching cards freeze, and the RTA does not move or resize. Done or Cancel
+   puts everything back without moving the RTA.
+4. Tap the gear. The Settings sheet presents (a form sheet on iPad is
    expected), the microphone picker and **Keep screen awake** toggle work,
    and dismissing it returns to Analyze, still listening.
-4. Put the app in Split View at roughly 1/3 width — Analyze shows the
-   portrait layout. Widen it (or use a wide Stage Manager window) — Analyze
-   shows the landscape layout. In both cases nothing is clipped: header, RTA
-   and Coaching peek all stay fully visible.
-5. iPhone is unchanged: no upside-down orientation, same layouts, same RTA
+5. Put the app in Split View at roughly 1/3 width — Analyze shows the
+   iPhone portrait layout (fixed-height RTA). A short, wide Stage Manager
+   window shows the iPhone landscape layout with the Coaching peek. In both
+   cases nothing is clipped: header, RTA and Coaching all stay fully visible.
+   The thresholds live in `AnalyzeLayout` (`regularMinWidth`,
+   `wideMinWidth`, `wideMinHeight`).
+6. iPhone is unchanged: no upside-down orientation, same layouts, same RTA
    position rules.
 
 ## Tests
