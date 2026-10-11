@@ -269,7 +269,8 @@ struct RTAView: View {
 
 private enum RTAMetrics {
     static let height: CGFloat = 300
-    /// Landscape's fillsHeight floor, so the grid stays readable on an SE in landscape.
+    /// fillsHeight floor (landscape, iPad tall portrait and wide, #1659), so
+    /// the grid stays readable on an SE in landscape.
     static let minFillHeight: CGFloat = 120
     static let cornerRadius: CGFloat = 12
     static let dbLabelWidth: CGFloat = 34

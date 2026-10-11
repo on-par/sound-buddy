@@ -36,17 +36,25 @@ import UIKit
 /// choosing an input restarts listening on the new route.
 ///
 /// The console chip opens the read-only EQ panel (#1669) as a sheet, except
-/// on an iPad in regular-width landscape, where the EQ panel is a fixed-width
-/// column beside the RTA and the chip keeps opening the target picker
-/// instead — AnalyzeLayout.consoleEQPlacement(isRegularWidth:) decides.
+/// on an iPad in regular-width landscape, where the EQ panel is a column
+/// beside the RTA and the chip keeps opening the target picker instead —
+/// AnalyzeLayout.consoleEQPlacement(isRegularWidth:) decides.
 ///
 /// A band-deviation coaching card gets a "Show on console" button while a
 /// console link is up (#1671): tapping it selects Main LR and shows a
 /// dashed ghost band/curve for the suggested change — read-only, nothing is
 /// written to the desk (ADR-0161; applying is a later slice, #1676).
 ///
-/// TODO(ipad): the rest of the layout (coaching stack, portrait) is still
-/// single-column; only the console EQ panel sits beside the RTA so far.
+/// iPad (#1659): AnalyzeLayout also picks tallPortrait (regular-width
+/// portrait — the RTA fills the height above the coaching cards instead of
+/// the fixed 300 pt) and wide (iPad landscape — the RTA takes about 70% of
+/// the width with the coaching cards inline in a trailing column, no peek).
+/// In wide with the console EQ column up, that one trailing column widens to
+/// the EQ column's share and stacks the EQ panel above the coaching cards,
+/// so the RTA keeps the majority of the width and never gets squeezed by a
+/// third column. Every layout keeps the same header / strip content, the
+/// target band under the RTA and the edit rules above. iPhones and narrow
+/// Split View windows stay on portrait / landscape, unchanged.
 struct AnalyzeView: View {
     let model: AnalyzeModel
     let keepAwake: KeepAwakeController
@@ -145,8 +153,9 @@ struct AnalyzeView: View {
     private func content(for layout: AnalyzeLayout, proxy: GeometryProxy) -> some View {
         let placement = layout.consoleEQPlacement(isRegularWidth: horizontalSizeClass == .regular)
         switch layout {
-        case .portrait: portraitBody(placement: placement)
+        case .portrait, .tallPortrait: portraitBody(layout: layout, placement: placement)
         case .landscape: landscapeBody(proxy: proxy, placement: placement)
+        case .wide: wideBody(proxy: proxy, placement: placement)
         }
     }
 
@@ -171,15 +180,19 @@ struct AnalyzeView: View {
         }
     }
 
-    private func portraitBody(placement: AnalyzeLayout.ConsoleEQPlacement) -> some View {
+    /// iPhone portrait (fixed-height RTA, slack below the cards) and iPad
+    /// tall portrait (#1659: the RTA takes the slack, so there is no empty
+    /// band under the cards).
+    private func portraitBody(layout: AnalyzeLayout, placement: AnalyzeLayout.ConsoleEQPlacement) -> some View {
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
             header(placement: placement)
             VStack(alignment: .leading, spacing: Layout.legendSpacing) {
                 RTAView(
                     model: model,
-                    showsProblemMarkers: AnalyzeLayout.portrait.showsProblemMarkers(isEditingTarget: model.isEditingTarget)
+                    fillsHeight: layout.rtaFillsHeight,
+                    showsProblemMarkers: layout.showsProblemMarkers(isEditingTarget: model.isEditingTarget)
                 )
-                if AnalyzeLayout.portrait.targetControlsUnderRTA {
+                if layout.targetControlsUnderRTA {
                     TargetControlsBand(model: model, onEdit: beginTargetEdit)
                 }
             }
@@ -188,8 +201,73 @@ struct AnalyzeView: View {
                 onShowOnConsole: { showOnConsole($0, placement: placement) },
                 showsConsoleAction: showsConsoleAction
             )
-            Spacer(minLength: 0)
+            if !layout.rtaFillsHeight {
+                Spacer(minLength: 0)
+            }
             StatusMessageView(model: model)
+        }
+    }
+
+    /// iPad landscape (#1659): the status strip on top, then the big RTA and
+    /// its target band on the leading side and one trailing column. Without
+    /// the console EQ column the trailing column is just the coaching cards
+    /// (about 30% of the width). With it (#1669, regular width + chip
+    /// visible) the trailing column widens to the EQ column's share and
+    /// stacks the EQ panel on top with the coaching cards scrolling beneath,
+    /// so the RTA keeps the majority. The column's width never depends on
+    /// edit state, so the RTA does not move or resize when editing starts or
+    /// ends.
+    private func wideBody(proxy: GeometryProxy, placement: AnalyzeLayout.ConsoleEQPlacement) -> some View {
+        let layout = AnalyzeLayout.wide
+        let showsConsoleEQ = layout.showsConsoleEQColumn(
+            isRegularWidth: horizontalSizeClass == .regular,
+            consoleVisible: showsConsoleChip && console != nil
+        )
+        let coaching = ScrollView {
+            CoachingStackView(
+                model: model,
+                onShowOnConsole: { showOnConsole($0, placement: placement) },
+                showsConsoleAction: showsConsoleAction
+            )
+        }
+        return VStack(spacing: Layout.landscapeSpacing) {
+            landscapeStrip(placement: placement)
+            HStack(alignment: .top, spacing: Layout.wideColumnSpacing) {
+                VStack(spacing: Layout.landscapeSpacing) {
+                    RTAView(
+                        model: model,
+                        fillsHeight: layout.rtaFillsHeight,
+                        showsProblemMarkers: layout.showsProblemMarkers(isEditingTarget: model.isEditingTarget)
+                    )
+                    if layout.targetControlsUnderRTA {
+                        TargetControlsBand(model: model, onEdit: beginTargetEdit)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                Group {
+                    if showsConsoleEQ, let console {
+                        GeometryReader { column in
+                            VStack(spacing: Layout.landscapeSpacing) {
+                                ConsoleEQPanel(console: console, analyze: model, showsTargetButton: false)
+                                    .frame(height: AnalyzeLayout.wideConsoleEQPanelHeight(
+                                        columnHeight: column.size.height,
+                                        spacing: Layout.landscapeSpacing
+                                    ))
+                                coaching
+                            }
+                        }
+                    } else {
+                        coaching
+                    }
+                }
+                .frame(width: AnalyzeLayout.wideTrailingColumnWidth(
+                    containerWidth: proxy.size.width,
+                    spacing: Layout.wideColumnSpacing,
+                    showsConsoleEQ: showsConsoleEQ
+                ))
+            }
+            StatusMessageView(model: model)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -205,7 +283,10 @@ struct AnalyzeView: View {
         )
         return VStack(spacing: Layout.landscapeSpacing) {
             landscapeStrip(placement: placement)
-            if showsConsoleChip, placement == .sideColumn, let console {
+            if AnalyzeLayout.landscape.showsConsoleEQColumn(
+                isRegularWidth: horizontalSizeClass == .regular,
+                consoleVisible: showsConsoleChip
+            ), let console {
                 HStack(spacing: Layout.landscapeSpacing) {
                     rta
                     ConsoleEQPanel(console: console, analyze: model, showsTargetButton: false)
@@ -807,6 +888,8 @@ private enum Layout {
     /// Dims the coaching peek handle while target-edit mode disables it (#1562).
     static let peekDisabledOpacity: Double = 0.4
     static let landscapeStripSpacing: CGFloat = 12
+    /// Gap between the wide layout's RTA column and its coaching column (#1659).
+    static let wideColumnSpacing: CGFloat = 16
 }
 
 /// Mirrors the Mac renderer's design tokens (app/renderer :root) — dark
