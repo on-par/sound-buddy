@@ -34,11 +34,16 @@ public struct ConsoleEQPanelState: Equatable, Sendable {
     public let target: ConsoleEQTarget
     public let eq: ConsoleEQ?
     public let phase: ConsoleSessionPhase
+    /// Non-nil only while Main LR is selected and its EQ has been read
+    /// (#1671) — `ConsoleTargetModel.eqPanel` is the only caller that passes
+    /// one.
+    public let coaching: ConsoleCoachingSuggestion?
 
-    public init(target: ConsoleEQTarget, eq: ConsoleEQ?, phase: ConsoleSessionPhase) {
+    public init(target: ConsoleEQTarget, eq: ConsoleEQ?, phase: ConsoleSessionPhase, coaching: ConsoleCoachingSuggestion? = nil) {
         self.target = target
         self.eq = eq
         self.phase = phase
+        self.coaching = coaching
     }
 
     /// Empty until a value has been read; otherwise one row per band.
@@ -74,9 +79,17 @@ public struct ConsoleEQPanelState: Equatable, Sendable {
     /// `curveFrequencies`, clamped to ±`curveRangeDb`.
     public var curveDb: [Double] {
         guard let eq else { return [] }
-        return eq.magnitudeResponseDb(atHz: Self.curveFrequencies).map {
-            min(Self.curveRangeDb, max(-Self.curveRangeDb, $0))
-        }
+        return eq.magnitudeResponseDb(atHz: Self.curveFrequencies).map(Self.clamp)
+    }
+
+    /// Empty without a read EQ or a coaching suggestion; otherwise the desk's
+    /// EQ with the suggested band substituted (and forced on), sampled and
+    /// clamped the same way as `curveDb` — the dashed ghost curve (#1671).
+    public var ghostCurveDb: [Double] {
+        guard let eq, let coaching else { return [] }
+        return ConsoleCoachingMapper.ghostEQ(eq, applying: coaching)
+            .magnitudeResponseDb(atHz: Self.curveFrequencies)
+            .map(Self.clamp)
     }
 
     /// True once a value has been read but the link is not currently up —
@@ -112,8 +125,16 @@ public struct ConsoleEQPanelState: Equatable, Sendable {
         }
     }
 
-    private static func freqText(_ hz: Double) -> String {
+    /// Internal (not private) so `ConsoleCoachingMapper` (#1671) reuses the
+    /// same "80 Hz" / "1.0 kHz" formatting for its ghost-band copy.
+    static func freqText(_ hz: Double) -> String {
         hz < 1000 ? String(format: "%.0f Hz", hz) : String(format: "%.1f kHz", hz / 1000)
+    }
+
+    /// Shared by `curveDb` and `ghostCurveDb`: clamps a raw dB magnitude to
+    /// ±`curveRangeDb`.
+    private static func clamp(_ db: Double) -> Double {
+        min(curveRangeDb, max(-curveRangeDb, db))
     }
 
     /// The curve ignores a cut band's own gain/Q (ConsoleEQCurve always

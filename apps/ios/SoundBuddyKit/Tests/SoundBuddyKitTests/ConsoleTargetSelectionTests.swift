@@ -321,4 +321,75 @@ private func freshDefaults() -> UserDefaults {
 
         #expect(model.eqPanel.bandRows[1].gainText == "+3.0 dB")
     }
+
+    private static func lowMidEvent(deviationDb: Double = 6) -> CoachingEvent {
+        CoachingEvent(
+            id: "lowMid", ruleType: .bandDeviation, severity: .suggestion, band: .lowMid,
+            message: "test", data: ["deviationDb": .number(deviationDb)], source: .phoneMicEstimate, sessionTime: 0
+        )
+    }
+
+    @Test func showCoachingSelectsMainLRAndPanelCarriesClampedGhostCut() {
+        let model = ConsoleTargetModel(defaults: freshDefaults())
+        model.consoleChanged(ConsoleIdentity(name: "FOH", model: "M32R"))
+        model.select(.channel(2))
+
+        model.showCoaching(Self.lowMidEvent())
+        #expect(model.selected == .mainLR)
+
+        for line in mainLREqLines { model.ingest(nodeLine: line) }
+
+        let coaching = model.eqPanel.coaching
+        #expect(coaching != nil)
+        #expect((coaching?.band.gainDb ?? 0) >= -3.01)
+        #expect((coaching?.band.gainDb ?? 0) < 0)
+    }
+
+    @Test func coachingSuggestionNilUntilMainLREqRead() {
+        let model = ConsoleTargetModel(defaults: freshDefaults())
+        model.consoleChanged(ConsoleIdentity(name: "FOH", model: "M32R"))
+        model.select(.channel(2))
+        model.showCoaching(Self.lowMidEvent())
+
+        #expect(model.selected == .mainLR)
+        #expect(model.eq == nil)
+        #expect(model.eqPanel.coaching == nil)
+
+        for line in mainLREqLines { model.ingest(nodeLine: line) }
+        #expect(model.eqPanel.coaching != nil)
+    }
+
+    @Test func selectingAnotherTargetClearsCoaching() {
+        let model = ConsoleTargetModel(defaults: freshDefaults())
+        model.consoleChanged(ConsoleIdentity(name: "FOH", model: "M32R"))
+        for line in mainLREqLines { model.ingest(nodeLine: line) }
+        model.showCoaching(Self.lowMidEvent())
+        #expect(model.coachingEvent != nil)
+
+        model.select(.channel(3))
+        #expect(model.coachingEvent == nil)
+    }
+
+    @Test func clearCoachingRemovesGhost() {
+        let model = ConsoleTargetModel(defaults: freshDefaults())
+        model.consoleChanged(ConsoleIdentity(name: "FOH", model: "M32R"))
+        for line in mainLREqLines { model.ingest(nodeLine: line) }
+        model.showCoaching(Self.lowMidEvent())
+        #expect(model.eqPanel.coaching != nil)
+
+        model.clearCoaching()
+        #expect(model.coachingEvent == nil)
+        #expect(model.eqPanel.coaching == nil)
+    }
+
+    @Test func consoleChangeClearsCoaching() {
+        let model = ConsoleTargetModel(defaults: freshDefaults())
+        model.consoleChanged(ConsoleIdentity(name: "FOH", model: "M32R"))
+        for line in mainLREqLines { model.ingest(nodeLine: line) }
+        model.showCoaching(Self.lowMidEvent())
+        #expect(model.coachingEvent != nil)
+
+        model.consoleChanged(ConsoleIdentity(name: "Monitors", model: "X32"))
+        #expect(model.coachingEvent == nil)
+    }
 }
