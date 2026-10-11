@@ -20,7 +20,8 @@ struct SoundBuddyApp: App {
         let inputs = MicInputController(session: SystemMicInputSession())
         _micInputs = State(initialValue: inputs)
         _consoleConsent = State(initialValue: ConsoleConsentStore())
-        let target = IdealCurveLibrary.liveDefault()
+        var target = IdealCurveLibrary.liveDefault()
+        var targetIsAuto = true
         // Demo sources replace the mic entirely: MicCapture (and its
         // AVAudioEngine) is only built when no demo is requested, so a demo
         // launch never touches the microphone or raises the record prompt.
@@ -31,6 +32,14 @@ struct SoundBuddyApp: App {
         }
         if SpeechBedDemoSource.isRequested(by: ProcessInfo.processInfo.arguments) {
             demoSource = SpeechBedDemoSource()
+        }
+        // #1740: real noise through the real analyzer, against the target it
+        // should track once #1726's bandwidth correction is drawn. The test
+        // target is pinned (not auto) so the program classifier can't swap it.
+        if let color = TestNoiseDemo.color(from: ProcessInfo.processInfo.arguments) {
+            demoSource = TestNoiseSource(color: color)
+            target = TestNoiseDemo.target(for: color)
+            targetIsAuto = false
         }
         #endif
         var permission: MicPermission = SystemMicPermission()
@@ -45,7 +54,8 @@ struct SoundBuddyApp: App {
         let analyze = AnalyzeModel(
             permission: permission,
             source: source,
-            target: target
+            target: target,
+            targetIsAuto: targetIsAuto
         )
         #if DEBUG
         TargetEditDemo.apply(ProcessInfo.processInfo.arguments, to: analyze)
@@ -360,6 +370,50 @@ private final class SpeechBedDemoSource: LiveAudioSource {
             (db[band] ?? Self.baseDb) - 6 + 1.5 * sin(t * 11 + Double(index) * 0.7)
         }
         return SpectrumReading(bands: BandLevels(db: db), rtaDb: rta, overallDb: features.levelDb, programFeatures: features)
+    }
+}
+#endif
+
+#if DEBUG
+/// `-testNoise [pink|white]` (#1740): seeded pink or white noise at about
+/// -20 dBFS, generated in-process and run through the real SpectrumAnalyzer
+/// (the same 1/6-octave band sums the mic path uses), so the RTA shows what
+/// real noise looks like with #1726's bandwidth correction. Pink pairs with a
+/// -3 dB/oct target and white with flat; both should read level with the
+/// line. Never touches the mic. Compiles out of Release.
+@MainActor
+private final class TestNoiseSource: LiveAudioSource {
+    private static let sampleRate = 48_000.0
+    private static let readingsPerSecond = 20.0
+    private var generator: TestNoiseGenerator
+    private var analyzer: SpectrumAnalyzer?
+    private var task: Task<Void, Never>?
+
+    init(color: TestNoiseColor) {
+        generator = TestNoiseGenerator(color: color, seed: 1740)
+    }
+
+    func start(onReading: @escaping @MainActor (SpectrumReading) -> Void) throws {
+        stop()
+        analyzer = try SpectrumAnalyzer(sampleRate: Self.sampleRate)
+        let interval = Duration.seconds(1 / Self.readingsPerSecond)
+        task = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: interval)
+                guard let self else { return }
+                if let reading = self.nextReading() { onReading(reading) }
+            }
+        }
+    }
+
+    private func nextReading() -> SpectrumReading? {
+        guard let analyzer else { return nil }
+        return try? analyzer.analyze(generator.next(count: analyzer.fftSize))
+    }
+
+    func stop() {
+        task?.cancel()
+        task = nil
     }
 }
 #endif
