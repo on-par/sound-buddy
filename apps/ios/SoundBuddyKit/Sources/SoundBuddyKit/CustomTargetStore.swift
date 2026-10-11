@@ -14,14 +14,19 @@ public final class CustomTargetStore {
     public static let schemaVersion = 1
     /// Description stamped on every stored custom curve.
     public static let curveDescription = "Custom target shaped on this device."
+    /// Mirrors the Mac's `CUSTOM_PREFIX` in `app/renderer/src/ideal-profiles.ts`.
+    public static let customIdPrefix = "custom:"
+    private static let copyLabelPrefix = "Copy of "
+    private static let firstCopySuffix = 2
 
     public private(set) var all: [IdealCurve]
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let makeId: () -> String
+    @ObservationIgnored private let loadBuiltIn: (String) throws -> IdealCurve
     @ObservationIgnored private let log: (String) -> Void
 
-    public static func makeDefaultId() -> String { "custom-" + UUID().uuidString }
+    public static func makeDefaultId() -> String { customIdPrefix + UUID().uuidString }
 
     public static func defaultLog(_ message: String) {
         logger.error("\(message, privacy: .public)")
@@ -54,10 +59,12 @@ public final class CustomTargetStore {
     public init(
         defaults: UserDefaults = .standard,
         makeId: @escaping () -> String = CustomTargetStore.makeDefaultId,
+        loadBuiltIn: @escaping (String) throws -> IdealCurve = IdealCurveLibrary.builtIn(id:),
         log: @escaping (String) -> Void = CustomTargetStore.defaultLog
     ) {
         self.defaults = defaults
         self.makeId = makeId
+        self.loadBuiltIn = loadBuiltIn
         self.log = log
 
         guard let raw = defaults.object(forKey: Self.defaultsKey) else {
@@ -142,6 +149,39 @@ public final class CustomTargetStore {
         all[index] = renamed
         persist()
         return renamed
+    }
+
+    /// Copies a built-in or custom curve into a new editable custom curve
+    /// labelled "Copy of <label>" (" 2", " 3", … on repeats). Unknown custom
+    /// ids return nil without persisting; a built-in that fails to load rethrows.
+    @discardableResult
+    public func duplicate(id: String) throws -> IdealCurve? {
+        let source: IdealCurve
+        if IdealCurveLibrary.builtInIds.contains(id) {
+            source = try loadBuiltIn(id)
+        } else if let custom = all.first(where: { $0.id == id }) {
+            source = custom
+        } else {
+            return nil
+        }
+        let copy = IdealCurve(
+            id: makeId(),
+            label: Self.uniqueCopyLabel(for: source.label, taken: Set(all.map(\.label))),
+            description: Self.curveDescription,
+            freqs: source.freqs,
+            dbOffsets: source.dbOffsets
+        )
+        all.append(copy)
+        persist()
+        return copy
+    }
+
+    private static func uniqueCopyLabel(for sourceLabel: String, taken: Set<String>) -> String {
+        let base = copyLabelPrefix + sourceLabel
+        guard taken.contains(base) else { return base }
+        var n = firstCopySuffix
+        while taken.contains("\(base) \(n)") { n += 1 }
+        return "\(base) \(n)"
     }
 
     private func refuseIfBuiltIn(_ id: String) throws {
