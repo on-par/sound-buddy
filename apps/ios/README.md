@@ -133,7 +133,11 @@ check it runs natively rather than in the iPhone compatibility window:
 3. In either orientation, tap the Target legend. The Editing chip and preset
    pills appear under the RTA, the problem-marker pulses hide and the
    Coaching cards freeze, and the RTA does not move or resize. Done or Cancel
-   puts everything back without moving the RTA.
+   puts everything back without moving the RTA. The legend text is one size
+   larger than on iPhone, and the pencil is its own outlined capsule button
+   to the right of the legend. The legend row, the pencil, Cancel, Done and
+   each preset pill are at least 44 pt tall, so they are easy to hit at FOH
+   (#1744; sizes in `TargetControlMetrics`).
 4. Tap the gear. The Settings sheet presents (a form sheet on iPad is
    expected), the microphone picker and **Keep screen awake** toggle work,
    and dismissing it returns to Analyze, still listening.
