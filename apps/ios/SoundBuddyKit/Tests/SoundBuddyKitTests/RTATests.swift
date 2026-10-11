@@ -50,12 +50,13 @@ private func sine(hz: Double, amplitude: Double, count: Int) -> [Float] {
 @Suite struct RTAScaleTests {
     let scale = RTAScale.standard
 
-    @Test func standardWindowRunsFromMinus120UpToFullScale() {
-        // #1609: a -20 ceiling pinned loud program at the top; 0 dBFS is full scale.
-        #expect(scale.floorDb == -120)
+    @Test func standardWindowIsTheAbsoluteMinus96UpToFullScale() {
+        // #1609: 0 dBFS is full scale. #1707: the floor moves from -120 to the
+        // spec's -96 dBFS with 12 dB ticks (docs/rta-display-spec.md).
+        #expect(scale.floorDb == -96)
         #expect(scale.ceilingDb == 0)
-        #expect(scale.tickStepDb == 10)
-        #expect(scale.dbTicks == [0, -10, -20, -30, -40, -50, -60, -70, -80, -90, -100, -110, -120])
+        #expect(scale.tickStepDb == 12)
+        #expect(scale.dbTicks == [0, -12, -24, -36, -48, -60, -72, -84, -96])
     }
 
     @Test func fractionMapsTheWindowToZeroThroughOne() {
@@ -94,67 +95,8 @@ private func sine(hz: Double, amplitude: Double, count: Int) -> [Float] {
     }
 }
 
-@Suite struct RTAMeterTests {
-    @Test func startsEmptyAndAdoptsTheFirstReading() {
-        var meter = RTAMeter()
-        #expect(meter.levels.isEmpty)
-        meter.ingest([-40, -60], dt: 0.05)
-        #expect(meter.levels == [-40, -60])
-        #expect(meter.peaks == [-40, -60])
-    }
-
-    @Test func barsRiseInstantlyButFallAtTheReleaseRate() {
-        var meter = RTAMeter()
-        meter.ingest([-60], dt: 0.05)
-        meter.ingest([-20], dt: 0.05)
-        #expect(meter.levels == [-20])
-        meter.ingest([-80], dt: 0.1)
-        #expect(abs(meter.levels[0] - (-20 - RTAMeter.releaseDbPerSecond * 0.1)) < epsilon)
-    }
-
-    @Test func peaksHoldThenFall() {
-        var meter = RTAMeter()
-        meter.ingest([-10], dt: 0)
-        meter.ingest([-80], dt: RTAMeter.peakHoldSeconds / 2)
-        #expect(meter.peaks == [-10], "still inside the hold window")
-        meter.ingest([-80], dt: RTAMeter.peakHoldSeconds)
-        #expect(meter.peaks[0] < -10, "hold expired, the tick falls")
-        #expect(meter.peaks[0] >= meter.levels[0], "a peak never sits below its bar")
-    }
-
-    @Test func aNewPeakRestartsTheHold() {
-        var meter = RTAMeter()
-        meter.ingest([-30], dt: 0)
-        meter.ingest([-80], dt: RTAMeter.peakHoldSeconds * 2)
-        meter.ingest([-5], dt: 0.05)
-        #expect(meter.peaks == [-5])
-        meter.ingest([-80], dt: RTAMeter.peakHoldSeconds / 2)
-        #expect(meter.peaks == [-5])
-    }
-
-    @Test func aBandCountChangeResetsTheMeter() {
-        var meter = RTAMeter()
-        meter.ingest([-10, -10], dt: 0)
-        meter.ingest([-50, -50, -50], dt: 0.05)
-        #expect(meter.levels == [-50, -50, -50])
-        #expect(meter.peaks == [-50, -50, -50])
-    }
-
-    @Test func resetClearsEverything() {
-        var meter = RTAMeter()
-        meter.ingest([-10], dt: 0)
-        meter.reset()
-        #expect(meter.levels.isEmpty)
-        #expect(meter.peaks.isEmpty)
-    }
-
-    @Test func aNegativeTimeStepIsTreatedAsZero() {
-        var meter = RTAMeter()
-        meter.ingest([-10], dt: 0)
-        meter.ingest([-80], dt: -5)
-        #expect(meter.levels == [-10])
-    }
-}
+// RTAMeter (instant attack, linear 40 dB/s release) was replaced by
+// RTADisplayModel (#1707); its behaviour is pinned in RTADisplayModelTests.
 
 @Suite struct RTAColorTests {
     @Test func hotLowsAreWarmAndQuietLowsAreGreen() {
