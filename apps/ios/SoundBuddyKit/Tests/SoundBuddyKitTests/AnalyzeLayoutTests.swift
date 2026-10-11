@@ -403,4 +403,65 @@ struct AnalyzeLayoutTests {
             #expect(panel == 0)
         }
     }
+
+    // MARK: - Target controls under the RTA (#1744)
+
+    @Test("iPad layouts (tall portrait, wide) count as regular width for the target controls; iPhone layouts do not")
+    func targetControlsRegularWidth() {
+        #expect(AnalyzeLayout.tallPortrait.usesRegularTargetControls)
+        #expect(AnalyzeLayout.wide.usesRegularTargetControls)
+        #expect(!AnalyzeLayout.portrait.usesRegularTargetControls)
+        #expect(!AnalyzeLayout.landscape.usesRegularTargetControls)
+        #expect(AnalyzeLayout.wide.targetControlMetrics == AnalyzeLayout.targetControlMetrics(isRegularWidth: true))
+        #expect(AnalyzeLayout.portrait.targetControlMetrics == AnalyzeLayout.targetControlMetrics(isRegularWidth: false))
+    }
+
+    @Test("regular width: legend row, pencil, Cancel/Done and preset pills all get at least a 44 pt hit target")
+    func regularTargetControlsHitTargets() {
+        let m = AnalyzeLayout.targetControlMetrics(isRegularWidth: true)
+        #expect(m.minHitSize >= 44)
+        #expect(m.pencilButtonSize >= 44)
+        #expect(m.pencilIsBordered)
+        #expect(m.rowMinHeight >= 44)
+        #expect(m.pillMinHeight >= 44)
+        #expect(m.editButtonMinHeight >= 44)
+    }
+
+    @Test("regular width uses a larger text step and a larger swatch than compact")
+    func regularTargetControlsAreLarger() {
+        let regular = AnalyzeLayout.targetControlMetrics(isRegularWidth: true)
+        let compact = AnalyzeLayout.targetControlMetrics(isRegularWidth: false)
+        #expect(regular.textStep > compact.textStep)
+        #expect(compact.textStep == .caption)
+        #expect(regular.textStep == .subheadline)
+        #expect(regular.swatchWidth > compact.swatchWidth)
+        #expect(regular.swatchHeight >= compact.swatchHeight)
+    }
+
+    @Test("compact (iPhone) keeps today's layout sizes but pads the pencil's hit area to 44 pt without growing the band")
+    func compactTargetControlsKeepLayout() {
+        let m = AnalyzeLayout.targetControlMetrics(isRegularWidth: false)
+        #expect(m.rowMinHeight == 0)
+        #expect(m.pillMinHeight == 0)
+        #expect(m.editButtonMinHeight == 0)
+        #expect(!m.pencilIsBordered)
+        #expect(m.swatchWidth == 18)
+        #expect(m.swatchHeight == 8)
+        #expect(m.pillVerticalPadding == 5)
+        #expect(m.editChipVerticalPadding == 5)
+        // The outset grows only the tappable shape, not the layout frame.
+        #expect(TargetControlMetrics.compactCaptionLineHeight + 2 * m.hitOutset >= 44)
+    }
+
+    @Test(
+        "the target band is the same height idle and editing (#1565), in both widths",
+        arguments: [true, false]
+    )
+    func targetBandHeightIgnoresEditing(isRegularWidth: Bool) {
+        let m = AnalyzeLayout.targetControlMetrics(isRegularWidth: isRegularWidth)
+        #expect(m.bandMinHeight(isEditing: true, spacing: 6) == m.bandMinHeight(isEditing: false, spacing: 6))
+        if isRegularWidth {
+            #expect(m.bandMinHeight(isEditing: false, spacing: 6) >= 2 * 44 + 6)
+        }
+    }
 }
