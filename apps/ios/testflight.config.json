@@ -1,0 +1,7 @@
+{
+  "bundleId": "com.soundbuddy.ios",
+  "internalGroups": ["Internal Testers"],
+  "externalGroups": ["External Testers"],
+  "processingTimeoutSeconds": 1800,
+  "pollIntervalSeconds": 30
+}

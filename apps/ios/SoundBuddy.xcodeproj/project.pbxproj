@@ -9,11 +9,11 @@
 /* Begin PBXBuildFile section */
 		0CDC60465904A92EF0D2D810 /* AnalyzeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F16C27B342308E5868ED13A /* AnalyzeView.swift */; };
 		103C7871F627A5A38E5EE737 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 770C099101BBBDBF216FAB1C /* Assets.xcassets */; };
+		29F10DF61584F0B16A2A178E /* EQCurveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A6AE62893D06035FDDB066F /* EQCurveView.swift */; };
 		3279118DA6CB9871F5E784AF /* SoundBuddyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D108D9CDAC13447AF712A950 /* SoundBuddyApp.swift */; };
 		3C444817253DA43B3DAC9D3A /* ConsoleChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C9DA9493BA5F5B759F9A49A /* ConsoleChip.swift */; };
-		4900091866B14B7EACB7F1FE /* ConsoleEQPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 234AA37C1E4E428C8C4CE32F /* ConsoleEQPanel.swift */; };
 		522189B2E927CBA97026824B /* ConsoleTargetPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40BD8EC6ED98F51D9150D3C5 /* ConsoleTargetPickerView.swift */; };
-		8AD3E7E5BF8A4739831D6942 /* EQCurveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E51D67AAE0D4EE09E1B9043 /* EQCurveView.swift */; };
+		87A7DAA57CA486F92A753E04 /* ConsoleEQPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC6E2606D58BB5B186B86D16 /* ConsoleEQPanel.swift */; };
 		8CF1A9637FF98C01600EAE09 /* MicCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFE5C6E8ED35B6519E4778A2 /* MicCapture.swift */; };
 		916A8C2FF1E1C54F80B2A226 /* RTAView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C666B2B6DB4351AE3267F91 /* RTAView.swift */; };
 		96D509041CC976F5A4EB18F4 /* SoundBuddyKit in Frameworks */ = {isa = PBXBuildFile; productRef = 9E121744FE2F1E49545AFCD3 /* SoundBuddyKit */; };
@@ -23,9 +23,8 @@
 /* Begin PBXFileReference section */
 		0FAA0DA15310AF31C79E438F /* SoundBuddy.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SoundBuddy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		25A689F561FD8A4123685947 /* IdleTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleTimer.swift; sourceTree = "<group>"; };
+		3A6AE62893D06035FDDB066F /* EQCurveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EQCurveView.swift; sourceTree = "<group>"; };
 		3C666B2B6DB4351AE3267F91 /* RTAView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTAView.swift; sourceTree = "<group>"; };
-		0E51D67AAE0D4EE09E1B9043 /* EQCurveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EQCurveView.swift; sourceTree = "<group>"; };
-		234AA37C1E4E428C8C4CE32F /* ConsoleEQPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleEQPanel.swift; sourceTree = "<group>"; };
 		40BD8EC6ED98F51D9150D3C5 /* ConsoleTargetPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleTargetPickerView.swift; sourceTree = "<group>"; };
 		5156C524554BC91E2837D621 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		6C9DA9493BA5F5B759F9A49A /* ConsoleChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleChip.swift; sourceTree = "<group>"; };
@@ -33,6 +32,7 @@
 		770C099101BBBDBF216FAB1C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D108D9CDAC13447AF712A950 /* SoundBuddyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoundBuddyApp.swift; sourceTree = "<group>"; };
 		DD263257E4F708EAFE55D813 /* SoundBuddyKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = SoundBuddyKit; path = SoundBuddyKit; sourceTree = SOURCE_ROOT; };
+		FC6E2606D58BB5B186B86D16 /* ConsoleEQPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleEQPanel.swift; sourceTree = "<group>"; };
 		FFE5C6E8ED35B6519E4778A2 /* MicCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicCapture.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -63,9 +63,9 @@
 				6F16C27B342308E5868ED13A /* AnalyzeView.swift */,
 				770C099101BBBDBF216FAB1C /* Assets.xcassets */,
 				6C9DA9493BA5F5B759F9A49A /* ConsoleChip.swift */,
-				234AA37C1E4E428C8C4CE32F /* ConsoleEQPanel.swift */,
+				FC6E2606D58BB5B186B86D16 /* ConsoleEQPanel.swift */,
 				40BD8EC6ED98F51D9150D3C5 /* ConsoleTargetPickerView.swift */,
-				0E51D67AAE0D4EE09E1B9043 /* EQCurveView.swift */,
+				3A6AE62893D06035FDDB066F /* EQCurveView.swift */,
 				25A689F561FD8A4123685947 /* IdleTimer.swift */,
 				5156C524554BC91E2837D621 /* Info.plist */,
 				FFE5C6E8ED35B6519E4778A2 /* MicCapture.swift */,
@@ -169,9 +169,9 @@
 			files = (
 				0CDC60465904A92EF0D2D810 /* AnalyzeView.swift in Sources */,
 				3C444817253DA43B3DAC9D3A /* ConsoleChip.swift in Sources */,
-				4900091866B14B7EACB7F1FE /* ConsoleEQPanel.swift in Sources */,
+				87A7DAA57CA486F92A753E04 /* ConsoleEQPanel.swift in Sources */,
 				522189B2E927CBA97026824B /* ConsoleTargetPickerView.swift in Sources */,
-				8AD3E7E5BF8A4739831D6942 /* EQCurveView.swift in Sources */,
+				29F10DF61584F0B16A2A178E /* EQCurveView.swift in Sources */,
 				B292D2695BCEFEDB1D035DF0 /* IdleTimer.swift in Sources */,
 				8CF1A9637FF98C01600EAE09 /* MicCapture.swift in Sources */,
 				916A8C2FF1E1C54F80B2A226 /* RTAView.swift in Sources */,
@@ -194,6 +194,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SoundBuddy/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Sound Buddy";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -220,6 +221,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SoundBuddy/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Sound Buddy";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";

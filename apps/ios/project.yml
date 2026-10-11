@@ -40,6 +40,10 @@ targets:
         INFOPLIST_FILE: SoundBuddy/Info.plist
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Sound Buddy
+        # Only OS-provided HTTPS/standard crypto — the same answer as builds 1-10.
+        # Without this, every TestFlight upload lands on "Missing Export
+        # Compliance" in App Store Connect until someone answers by hand.
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         # Landscape is RTA-first Analyze (#1548); upside-down stays excluded on iPhone.
