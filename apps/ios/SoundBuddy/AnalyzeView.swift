@@ -123,7 +123,15 @@ struct AnalyzeView: View {
             }
         }
         .task { await model.appear() }
-        .onAppear { applyKeepAwake() }
+        .onAppear {
+            applyKeepAwake()
+            #if DEBUG
+            // Simulator proofs (#1708): open Settings without a tap.
+            if DebugLaunchOptions.opensSettings(ProcessInfo.processInfo.arguments) {
+                settingsOpen = true
+            }
+            #endif
+        }
         .onDisappear {
             model.disappear()
             keepAwake.release()
@@ -509,6 +517,8 @@ private struct SettingsView: View {
                         .accessibilityIdentifier("settings.mic.honesty")
                 }
                 .listRowBackground(Palette.surface)
+
+                MicPathSection(diagnostics: micInputs.diagnostics)
 
                 if showsConsoleSection {
                     Section {
@@ -1084,5 +1094,39 @@ enum Palette {
             green: Double((rgb >> 8) & 0xFF) / 255,
             blue: Double(rgb & 0xFF) / 255
         )
+    }
+}
+
+/// The raw-mic-path readout (#1708): what the running capture actually got
+/// from the audio session and input node, so a processed path (voice
+/// processing, AGC, a non-measurement mode) can never hide.
+private struct MicPathSection: View {
+    let diagnostics: MicSessionDiagnostics?
+
+    var body: some View {
+        Section {
+            if let diagnostics {
+                Label {
+                    Text(diagnostics.statusLine)
+                } icon: {
+                    Image(systemName: diagnostics.isRawMeasurement ? "checkmark.seal" : "exclamationmark.triangle")
+                        .foregroundStyle(diagnostics.isRawMeasurement ? Palette.accent : Color.orange)
+                }
+                .accessibilityIdentifier("settings.mic.diagnostics")
+                ForEach(diagnostics.details, id: \.label) { detail in
+                    LabeledContent(detail.label, value: detail.value)
+                        .font(.footnote)
+                }
+            } else {
+                Text("Mic: not listening")
+                    .foregroundStyle(Palette.secondaryText)
+                    .accessibilityIdentifier("settings.mic.diagnostics")
+            }
+        } header: {
+            Text("Mic path")
+        } footer: {
+            Text("Raw measurement means Measurement mode with voice processing and AGC off. Built-in mics are uncalibrated, so levels stay estimates.")
+        }
+        .listRowBackground(Palette.surface)
     }
 }

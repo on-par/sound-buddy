@@ -46,6 +46,19 @@ public protocol MicInputSession: AnyObject {
     func activeOptionID() -> String?
     /// Routes `option`, or hands the choice back to the system when nil.
     func apply(_ option: MicInputOption?) throws
+    /// The routed built-in mic's data sources with their polar patterns
+    /// (#1708); empty when the route isn't the built-in mic.
+    func builtInMicDataSources() -> [MicDataSource]
+    /// The routed built-in mic's selected data source id, when known.
+    func selectedBuiltInDataSourceID() -> Int?
+    /// Selects `choice.pattern` on that data source and routes it.
+    func applyPolarPattern(_ choice: MicPolarChoice) throws
+}
+
+extension MicInputSession {
+    public func builtInMicDataSources() -> [MicDataSource] { [] }
+    public func selectedBuiltInDataSourceID() -> Int? { nil }
+    public func applyPolarPattern(_ choice: MicPolarChoice) throws {}
 }
 
 /// Pure rules for the Settings microphone picker (#1594). A missing preferred
@@ -116,6 +129,12 @@ public final class MicInputController {
     public private(set) var preferredID: String?
     /// The input actually in use (the preferred one, or the system default).
     public private(set) var activeID: String?
+    /// The omni pattern applied on the last capture start (#1708), or nil
+    /// when the route was left alone.
+    public private(set) var polarChoice: MicPolarChoice?
+    /// What the running capture actually got (#1708), for the Settings
+    /// readout; nil when not capturing.
+    public private(set) var diagnostics: MicSessionDiagnostics?
 
     private let session: MicInputSession
     private let defaults: UserDefaults
@@ -170,11 +189,31 @@ public final class MicInputController {
         refresh()
         let option = preferredID.flatMap { id in options.first { $0.id == id } }
         let applied = (try? session.apply(option)) != nil
+        preferOmni(userPickedDataSource: applied && option?.dataSourceID != nil)
         activeID = MicInputPolicy.resolve(
             preferredID: applied ? preferredID : nil,
             availableIDs: options.map(\.id),
             systemDefaultID: session.activeOptionID()
         )
+    }
+
+    /// Records the running capture's session snapshot (nil on stop).
+    public func recordDiagnostics(_ diagnostics: MicSessionDiagnostics?) {
+        self.diagnostics = diagnostics
+    }
+
+    /// Selects the built-in mic's omni pattern when the user hasn't picked a
+    /// data source (#1708). A refusal leaves the route as the OS set it.
+    private func preferOmni(userPickedDataSource: Bool) {
+        polarChoice = nil
+        guard let choice = MicPolarPatternPolicy.choice(
+            sources: session.builtInMicDataSources(),
+            selectedID: session.selectedBuiltInDataSourceID(),
+            userPickedDataSource: userPickedDataSource
+        ) else { return }
+        if (try? session.applyPolarPattern(choice)) != nil {
+            polarChoice = choice
+        }
     }
 
     /// An input device came or went (#1601). Re-routes the preference, or the
