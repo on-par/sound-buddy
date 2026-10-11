@@ -26,14 +26,30 @@ private let revised = IdealCurve(
     dbOffsets: (0..<IdealCurve.gridPoints).map { Double($0) * 0.25 - 3 }
 )
 
+/// Seeds `defaults` with a persisted envelope whose single curve is the real
+/// built-in curve for `id`, so the built-in id genuinely appears in `all`
+/// (follows `mismatchedCurveLengthIsDroppedLoggedAndStartsEmpty`'s pattern).
+private func seedBuiltIn(
+    into defaults: UserDefaults,
+    id: String = IdealCurveLibrary.worshipRoomId
+) throws -> (defaults: UserDefaults, builtIn: IdealCurve) {
+    let builtIn = try IdealCurveLibrary.builtIn(id: id)
+    let curveData = try JSONEncoder().encode(builtIn)
+    let curveObject = try JSONSerialization.jsonObject(with: curveData)
+    let envelope: [String: Any] = ["schemaVersion": 1, "curves": [curveObject]]
+    let data = try JSONSerialization.data(withJSONObject: envelope)
+    defaults.set(data, forKey: CustomTargetStore.defaultsKey)
+    return (defaults, builtIn)
+}
+
 @Suite struct CustomTargetStoreTests {
-    @Test func addThenUpdateReplacesOffsetsKeepingIdAndLabel() {
+    @Test func addThenUpdateReplacesOffsetsKeepingIdAndLabel() throws {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let ids = IdGenerator()
         let store = CustomTargetStore(defaults: defaults, makeId: ids.makeId)
 
         let added = store.add(from: .flat, label: "Room A")
-        let updated = store.update(id: added.id, curve: revised)
+        let updated = try store.update(id: added.id, curve: revised)
 
         #expect(store.all.count == 1)
         #expect(store.all[0].id == added.id)
@@ -58,12 +74,12 @@ private let revised = IdealCurve(
         #expect(first.id != second.id)
     }
 
-    @Test func updateUnknownIdIsANoOp() {
+    @Test func updateUnknownIdIsANoOp() throws {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let store = CustomTargetStore(defaults: defaults, makeId: IdGenerator().makeId)
         store.add(from: .flat, label: "Room A")
 
-        let result = store.update(id: "does-not-exist", curve: revised)
+        let result = try store.update(id: "does-not-exist", curve: revised)
         #expect(result == nil)
         #expect(store.all.count == 1)
 
@@ -71,13 +87,13 @@ private let revised = IdealCurve(
         #expect(fresh.all == store.all)
     }
 
-    @Test func deleteRemovesTheCurve() {
+    @Test func deleteRemovesTheCurve() throws {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let store = CustomTargetStore(defaults: defaults, makeId: IdGenerator().makeId)
         let first = store.add(from: .flat, label: "Room A")
         let second = store.add(from: .flat, label: "Room B")
 
-        store.delete(id: first.id)
+        try store.delete(id: first.id)
 
         #expect(!store.all.contains { $0.id == first.id })
         #expect(store.all.contains { $0.id == second.id })
@@ -86,23 +102,23 @@ private let revised = IdealCurve(
         #expect(fresh.all == store.all)
     }
 
-    @Test func deleteUnknownIdIsANoOp() {
+    @Test func deleteUnknownIdIsANoOp() throws {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let store = CustomTargetStore(defaults: defaults, makeId: IdGenerator().makeId)
         store.add(from: .flat, label: "Room A")
         let before = store.all
 
-        store.delete(id: "does-not-exist")
+        try store.delete(id: "does-not-exist")
 
         #expect(store.all == before)
     }
 
-    @Test func roundTripSurvivesReinitialization() {
+    @Test func roundTripSurvivesReinitialization() throws {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let store = CustomTargetStore(defaults: defaults, makeId: IdGenerator().makeId)
         let a = store.add(from: .flat, label: "Room A")
         store.add(from: .flat, label: "Room B")
-        store.update(id: a.id, curve: revised)
+        try store.update(id: a.id, curve: revised)
 
         let fresh = CustomTargetStore(defaults: defaults)
         #expect(fresh.all == store.all)
@@ -202,5 +218,107 @@ private let revised = IdealCurve(
 
         #expect(recorder.lines.count == 1)
         #expect(defaults.object(forKey: CustomTargetStore.defaultsKey) == nil)
+    }
+
+    @Test func testBuiltInReadOnlyRenameIsRefused() throws {
+        let (defaults, builtIn) = try seedBuiltIn(into: UserDefaults(suiteName: UUID().uuidString)!)
+        let store = CustomTargetStore(defaults: defaults, makeId: IdGenerator().makeId)
+        let before = store.all
+        let blobBefore = defaults.data(forKey: CustomTargetStore.defaultsKey)
+
+        #expect(throws: CustomTargetStore.Refusal.builtInReadOnly(id: "worship-room")) {
+            try store.rename(id: "worship-room", to: "New Name")
+        }
+
+        #expect(store.all.first { $0.id == "worship-room" }?.label == builtIn.label)
+        #expect(store.all == before)
+        #expect(defaults.data(forKey: CustomTargetStore.defaultsKey) == blobBefore)
+    }
+
+    @Test func testBuiltInReadOnlyUpdateIsRefused() throws {
+        let (defaults, builtIn) = try seedBuiltIn(into: UserDefaults(suiteName: UUID().uuidString)!)
+        let store = CustomTargetStore(defaults: defaults, makeId: IdGenerator().makeId)
+        let before = store.all
+        let blobBefore = defaults.data(forKey: CustomTargetStore.defaultsKey)
+
+        #expect(throws: CustomTargetStore.Refusal.builtInReadOnly(id: "worship-room")) {
+            try store.update(id: "worship-room", curve: revised)
+        }
+
+        #expect(store.all.first { $0.id == "worship-room" }?.dbOffsets == builtIn.dbOffsets)
+        #expect(store.all == before)
+        #expect(defaults.data(forKey: CustomTargetStore.defaultsKey) == blobBefore)
+    }
+
+    @Test func testBuiltInReadOnlyDeleteIsRefused() throws {
+        let (defaults, _) = try seedBuiltIn(into: UserDefaults(suiteName: UUID().uuidString)!)
+        let store = CustomTargetStore(defaults: defaults, makeId: IdGenerator().makeId)
+        let before = store.all
+        let blobBefore = defaults.data(forKey: CustomTargetStore.defaultsKey)
+
+        #expect(throws: CustomTargetStore.Refusal.builtInReadOnly(id: "worship-room")) {
+            try store.delete(id: "worship-room")
+        }
+
+        #expect(store.all.contains { $0.id == "worship-room" })
+        #expect(store.all == before)
+        #expect(defaults.data(forKey: CustomTargetStore.defaultsKey) == blobBefore)
+
+        let fresh = CustomTargetStore(defaults: defaults)
+        #expect(fresh.all.contains { $0.id == "worship-room" })
+    }
+
+    @Test(arguments: IdealCurveLibrary.builtInIds)
+    func testBuiltInReadOnlyEveryBuiltInIdIsRefused(id: String) throws {
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let store = CustomTargetStore(defaults: defaults, makeId: IdGenerator().makeId)
+
+        #expect(throws: CustomTargetStore.Refusal.builtInReadOnly(id: id)) {
+            try store.rename(id: id, to: "New Name")
+        }
+        #expect(throws: CustomTargetStore.Refusal.builtInReadOnly(id: id)) {
+            try store.update(id: id, curve: revised)
+        }
+        #expect(throws: CustomTargetStore.Refusal.builtInReadOnly(id: id)) {
+            try store.delete(id: id)
+        }
+
+        #expect(defaults.object(forKey: CustomTargetStore.defaultsKey) == nil)
+    }
+
+    @Test func testBuiltInReadOnlyRefusalMessageIsActionable() {
+        let error = CustomTargetStore.Refusal.builtInReadOnly(id: "worship-room")
+        #expect(error.errorDescription?.contains("worship-room") == true)
+        #expect(error.errorDescription?.contains("duplicate") == true)
+    }
+
+    @Test func renameCustomReplacesOnlyLabelAndPersists() throws {
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let store = CustomTargetStore(defaults: defaults, makeId: IdGenerator().makeId)
+        let added = store.add(from: .flat, label: "Room A")
+
+        let renamed = try store.rename(id: added.id, to: "Room A Renamed")
+
+        #expect(renamed?.label == "Room A Renamed")
+        #expect(store.all.count == 1)
+        #expect(store.all[0].id == added.id)
+        #expect(store.all[0].description == added.description)
+        #expect(store.all[0].dbOffsets == added.dbOffsets)
+        #expect(store.all[0].label == "Room A Renamed")
+
+        let fresh = CustomTargetStore(defaults: defaults)
+        #expect(fresh.all == store.all)
+    }
+
+    @Test func renameUnknownIdIsANoOp() throws {
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let store = CustomTargetStore(defaults: defaults, makeId: IdGenerator().makeId)
+        store.add(from: .flat, label: "Room A")
+        let before = store.all
+
+        let result = try store.rename(id: "does-not-exist", to: "New Name")
+
+        #expect(result == nil)
+        #expect(store.all == before)
     }
 }
