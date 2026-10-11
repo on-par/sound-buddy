@@ -18,4 +18,8 @@ enum TestPaths {
     static func fixture(_ name: String) -> URL {
         testsDir.appending(path: "Fixtures/\(name)")
     }
+
+    /// Shared OSC codec parity fixtures, also read by
+    /// packages/console/src/index.test.ts — neither side can drift silently.
+    static let oscParityFixtures = repoRoot.appending(path: "packages/console/src/osc-parity-fixtures.json")
 }

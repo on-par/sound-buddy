@@ -1,0 +1,200 @@
+{
+  "encode": [
+    {
+      "name": "info-no-args",
+      "address": "/info",
+      "args": [],
+      "hex": "2f696e666f0000002c000000"
+    },
+    {
+      "name": "xinfo-no-args",
+      "address": "/xinfo",
+      "args": [],
+      "hex": "2f78696e666f00002c000000"
+    },
+    {
+      "name": "status-no-args",
+      "address": "/status",
+      "args": [],
+      "hex": "2f737461747573002c000000"
+    },
+    {
+      "name": "xremote-no-args",
+      "address": "/xremote",
+      "args": [],
+      "hex": "2f7872656d6f7465000000002c000000"
+    },
+    {
+      "name": "node-read-channel-eq",
+      "address": "/node",
+      "args": [
+        {
+          "type": "s",
+          "value": "ch/01/eq/1"
+        }
+      ],
+      "hex": "2f6e6f64650000002c73000063682f30312f65712f310000"
+    },
+    {
+      "name": "meters-subscribe-default",
+      "address": "/meters",
+      "args": [
+        {
+          "type": "s",
+          "value": "/meters/1"
+        }
+      ],
+      "hex": "2f6d6574657273002c7300002f6d65746572732f31000000"
+    },
+    {
+      "name": "meters-subscribe-throttled",
+      "address": "/meters",
+      "args": [
+        {
+          "type": "s",
+          "value": "/meters/1"
+        },
+        {
+          "type": "i",
+          "value": 0
+        },
+        {
+          "type": "i",
+          "value": 0
+        },
+        {
+          "type": "i",
+          "value": 20
+        }
+      ],
+      "hex": "2f6d6574657273002c736969690000002f6d65746572732f31000000000000000000000000000014"
+    },
+    {
+      "name": "ac1-meters-si",
+      "address": "/meters",
+      "args": [
+        {
+          "type": "s",
+          "value": "/meters/6"
+        },
+        {
+          "type": "i",
+          "value": 16
+        }
+      ],
+      "hex": "2f6d6574657273002c7369002f6d65746572732f3600000000000010"
+    },
+    {
+      "name": "all-tags-round-trip",
+      "address": "/node",
+      "args": [
+        {
+          "type": "f",
+          "value": 1.5
+        },
+        {
+          "type": "i",
+          "value": -42
+        },
+        {
+          "type": "s",
+          "value": "hello"
+        },
+        {
+          "type": "b",
+          "value": "0102030405"
+        }
+      ],
+      "hex": "2f6e6f64650000002c666973620000003fc00000ffffffd668656c6c6f000000000000050102030405000000"
+    }
+  ],
+  "decode": [
+    {
+      "name": "xinfo-reply",
+      "hex": "2f78696e666f00002c737373730000003139322e3136382e312e373700000000464f48004d33325200000000342e303200000000",
+      "address": "/xinfo",
+      "args": [
+        {
+          "type": "s",
+          "value": "192.168.1.77"
+        },
+        {
+          "type": "s",
+          "value": "FOH"
+        },
+        {
+          "type": "s",
+          "value": "M32R"
+        },
+        {
+          "type": "s",
+          "value": "4.02"
+        }
+      ]
+    },
+    {
+      "name": "info-reply",
+      "hex": "2f696e666f0000002c7373737300000056322e30370000006f73632d73657276657200004d33325200000000342e303200000000",
+      "address": "/info",
+      "args": [
+        {
+          "type": "s",
+          "value": "V2.07"
+        },
+        {
+          "type": "s",
+          "value": "osc-server"
+        },
+        {
+          "type": "s",
+          "value": "M32R"
+        },
+        {
+          "type": "s",
+          "value": "4.02"
+        }
+      ]
+    },
+    {
+      "name": "status-reply",
+      "hex": "2f737461747573002c7373730000000061637469766500003139322e3136382e312e373700000000464f4800",
+      "address": "/status",
+      "args": [
+        {
+          "type": "s",
+          "value": "active"
+        },
+        {
+          "type": "s",
+          "value": "192.168.1.77"
+        },
+        {
+          "type": "s",
+          "value": "FOH"
+        }
+      ]
+    },
+    {
+      "name": "node-reply-no-leading-slash",
+      "hex": "6e6f6465000000002c7300002f63682f30312f65712f312050455120316b303030202b302e3020322e300a00",
+      "address": "node",
+      "args": [
+        {
+          "type": "s",
+          "value": "/ch/01/eq/1 PEQ 1k000 +0.0 2.0\n"
+        }
+      ]
+    },
+    {
+      "name": "meters-1-push",
+      "hex": "2f6d65746572732f310000002c6200000000018460000000000000000ad7233c0ad7a33c8fc2f53c0ad7233dcdcc4c3d8fc2753d295c8f3d0ad7a33dec51b83dcdcccc3dae47e13d8fc2f53db81e053e295c0f3e9a99193e0ad7233e7b142e3eec51383e5c8f423ecdcc4c3e3d0a573eae47613e1f856b3e8fc2753e0000803eb81e853e713d8a3e295c8f3ee17a943e9a99993e52b89e3e0ad7a33ec3f5a83e7b14ae3e3333b33eec51b83ea470bd3e5c8fc23e14aec73ecdcccc3e85ebd13e3d0ad73ef628dc3eae47e13e6666e63e1f85eb3ed7a3f03e8fc2f53e48e1fa3e0000003f5c8f023fb81e053f14ae073f713d0a3fcdcc0c3f295c0f3f85eb113fe17a143f3d0a173f9a99193ff6281c3f52b81e3fae47213f0ad7233f6666263fc3f5283f1f852b3f7b142e3fd7a3303f3333333f8fc2353fec51383f48e13a3fa4703d3f0000403f5c8f423fb81e453f14ae473f713d4a3fcdcc4c3f295c4f3f85eb513fe17a543f3d0a573f9a99593ff6285c3f52b85e3fae47613f0ad7633f6666663fc3f5683f1f856b3f7b146e3fd7a3703f3333733f",
+      "address": "/meters/1",
+      "args": [
+        {
+          "type": "b",
+          "value": "60000000000000000ad7233c0ad7a33c8fc2f53c0ad7233dcdcc4c3d8fc2753d295c8f3d0ad7a33dec51b83dcdcccc3dae47e13d8fc2f53db81e053e295c0f3e9a99193e0ad7233e7b142e3eec51383e5c8f423ecdcc4c3e3d0a573eae47613e1f856b3e8fc2753e0000803eb81e853e713d8a3e295c8f3ee17a943e9a99993e52b89e3e0ad7a33ec3f5a83e7b14ae3e3333b33eec51b83ea470bd3e5c8fc23e14aec73ecdcccc3e85ebd13e3d0ad73ef628dc3eae47e13e6666e63e1f85eb3ed7a3f03e8fc2f53e48e1fa3e0000003f5c8f023fb81e053f14ae073f713d0a3fcdcc0c3f295c0f3f85eb113fe17a143f3d0a173f9a99193ff6281c3f52b81e3fae47213f0ad7233f6666263fc3f5283f1f852b3f7b142e3fd7a3303f3333333f8fc2353fec51383f48e13a3fa4703d3f0000403f5c8f423fb81e453f14ae473f713d4a3fcdcc4c3f295c4f3f85eb513fe17a543f3d0a573f9a99593ff6285c3f52b85e3fae47613f0ad7633f6666663fc3f5683f1f856b3f7b146e3fd7a3703f3333733f"
+        }
+      ]
+    }
+  ]
+}
