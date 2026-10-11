@@ -50,6 +50,18 @@
         "presence": 2.933789,
         "brilliance": -0.620819
       }
+    },
+    {
+      "id": "worship-room",
+      "targets": {
+        "subBass": 2.528037,
+        "bass": 8.409711,
+        "lowMid": 4.396752,
+        "mid": -0.24492,
+        "highMid": -14.619727,
+        "presence": -22.857349,
+        "brilliance": -29.791519
+      }
     }
   ],
   "edgeCases": [

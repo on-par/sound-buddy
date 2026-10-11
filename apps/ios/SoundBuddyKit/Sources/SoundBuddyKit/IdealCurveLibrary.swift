@@ -10,9 +10,14 @@ public enum IdealCurveLibrary {
     public static let worshipServiceId = "worship-service"
     /// The auto target while ProgramModeTracker reads speech (#1690).
     public static let speechPodcastId = "speech-podcast"
-    public static let builtInIds = [flatId, musicFullRangeId, worshipServiceId, speechPodcastId]
-    /// Mac LIVE_CAPTURE_DEFAULT_PROFILE_ID.
-    public static let liveDefaultId = worshipServiceId
+    /// The room-mic reference from the Oct 11 2026 FOH mix (#1725).
+    public static let worshipRoomId = "worship-room"
+    public static let builtInIds = [flatId, musicFullRangeId, worshipServiceId, speechPodcastId, worshipRoomId]
+    /// The Music auto target. The phone measures a mic in the booth, not the
+    /// Mac's line/desk feed, so this is the room-mic reference (#1725) and no
+    /// longer mirrors the Mac's LIVE_CAPTURE_DEFAULT_PROFILE_ID
+    /// (worship-service), which stays the Mac live default.
+    public static let liveDefaultId = worshipRoomId
     static let resourcePrefix = "ideal-curve.v1."
 
     public enum LoadError: Error, Equatable, LocalizedError {
@@ -34,7 +39,7 @@ public enum IdealCurveLibrary {
         return try JSONDecoder().decode(IdealCurve.self, from: Data(contentsOf: url))
     }
 
-    /// The Analyze screen's live target: worship-service, or flat if the
+    /// The Analyze screen's live target: worship-room, or flat if the
     /// bundled resource can't be found or decoded — a missing/corrupt
     /// resource degrades the overlay rather than crashing Analyze.
     public static func liveDefault(load: (String) throws -> IdealCurve = IdealCurveLibrary.builtIn(id:)) -> IdealCurve {
