@@ -45,6 +45,20 @@ public final class SpectrumAnalyzer {
     private static let minimumAmplitude = 1e-10
     /// vDSP's real FFT returns 2x numpy's unnormalized rfft.
     private static let vDSPRealFFTScale: Float = 2
+    /// spectrum.py classify_chunk's `total = sum(power) + 1e-12`.
+    private static let fractionEpsilon = 1e-12
+    /// spectrum.py classify_chunk: `band_frac(20, 120)` — deep low end, common
+    /// in music, rare in speech.
+    private static let subLowHz = 20.0
+    private static let subHighHz = 120.0
+    /// spectrum.py classify_chunk: `band_frac(300, 3400)` — telephone/voice band.
+    private static let speechBandLowHz = 300.0
+    private static let speechBandHighHz = 3400.0
+    /// spectrum.py classify_chunk: `band_frac(6000, 20000)` — air/cymbals, music.
+    private static let airLowHz = 6000.0
+    private static let airHighHz = 20000.0
+    /// spectrum.py FLATNESS_AMIN — the power floor _spectral_flatness clamps to.
+    private static let flatnessAmin = 1e-10
 
     public let fftSize: Int
     public let sampleRate: Double
@@ -132,13 +146,16 @@ public final class SpectrumAnalyzer {
     }
 
     /// One FFT, both reductions: 7-band levels for the coach and the RTA grid
-    /// for the display, plus the broadband overall level.
+    /// for the display, plus the broadband overall level and the program
+    /// (speech/music) features (#1690).
     public func analyze(_ frame: [Float]) throws -> SpectrumReading {
         let power = try powerSpectrum(frame)
+        let overallDb = overallLevel(power: power)
         return SpectrumReading(
             bands: bandLevels(power: power),
             rtaDb: rtaLevels(power: power),
-            overallDb: overallLevel(power: power)
+            overallDb: overallDb,
+            programFeatures: programFeatures(power: power, overallDb: overallDb)
         )
     }
 
@@ -178,6 +195,52 @@ public final class SpectrumAnalyzer {
         }
     }
 
+    /// Program (speech/music) features for one frame's power spectrum, fed to
+    /// ProgramContentClassifier (#1690) — a Swift port of spectrum.py's
+    /// classify_chunk inputs, computed on the same per-bin power used for the
+    /// 7 coaching bands and the RTA.
+    func programFeatures(power: [Float], overallDb: Double) -> ProgramFeatures {
+        let binHz = sampleRate / Double(fftSize)
+        let total = power.reduce(0.0) { $0 + Double($1) } + Self.fractionEpsilon
+
+        func bandFraction(lowHz: Double, highHz: Double) -> Double {
+            var sum = 0.0
+            for bin in power.indices {
+                let hz = Double(bin) * binHz
+                guard hz >= lowHz, hz < highHz else { continue }
+                sum += Double(power[bin])
+            }
+            return sum / total
+        }
+
+        var weightedHzSum = 0.0
+        var magnitudeSum = 0.0
+        var logPowerSum = 0.0
+        var clampedPowerSum = 0.0
+        for bin in power.indices {
+            let hz = Double(bin) * binHz
+            let magnitude = Double(power[bin]).squareRoot()
+            weightedHzSum += hz * magnitude
+            magnitudeSum += magnitude
+
+            let clampedPower = max(Self.flatnessAmin, Double(power[bin]))
+            logPowerSum += log(clampedPower)
+            clampedPowerSum += clampedPower
+        }
+        let centroidHz = magnitudeSum > 0 ? weightedHzSum / magnitudeSum : 0
+        let binCount = Double(power.count)
+        let flatness = exp(logPowerSum / binCount) / (clampedPowerSum / binCount)
+
+        return ProgramFeatures(
+            speechBandFraction: bandFraction(lowHz: Self.speechBandLowHz, highHz: Self.speechBandHighHz),
+            subFraction: bandFraction(lowHz: Self.subLowHz, highHz: Self.subHighHz),
+            airFraction: bandFraction(lowHz: Self.airLowHz, highHz: Self.airHighHz),
+            centroidHz: centroidHz,
+            flatness: flatness,
+            levelDb: overallDb
+        )
+    }
+
     private func bandLevels(power: [Float]) -> BandLevels {
         var db: [Band: Double] = [:]
         for band in Band.allCases {
@@ -210,10 +273,53 @@ public struct SpectrumReading: Equatable, Sendable {
     public var rtaDb: [Double]
     /// Broadband level of the frame in dBFS (see SpectrumAnalyzer.overallLevel).
     public var overallDb: Double
+    /// Speech/music program features for this frame (#1690); nil for readings
+    /// built without them (e.g. existing call sites and tests).
+    public var programFeatures: ProgramFeatures?
 
-    public init(bands: BandLevels, rtaDb: [Double], overallDb: Double = SpectrumAnalyzer.silenceFloorDb) {
+    public init(
+        bands: BandLevels,
+        rtaDb: [Double],
+        overallDb: Double = SpectrumAnalyzer.silenceFloorDb,
+        programFeatures: ProgramFeatures? = nil
+    ) {
         self.bands = bands
         self.rtaDb = rtaDb
         self.overallDb = overallDb
+        self.programFeatures = programFeatures
+    }
+}
+
+/// Program-content features for one analysis frame, fed to
+/// ProgramContentClassifier (#1690) — a Swift port of the inputs spectrum.py's
+/// classify_chunk uses to tell speech from music.
+public struct ProgramFeatures: Equatable, Sendable {
+    /// Fraction of total bin power in the 300-3400 Hz telephone/voice band.
+    public var speechBandFraction: Double
+    /// Fraction of total bin power in the 20-120 Hz deep-bass band.
+    public var subFraction: Double
+    /// Fraction of total bin power in the 6-20 kHz air/cymbals band.
+    public var airFraction: Double
+    /// Magnitude-weighted mean frequency (Hz) — spectrum.py's spectral centroid.
+    public var centroidHz: Double
+    /// Geometric-to-arithmetic mean power ratio, 0...1 — spectral flatness.
+    public var flatness: Double
+    /// The frame's broadband level in dBFS (same scale as SpectrumReading.overallDb).
+    public var levelDb: Double
+
+    public init(
+        speechBandFraction: Double,
+        subFraction: Double,
+        airFraction: Double,
+        centroidHz: Double,
+        flatness: Double,
+        levelDb: Double
+    ) {
+        self.speechBandFraction = speechBandFraction
+        self.subFraction = subFraction
+        self.airFraction = airFraction
+        self.centroidHz = centroidHz
+        self.flatness = flatness
+        self.levelDb = levelDb
     }
 }
