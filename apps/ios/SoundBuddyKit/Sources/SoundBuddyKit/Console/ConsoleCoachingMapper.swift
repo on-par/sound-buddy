@@ -1,8 +1,9 @@
 import Foundation
 
 /// One coaching suggestion mapped onto Main LR's EQ (#1671): where a
-/// band-deviation hint would land on the desk. A picture of the change,
-/// never a write — ADR-0161's write tier is a later slice (#1676).
+/// band-deviation hint would land on the desk. A picture of the change —
+/// `ConsoleTargetModel.applyCoaching(using:)` is what turns it into a write
+/// (#1676), through `ConsoleEQWriter.submit`.
 public struct ConsoleCoachingSuggestion: Equatable, Sendable {
     /// 0-based index into the Main LR `ConsoleEQ.bands` this suggestion
     /// substitutes.
@@ -29,6 +30,34 @@ public struct ConsoleCoachingSuggestion: Equatable, Sendable {
     }
 }
 
+/// The result of applying a `ConsoleCoachingSuggestion` to Main LR (#1676):
+/// the band's value before and after, and the copy the UI shows for the
+/// confirmation and the before → after line. `written` is always what the
+/// writer actually sent — limited against `prior` by
+/// `ConsoleEQEdit.limitedBand` exactly as `ConsoleEQWriter.submit` limits it
+/// — never the unlimited ghost, so the confirmation never claims more than
+/// was sent (ADR-0161 §4).
+public struct ConsoleCoachingApplied: Equatable, Sendable {
+    /// 0-based index into Main LR's `ConsoleEQ.bands`.
+    public let bandIndex: Int
+    public let prior: ConsoleEQBand
+    public let written: ConsoleEQBand
+    /// "Applied −3 dB at 220 Hz on Main LR".
+    public let confirmation: String
+    /// "Band 2: 0 dB at 250 Hz → −3 dB at 220 Hz".
+    public let beforeAfter: String
+
+    public var bandNumber: Int { bandIndex + 1 }
+
+    public init(bandIndex: Int, prior: ConsoleEQBand, written: ConsoleEQBand, confirmation: String, beforeAfter: String) {
+        self.bandIndex = bandIndex
+        self.prior = prior
+        self.written = written
+        self.confirmation = confirmation
+        self.beforeAfter = beforeAfter
+    }
+}
+
 /// Maps a band-deviation `CoachingEvent` onto Main LR's `ConsoleEQ`: a free
 /// (flat) PEQ/VEQ band centred in the coached band, or else the nearest one
 /// (flagged for retuning), gain opposite the deviation clamped to
@@ -40,6 +69,12 @@ public enum ConsoleCoachingMapper {
     public static let flatGainEpsilonDb = 0.05
     public static let minQ = 0.3
     public static let maxQ = 10.0
+
+    /// The Apply button's label while an armed writer is available.
+    public static let applyLabelArmed = "Apply"
+    /// The Apply button's label (disabled) while no armed writer is
+    /// available — tells the engineer what to do, not just that it's off.
+    public static let applyLabelDisarmed = "Unlock to apply"
 
     static let deviationKey = "deviationDb"
     static let minusSign = "\u{2212}"
@@ -87,6 +122,30 @@ public enum ConsoleCoachingMapper {
     /// while the console chip is visible and the link is actually up.
     public static func showsAction(for event: CoachingEvent, consoleVisible: Bool, phase: ConsoleSessionPhase) -> Bool {
         consoleVisible && phase.isLinkUp && event.ruleType == .bandDeviation && event.band != nil
+    }
+
+    /// Works out what Apply will actually write: `suggestion.band` limited
+    /// against the band's current (`prior`) value by
+    /// `ConsoleEQEdit.limitedBand` — the same bound `ConsoleEQWriter.submit`
+    /// applies — then quantized to the console's own step grid, so the copy
+    /// and an optimistic fold never claim a value finer than the desk stores.
+    public static func applied(_ suggestion: ConsoleCoachingSuggestion, to eq: ConsoleEQ) -> ConsoleCoachingApplied {
+        let prior = eq.bands[suggestion.bandIndex]
+        let limited = ConsoleEQEdit.limitedBand(suggestion.band, gestureStart: prior)
+        let written = ConsoleEQBand(
+            type: limited.type,
+            freqHz: ConsoleEQScale.freqHz(raw: ConsoleEQScale.rawFreq(hz: limited.freqHz)),
+            gainDb: ConsoleEQScale.gainDb(raw: ConsoleEQScale.rawGain(db: limited.gainDb)),
+            q: ConsoleEQScale.q(raw: ConsoleEQScale.rawQ(limited.q))
+        )
+        let confirmation = "Applied \(gainText(written.gainDb)) at \(ConsoleEQPanelState.freqText(written.freqHz)) on Main LR"
+        let beforeAfter = "Band \(suggestion.bandNumber): \(gainText(prior.gainDb)) at \(ConsoleEQPanelState.freqText(prior.freqHz)) \u{2192} \(gainText(written.gainDb)) at \(ConsoleEQPanelState.freqText(written.freqHz))"
+        return ConsoleCoachingApplied(bandIndex: suggestion.bandIndex, prior: prior, written: written, confirmation: confirmation, beforeAfter: beforeAfter)
+    }
+
+    /// "Apply" once armed, or "Unlock to apply" (disabled) otherwise.
+    public static func applyLabel(isArmed: Bool) -> String {
+        isArmed ? applyLabelArmed : applyLabelDisarmed
     }
 
     private static func isPeqOrVeq(_ type: ConsoleEQBandType) -> Bool {

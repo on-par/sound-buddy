@@ -67,6 +67,17 @@ extension ConsoleEQEdit {
         return min(max(hz, gestureStart / octaveRatio), gestureStart * octaveRatio)
     }
 
+    /// `value` with its freq/gain limited against `gestureStart`'s freq/gain
+    /// the same way `.band`'s own message encoding does. `internal` so
+    /// `ConsoleCoachingMapper` (#1676) can work out exactly what a write will
+    /// land on before submitting it.
+    static func limitedBand(_ value: ConsoleEQBand, gestureStart: ConsoleEQBand) -> ConsoleEQBand {
+        var limited = value
+        limited.freqHz = limitedFreqHz(value.freqHz, gestureStart: gestureStart.freqHz)
+        limited.gainDb = limitedGainDb(value.gainDb, gestureStart: gestureStart.gainDb)
+        return limited
+    }
+
     /// The one `OSCMessage` this edit sends, addressed under `eqPath`
     /// (`target.eqPath`), with its value limited, clamped, and quantized to
     /// the console's raw step grid.
@@ -83,13 +94,12 @@ extension ConsoleEQEdit {
         case let .type(band, type):
             return OSCMessage("\(eqPath)/\(band)/type", [.int(Int32(type.rawValue))])
         case let .band(band, value, gestureStart):
-            let limitedFreq = ConsoleEQEdit.limitedFreqHz(value.freqHz, gestureStart: gestureStart.freqHz)
-            let limitedGain = ConsoleEQEdit.limitedGainDb(value.gainDb, gestureStart: gestureStart.gainDb)
+            let limited = ConsoleEQEdit.limitedBand(value, gestureStart: gestureStart)
             return OSCMessage("\(eqPath)/\(band)", [
-                .int(Int32(value.type.rawValue)),
-                .float(Float(ConsoleEQScale.rawFreq(hz: limitedFreq))),
-                .float(Float(ConsoleEQScale.rawGain(db: limitedGain))),
-                .float(Float(ConsoleEQScale.rawQ(value.q))),
+                .int(Int32(limited.type.rawValue)),
+                .float(Float(ConsoleEQScale.rawFreq(hz: limited.freqHz))),
+                .float(Float(ConsoleEQScale.rawGain(db: limited.gainDb))),
+                .float(Float(ConsoleEQScale.rawQ(limited.q))),
             ])
         case let .eqOn(on):
             return OSCMessage("\(eqPath)/on", [.int(on ? 1 : 0)])
