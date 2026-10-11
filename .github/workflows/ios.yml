@@ -8,9 +8,11 @@ name: iOS
 # Runs on Ubuntu, so it cannot compile Swift: SoundBuddyKit imports Accelerate
 # and the app needs the iOS SDK, both Apple-only. There is deliberately no
 # xcodebuild here until a macOS runner is budgeted. It validates the shared
-# JSON contracts (apps/ios/Contracts) and the project settings files
-# (project.yml, the generated project.pbxproj, Info.plist) — the iOS
-# artifacts Linux can check. Swift is verified locally: see apps/ios/README.md.
+# JSON contracts (apps/ios/Contracts), the project settings files
+# (project.yml, the generated project.pbxproj, Info.plist) — including the
+# export-compliance guard (#1691) — and the asc-distribute.mjs TestFlight
+# distributor's unit tests. Swift and the real upload are verified locally:
+# see apps/ios/README.md.
 
 on:
   push:
@@ -39,6 +41,10 @@ jobs:
         with:
           python-version: '3.12'
 
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
       - name: Install jsonschema
         run: python -m pip install 'jsonschema>=4.18'
 
@@ -50,5 +56,12 @@ jobs:
         working-directory: apps/ios/scripts
         run: python test_ios_device_family.py
 
+      - name: Export compliance guard
+        working-directory: apps/ios/scripts
+        run: python test_export_compliance.py
+
       - name: Validate schemas and examples
         run: python apps/ios/scripts/validate_contracts.py
+
+      - name: TestFlight distributor tests
+        run: node --test apps/ios/scripts/asc-distribute.test.mjs

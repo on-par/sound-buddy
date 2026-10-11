@@ -7,8 +7,8 @@ audio leaves the device, and the app has no upload path. The LAN companion
 (phone ↔ Mac) is parked. For that reason the app has no local-network
 entitlement and no Bonjour keys.
 
-This is a scaffold, not an App Store build. There is no signing, TestFlight,
-or notarization yet.
+See [TestFlight](#testflight) below for the one-command upload-and-distribute
+step; there is no notarization (that's Mac-only).
 
 ## Layout
 
@@ -19,7 +19,7 @@ or notarization yet.
 | `Contracts/` | Shared JSON contracts (`IdealCurve`, `CoachingEvent`): JSON Schemas and examples that both Mac and iOS can read. |
 | `project.yml` | XcodeGen spec. This is the source of truth for `SoundBuddy.xcodeproj`. |
 | `SoundBuddy.xcodeproj` | Generated from `project.yml` and checked in, so you can open it without installing XcodeGen. |
-| `scripts/` | `swift-test.sh`, the contract validator, the spectrum parity fixture generator, and the icon generator (plus their Python tests). |
+| `scripts/` | `swift-test.sh`, the contract validator, the spectrum parity fixture generator, the icon generator (plus their Python tests), and the TestFlight upload/distribution scripts (`testflight.sh`, `asc-distribute.mjs`). |
 
 ## Open in Xcode
 
@@ -145,6 +145,79 @@ check it runs natively rather than in the iPhone compatibility window:
    `wideMinWidth`, `wideMinHeight`).
 6. iPhone is unchanged: no upside-down orientation, same layouts, same RTA
    position rules.
+
+## TestFlight
+
+`apps/ios/scripts/testflight.sh` is a one-command upload-and-distribute step
+for the Mac Mini: it archives the SoundBuddy scheme, exports and uploads with
+the App Store Connect API key via `xcodebuild`, then calls
+`asc-distribute.mjs` to wait for processing, clear "Missing Export
+Compliance" if App Store Connect still asks, set What to Test, add the build
+to every configured tester group, and submit beta app review when external
+testing needs it.
+
+**Prerequisites** (one-time, in App Store Connect):
+- Xcode 15.3+ (for the `app-store-connect` export method) and Node 20+.
+- An App Store Connect API key with the **App Manager** role.
+- The internal and external tester groups you want to ship to, and Beta App
+  Review contact information under **TestFlight > Test Information**.
+
+**Env vars:**
+- `DEVELOPMENT_TEAM` — your Apple Developer Team ID.
+- `ASC_KEY_ID`, `ASC_ISSUER_ID` — from the API key you create in **Users and
+  Access > Integrations**.
+- `ASC_KEY_PATH` — path to the downloaded `.p8` private key, or
+  `ASC_KEYCHAIN_SERVICE` — the name of a generic-password keychain item on
+  the Mini holding the key, read via `security find-generic-password`.
+- Optional config overrides: `ASC_BUNDLE_ID`, `ASC_INTERNAL_GROUPS` and
+  `ASC_EXTERNAL_GROUPS` (comma-separated group names), and
+  `ASC_PROCESSING_TIMEOUT_SECONDS`.
+
+Never commit the `.p8` key or echo these values; `.gitignore` already blocks
+`*.p8` and `AuthKey_*`.
+
+**Upload:**
+
+```bash
+apps/ios/scripts/testflight.sh [--build-number N] [--notes "What changed"]
+```
+
+The build number defaults to the latest App Store Connect build for this
+version plus one.
+
+**Dry run** (no writes — prints the resolved app, build and group ids plus
+the planned writes):
+
+```bash
+node apps/ios/scripts/asc-distribute.mjs --dry-run --version 0.1.0 --build-number N
+```
+
+`testflight.sh --dry-run` does the same against the latest build, skipping
+the archive/export/upload.
+
+**Tester groups:** add or rename groups by editing
+`apps/ios/testflight.config.json` (or the `ASC_*_GROUPS` env vars above). A
+group name that doesn't exist yet in App Store Connect fails loudly, naming
+the group — create it there first.
+
+**Export compliance:** `project.yml` sets
+`INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO` (only OS-provided
+HTTPS/standard crypto is used), guarded by
+`scripts/test_export_compliance.py`. If a build still lands on "Missing
+Export Compliance" in App Store Connect, the distributor fixes it
+automatically on the next run.
+
+**Key rotation:** create a new key in App Store Connect under **Users and
+Access > Integrations**, store it in the Mini's keychain (or a path outside
+the repo) and point `ASC_KEY_PATH`/`ASC_KEYCHAIN_SERVICE` at it, update
+`ASC_KEY_ID`/`ASC_ISSUER_ID`, then revoke the old key.
+
+**Tests:**
+
+```bash
+node --test apps/ios/scripts/asc-distribute.test.mjs
+python3 -m unittest discover -s apps/ios/scripts -p 'test_*.py'
+```
 
 ## Tests
 

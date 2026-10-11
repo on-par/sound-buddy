@@ -49,3 +49,7 @@ apps/ios/**/.build/
 **/DerivedData/
 xcuserdata/
 *.xcuserstate
+
+# App Store Connect API keys (#1691) — never commit
+*.p8
+AuthKey_*

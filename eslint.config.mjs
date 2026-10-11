@@ -62,9 +62,10 @@ export default tseslint.config(
   },
   {
     // Standalone Node scripts (e.g. the audio-engine wall-clock/memory
-    // benchmark harness, the renderer dev-server orchestrator) run directly
-    // via `node foo.mjs`, outside tsc.
-    files: ['packages/*/scripts/**/*.mjs', 'app/scripts/**/*.mjs'],
+    // benchmark harness, the renderer dev-server orchestrator, the iOS
+    // TestFlight distributor, #1691) run directly via `node foo.mjs`,
+    // outside tsc.
+    files: ['packages/*/scripts/**/*.mjs', 'app/scripts/**/*.mjs', 'apps/ios/scripts/**/*.mjs'],
     languageOptions: {
       sourceType: 'module',
       globals: { ...globals.node },
