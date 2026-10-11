@@ -1,0 +1,158 @@
+import SoundBuddyKit
+import SwiftUI
+
+/// The read-only EQ panel (#1669): the selected target's curve, band list,
+/// EQ on/off state and (for a channel) the preamp HPF — a lock icon and no
+/// edit affordance. Opens as a sheet on iPhone (`showsTargetButton: true`,
+/// with a "Change" button to the existing picker, and `onDone` wired to
+/// dismiss) or sits as a fixed-width side column on iPad landscape
+/// (`showsTargetButton: false`, no `onDone` — the chip itself keeps opening
+/// the picker there). While the link is down the values dim and a status
+/// pill shows; the panel never blanks. Pure rendering — every decision
+/// lives in `ConsoleTargetModel.eqPanel` (SoundBuddyKit).
+struct ConsoleEQPanel: View {
+    let console: ConsoleTargetModel
+    let analyze: AnalyzeModel
+    var showsTargetButton = false
+    var onDone: (() -> Void)?
+    @State private var pickerOpen = false
+
+    var body: some View {
+        Group {
+            if let onDone {
+                NavigationStack {
+                    panelBody
+                        .navigationTitle("Console EQ")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done", action: onDone)
+                                    .foregroundStyle(Palette.accent)
+                                    .accessibilityIdentifier("consoleEQ.done")
+                            }
+                        }
+                        .background(Palette.background.ignoresSafeArea())
+                }
+                .preferredColorScheme(.dark)
+            } else {
+                panelBody
+            }
+        }
+        .sheet(isPresented: $pickerOpen) {
+            ConsoleTargetPickerView(model: console) { pickerOpen = false }
+        }
+    }
+
+    private var panelBody: some View {
+        let state = console.eqPanel
+        return ScrollView {
+            VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
+                header(state: state)
+                if let statusPill = state.statusPill {
+                    Text(statusPill)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Palette.secondaryText)
+                        .accessibilityIdentifier("consoleEQ.statusPill")
+                }
+                if let placeholder = state.placeholder {
+                    Text(placeholder)
+                        .font(.subheadline)
+                        .foregroundStyle(Palette.secondaryText)
+                } else {
+                    valuesBody(state: state)
+                        .opacity(state.isDimmed ? Layout.dimmedOpacity : 1)
+                }
+            }
+            .padding(Layout.padding)
+        }
+        .background(Palette.background.ignoresSafeArea())
+        .accessibilityIdentifier("consoleEQ.panel")
+    }
+
+    private func valuesBody(state: ConsoleEQPanelState) -> some View {
+        VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
+            EQCurveView(eqPanel: state, analyze: analyze)
+            if let hpfText = state.hpfText {
+                Text(hpfText)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Palette.secondaryText)
+                    .accessibilityIdentifier("consoleEQ.hpf")
+            }
+            VStack(alignment: .leading, spacing: Layout.rowSpacing) {
+                ForEach(state.bandRows, id: \.number) { row in
+                    BandRow(row: row)
+                }
+            }
+        }
+    }
+
+    private func header(state: ConsoleEQPanelState) -> some View {
+        HStack(spacing: Layout.headerSpacing) {
+            Image(systemName: "lock.fill")
+                .foregroundStyle(Palette.secondaryText)
+                .accessibilityLabel("Read-only")
+            Text(console.catalog.label(for: console.selected).displayName)
+                .font(.headline)
+                .lineLimit(1)
+            if let eqOnLabel = state.eqOnLabel {
+                Text(eqOnLabel)
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, Layout.badgePaddingH)
+                    .padding(.vertical, Layout.badgePaddingV)
+                    .background(Palette.surface, in: Capsule())
+                    .accessibilityIdentifier("consoleEQ.onOff")
+            }
+            Spacer(minLength: 0)
+            if showsTargetButton {
+                Button("Change") { pickerOpen = true }
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Palette.accent)
+                    .accessibilityIdentifier("consoleEQ.changeTarget")
+            }
+        }
+    }
+
+    private enum Layout {
+        static let sectionSpacing: CGFloat = 12
+        static let rowSpacing: CGFloat = 6
+        static let headerSpacing: CGFloat = 8
+        static let padding: CGFloat = 16
+        static let badgePaddingH: CGFloat = 8
+        static let badgePaddingV: CGFloat = 4
+        /// Dims the last-known values while the console link is down, per
+        /// ConsoleEQPanelState.isDimmed — they stay on screen, never blank.
+        static let dimmedOpacity: Double = 0.45
+    }
+}
+
+/// One band row: "N · type · freq · gain · Q" in monospaced digits.
+private struct BandRow: View {
+    let row: ConsoleEQBandReadout
+
+    var body: some View {
+        HStack(spacing: Layout.spacing) {
+            Text("\(row.number)")
+                .frame(width: Layout.numberWidth, alignment: .leading)
+            Text(row.typeLabel)
+                .frame(width: Layout.typeWidth, alignment: .leading)
+            Text(row.freqText)
+                .frame(width: Layout.valueWidth, alignment: .trailing)
+            Text(row.gainText)
+                .frame(width: Layout.valueWidth, alignment: .trailing)
+            Text(row.qText)
+                .frame(width: Layout.valueWidth, alignment: .trailing)
+        }
+        .font(.footnote.monospacedDigit())
+        .foregroundStyle(Color.primary)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Band \(row.number), \(row.typeLabel), \(row.freqText), \(row.gainText), Q \(row.qText)")
+        .accessibilityIdentifier("consoleEQ.band.\(row.number)")
+    }
+
+    private enum Layout {
+        static let spacing: CGFloat = 8
+        static let numberWidth: CGFloat = 16
+        static let typeWidth: CGFloat = 76
+        static let valueWidth: CGFloat = 64
+    }
+}

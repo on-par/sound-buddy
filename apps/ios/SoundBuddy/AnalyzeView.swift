@@ -35,8 +35,13 @@ import UIKit
 /// input and carries the honesty copy that used to be a header badge;
 /// choosing an input restarts listening on the new route.
 ///
-/// TODO(ipad): the layout is single-column; switch the RTA and coaching
-/// stack side by side on a regular horizontal size class.
+/// The console chip opens the read-only EQ panel (#1669) as a sheet, except
+/// on an iPad in regular-width landscape, where the EQ panel is a fixed-width
+/// column beside the RTA and the chip keeps opening the target picker
+/// instead — AnalyzeLayout.consoleEQPlacement(isRegularWidth:) decides.
+///
+/// TODO(ipad): the rest of the layout (coaching stack, portrait) is still
+/// single-column; only the console EQ panel sits beside the RTA so far.
 struct AnalyzeView: View {
     let model: AnalyzeModel
     let keepAwake: KeepAwakeController
@@ -48,9 +53,11 @@ struct AnalyzeView: View {
     let consoleFlagEnabled: Bool
     let consoleConsentGranted: Bool
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var coachingPeekOpen = false
     @State private var settingsOpen = false
     @State private var consolePickerOpen = false
+    @State private var consoleEQOpen = false
     @AppStorage(KeepAwakePolicy.defaultsKey) private var keepAwakeEnabled = KeepAwakePolicy.defaultValue
 
     private var showsConsoleChip: Bool {
@@ -78,6 +85,12 @@ struct AnalyzeView: View {
         .sheet(isPresented: $consolePickerOpen) {
             if let console {
                 ConsoleTargetPickerView(model: console) { consolePickerOpen = false }
+            }
+        }
+        .sheet(isPresented: $consoleEQOpen) {
+            if let console {
+                ConsoleEQPanel(console: console, analyze: model, showsTargetButton: true) { consoleEQOpen = false }
+                    .presentationDetents([.medium, .large])
             }
         }
         .task { await model.appear() }
@@ -125,15 +138,23 @@ struct AnalyzeView: View {
 
     @ViewBuilder
     private func content(for layout: AnalyzeLayout, proxy: GeometryProxy) -> some View {
+        let placement = layout.consoleEQPlacement(isRegularWidth: horizontalSizeClass == .regular)
         switch layout {
-        case .portrait: portraitBody
-        case .landscape: landscapeBody(proxy: proxy)
+        case .portrait: portraitBody(placement: placement)
+        case .landscape: landscapeBody(proxy: proxy, placement: placement)
         }
     }
 
-    private var portraitBody: some View {
+    private func consoleChipTapped(placement: AnalyzeLayout.ConsoleEQPlacement) {
+        switch placement {
+        case .sheet: consoleEQOpen = true
+        case .sideColumn: consolePickerOpen = true
+        }
+    }
+
+    private func portraitBody(placement: AnalyzeLayout.ConsoleEQPlacement) -> some View {
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
-            header
+            header(placement: placement)
             VStack(alignment: .leading, spacing: Layout.legendSpacing) {
                 RTAView(
                     model: model,
@@ -153,14 +174,23 @@ struct AnalyzeView: View {
         withAnimation(.snappy) { model.beginTargetEdit() }
     }
 
-    private func landscapeBody(proxy: GeometryProxy) -> some View {
-        VStack(spacing: Layout.landscapeSpacing) {
-            landscapeStrip
-            RTAView(
-                model: model,
-                fillsHeight: true,
-                showsProblemMarkers: AnalyzeLayout.landscape.showsProblemMarkers(isEditingTarget: model.isEditingTarget)
-            )
+    private func landscapeBody(proxy: GeometryProxy, placement: AnalyzeLayout.ConsoleEQPlacement) -> some View {
+        let rta = RTAView(
+            model: model,
+            fillsHeight: true,
+            showsProblemMarkers: AnalyzeLayout.landscape.showsProblemMarkers(isEditingTarget: model.isEditingTarget)
+        )
+        return VStack(spacing: Layout.landscapeSpacing) {
+            landscapeStrip(placement: placement)
+            if showsConsoleChip, placement == .sideColumn, let console {
+                HStack(spacing: Layout.landscapeSpacing) {
+                    rta
+                    ConsoleEQPanel(console: console, analyze: model, showsTargetButton: false)
+                        .frame(width: proxy.size.width * AnalyzeLayout.consoleEQColumnWidthFraction)
+                }
+            } else {
+                rta
+            }
             if AnalyzeLayout.landscape.targetControlsUnderRTA {
                 TargetControlsBand(model: model, onEdit: beginTargetEdit)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -179,11 +209,11 @@ struct AnalyzeView: View {
         }
     }
 
-    private var landscapeStrip: some View {
+    private func landscapeStrip(placement: AnalyzeLayout.ConsoleEQPlacement) -> some View {
         HStack(spacing: Layout.landscapeStripSpacing) {
             ListeningIndicator(state: model.state)
             if showsConsoleChip, let console, let chipTitle = console.chipTitle {
-                ConsoleChip(title: chipTitle, status: console.chipStatus) { consolePickerOpen = true }
+                ConsoleChip(title: chipTitle, status: console.chipStatus) { consoleChipTapped(placement: placement) }
             }
             Spacer()
             OverallLevelReadout(model: model, font: .headline.monospacedDigit())
@@ -195,7 +225,7 @@ struct AnalyzeView: View {
     /// Brand first: the Mac icon's mark and "Sound Buddy", with the Analyze
     /// section label and listening status beneath; the level readout and the
     /// settings gear stay on the right.
-    private var header: some View {
+    private func header(placement: AnalyzeLayout.ConsoleEQPlacement) -> some View {
         HStack(alignment: .center, spacing: Layout.brandSpacing) {
             Image("BrandMark")
                 .resizable()
@@ -214,7 +244,7 @@ struct AnalyzeView: View {
                     ListeningIndicator(state: model.state)
                 }
                 if showsConsoleChip, let console, let chipTitle = console.chipTitle {
-                    ConsoleChip(title: chipTitle, status: console.chipStatus) { consolePickerOpen = true }
+                    ConsoleChip(title: chipTitle, status: console.chipStatus) { consoleChipTapped(placement: placement) }
                 }
             }
             Spacer(minLength: 0)

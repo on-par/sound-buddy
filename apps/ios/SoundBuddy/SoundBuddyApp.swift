@@ -63,6 +63,23 @@ private enum ConsoleDemoSeed {
         "/ch/04/config \"Pastor\" 1 RDi 4",
         "/ch/05/config \"Acoustic\" 1 GN 5",
         "/ch/06/config \"Keys\" 1 BL 6",
+        // Main LR EQ (#1669), in ConsoleEQNodeTests' line format, so the
+        // read-only EQ panel shows a populated curve and band list by
+        // default.
+        "/main/st/eq ON",
+        "/main/st/eq/1 LShv 79.6 +2.00 0.7",
+        "/main/st/eq/2 PEQ 320.0 -3.00 1.4",
+        "/main/st/eq/3 PEQ 1k00 +1.50 2.0",
+        "/main/st/eq/4 PEQ 2k50 -2.00 1.0",
+        "/main/st/eq/5 PEQ 6k30 +2.50 1.6",
+        "/main/st/eq/6 HShv 10k00 -1.00 0.7",
+        // Channel 2 EQ (#1669), for screenshots once a channel is selected.
+        "/ch/02/preamp +0.0 OFF ON 18 100",
+        "/ch/02/eq ON",
+        "/ch/02/eq/1 PEQ 120.0 +2.00 1.2",
+        "/ch/02/eq/2 PEQ 600.0 -3.50 1.8",
+        "/ch/02/eq/3 PEQ 3k00 +1.00 2.2",
+        "/ch/02/eq/4 HShv 8k00 +2.50 0.7",
     ]
 
     static func fromLaunchArguments(_ arguments: [String]) -> ConsoleTargetModel? {

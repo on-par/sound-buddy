@@ -119,6 +119,29 @@ struct AnalyzeLayoutTests {
         #expect(AnalyzeLayout.peekOpen(afterEditingChange: isEditingTarget, wasOpen: wasOpen) == expected)
     }
 
+    @Test(
+        "consoleEQPlacement(isRegularWidth:)",
+        arguments: [
+            (AnalyzeLayout.landscape, true, AnalyzeLayout.ConsoleEQPlacement.sideColumn),
+            (AnalyzeLayout.landscape, false, AnalyzeLayout.ConsoleEQPlacement.sheet),
+            (AnalyzeLayout.portrait, true, AnalyzeLayout.ConsoleEQPlacement.sheet),
+            (AnalyzeLayout.portrait, false, AnalyzeLayout.ConsoleEQPlacement.sheet),
+        ]
+    )
+    func consoleEQPlacement(layout: AnalyzeLayout, isRegularWidth: Bool, expected: AnalyzeLayout.ConsoleEQPlacement) {
+        #expect(layout.consoleEQPlacement(isRegularWidth: isRegularWidth) == expected)
+    }
+
+    @Test("regularWidthLandscapePlacesConsoleEQBesideRTA")
+    func regularWidthLandscapePlacesConsoleEQBesideRTA() {
+        #expect(AnalyzeLayout.landscape.consoleEQPlacement(isRegularWidth: true) == .sideColumn)
+    }
+
+    @Test("console EQ column leaves the RTA the majority of the width")
+    func consoleEQColumnFractionLeavesRTAMajority() {
+        #expect(AnalyzeLayout.consoleEQColumnWidthFraction < 0.5)
+    }
+
     @Test("landscape peek locks closed across an edit, then resumes tap/swipe behavior (#1562)")
     func landscapePeekAroundAnEdit() {
         var isOpen = AnalyzeLayout.peekOpen(afterDrag: -AnalyzeLayout.peekDragThreshold, wasOpen: false)
