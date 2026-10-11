@@ -192,7 +192,7 @@ export function curveEditorInit(
   return {
     editingId: custom ? custom.id : null,
     title: custom ? 'Edit Ideal Curve' : 'Create Ideal Curve',
-    name: custom ? custom.label : `Copy of ${base ? base.label : 'Flat / neutral'}`,
+    name: custom ? custom.label : `Copy of ${base ? base.label : 'Flat'}`,
     canDelete: !!custom,
     // A file analysis with a fine curve, or a live capture with band levels —
     // either can be captured as the target.
