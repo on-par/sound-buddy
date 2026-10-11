@@ -11,6 +11,6 @@
 <plist version="1.0">
 <dict>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Sound Buddy listens through the microphone to estimate your room's tonal balance and suggest EQ changes. Audio is analyzed on this iPhone and never leaves it.</string>
+	<string>Sound Buddy listens through the microphone to estimate your room's tonal balance and suggest EQ changes. Audio is analyzed on this device and never leaves it.</string>
 </dict>
 </plist>

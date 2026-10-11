@@ -27,7 +27,7 @@ or notarization yet.
    `sudo xcodebuild -license accept`.
 2. Open `apps/ios/SoundBuddy.xcodeproj`. Xcode resolves the local
    `SoundBuddyKit` package on its own.
-3. Select the **SoundBuddy** scheme and an iPhone Simulator.
+3. Select the **SoundBuddy** scheme and an iPhone or iPad Simulator.
 
 If you add or remove files under `SoundBuddy/`, or edit `project.yml`,
 regenerate the project and commit the result:
@@ -112,6 +112,29 @@ Capabilities**. The project sets no team on purpose.
     or swipe. Tap Done or Cancel — the pulses return and the peek opens and
     closes by tap and swipe exactly as before.
 
+## iPad pass
+
+Run on **iPad Pro 13-inch (M4)** and **iPad mini**. The app is universal, so
+check it runs natively rather than in the iPhone compatibility window:
+
+1. Launch the app. It fills the whole screen with no black bars and no
+   compatibility window border.
+2. While Analyze is listening, rotate through all four orientations
+   (portrait, landscape left, upside-down portrait, landscape right).
+   "Listening" never flickers and there is no restart or permission re-prompt.
+   Landscape (in any rotation) shows the same RTA-first layout with the
+   Coaching peek as on iPhone. Upside-down portrait renders the portrait
+   layout, same as right-side-up portrait.
+3. Tap the gear. The Settings sheet presents (a form sheet on iPad is
+   expected), the microphone picker and **Keep screen awake** toggle work,
+   and dismissing it returns to Analyze, still listening.
+4. Put the app in Split View at roughly 1/3 width — Analyze shows the
+   portrait layout. Widen it (or use a wide Stage Manager window) — Analyze
+   shows the landscape layout. In both cases nothing is clipped: header, RTA
+   and Coaching peek all stay fully visible.
+5. iPhone is unchanged: no upside-down orientation, same layouts, same RTA
+   position rules.
+
 ## Tests
 
 The kit's tests use swift-testing and run on a Mac without a simulator:
@@ -129,7 +152,7 @@ Contract, parity-fixture, and icon checks (Python 3; install `jsonschema`,
 
 ```bash
 python apps/ios/scripts/validate_contracts.py
-(cd apps/ios/scripts && python test_validate_contracts.py && python test_make_spectrum_parity_fixture.py && python test_make_ios_icons.py)
+(cd apps/ios/scripts && python test_validate_contracts.py && python test_make_spectrum_parity_fixture.py && python test_make_ios_icons.py && python test_ios_device_family.py)
 ```
 
 If you change `packages/audio-engine/scripts/spectrum.py`, regenerate the
