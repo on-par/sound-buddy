@@ -10,13 +10,19 @@ import SwiftUI
 /// the picker there). While the link is down the values dim and a status
 /// pill shows; the panel never blanks. While a coaching suggestion is
 /// showing (#1671, Main LR only), a dashed ghost band/curve overlays the
-/// desk's own curve with a copy block beneath the band list — read-only,
-/// nothing is written to the desk. Pure rendering — every decision
-/// lives in `ConsoleTargetModel.eqPanel` (SoundBuddyKit).
+/// desk's own curve with a copy block and an Apply button (#1676) beneath
+/// the band list. Apply writes the ghost band to Main LR through `eqWriter`
+/// — enabled only while an armed writer is injected; otherwise it reads
+/// "Unlock to apply" and sends nothing. Pure rendering — every decision
+/// lives in `ConsoleTargetModel.eqPanel`/`applyCoaching(using:)`
+/// (SoundBuddyKit).
 struct ConsoleEQPanel: View {
     let console: ConsoleTargetModel
     let analyze: AnalyzeModel
     var showsTargetButton = false
+    /// `nil` until the #1666/#1674 adapter supplies a live armed writer —
+    /// until then Apply always reads "Unlock to apply" and sends nothing.
+    var eqWriter: ConsoleEQWriter? = nil
     var onDone: (() -> Void)?
     @State private var pickerOpen = false
 
@@ -79,7 +85,8 @@ struct ConsoleEQPanel: View {
     }
 
     private func valuesBody(state: ConsoleEQPanelState) -> some View {
-        VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
+        let canApply = ConsoleCoachingMapper.isArmed(writer: eqWriter, phase: state.phase)
+        return VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
             EQCurveView(eqPanel: state, analyze: analyze)
             if let hpfText = state.hpfText {
                 Text(hpfText)
@@ -87,8 +94,23 @@ struct ConsoleEQPanel: View {
                     .foregroundStyle(Palette.secondaryText)
                     .accessibilityIdentifier("consoleEQ.hpf")
             }
-            if let coaching = state.coaching {
-                CoachingGhostBlock(coaching: coaching) { console.clearCoaching() }
+            if let coaching = state.coaching, let eq = state.eq {
+                CoachingGhostBlock(
+                    coaching: coaching,
+                    beforeAfter: ConsoleCoachingMapper.applied(coaching, to: eq).beforeAfter,
+                    applyLabel: ConsoleCoachingMapper.applyLabel(isArmed: canApply),
+                    canApply: canApply,
+                    onApply: { try? console.applyCoaching(using: eqWriter) },
+                    onClear: { console.clearCoaching() }
+                )
+            }
+            if console.selected == .mainLR, let applied = console.appliedCoaching {
+                AppliedCoachingBlock(
+                    applied: applied,
+                    undoLabel: ConsoleCoachingMapper.undoLabel(isArmed: canApply),
+                    canUndo: canApply,
+                    onUndo: { try? console.undoAppliedCoaching(using: eqWriter) }
+                )
             }
             VStack(alignment: .leading, spacing: Layout.rowSpacing) {
                 ForEach(state.bandRows, id: \.number) { row in
@@ -171,10 +193,16 @@ private struct BandRow: View {
 
 /// The coaching ghost's copy block (#1671): "Suggestion (not applied)",
 /// the band/amount copy, a retune note when the suggestion reuses a band
-/// already in use, and a Clear button. No edit/apply affordance — ADR-0161
-/// read-only stays intact; applying is a later slice (#1676).
+/// already in use, a before → after line, and Clear/Apply buttons.
+/// `canApply` is only true with an armed writer and a live link (#1676);
+/// while false, `applyLabel` reads "Unlock to apply" and the button is
+/// disabled, so a tap sends nothing.
 private struct CoachingGhostBlock: View {
     let coaching: ConsoleCoachingSuggestion
+    let beforeAfter: String
+    let applyLabel: String
+    let canApply: Bool
+    let onApply: () -> Void
     let onClear: () -> Void
 
     var body: some View {
@@ -199,6 +227,53 @@ private struct CoachingGhostBlock: View {
                     .foregroundStyle(Palette.secondaryText)
                     .accessibilityIdentifier("consoleEQ.ghost.retune")
             }
+            Text(beforeAfter)
+                .font(.caption)
+                .foregroundStyle(Palette.secondaryText)
+                .accessibilityIdentifier("consoleEQ.ghost.beforeAfter")
+            Button(applyLabel, action: onApply)
+                .font(.caption.weight(.semibold))
+                .disabled(!canApply)
+                .accessibilityIdentifier("consoleEQ.ghost.apply")
+        }
+        .padding(Layout.padding)
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: Layout.cornerRadius))
+    }
+
+    private enum Layout {
+        static let spacing: CGFloat = 6
+        static let padding: CGFloat = 10
+        static let cornerRadius: CGFloat = 10
+    }
+}
+
+/// The applied-coaching confirmation row (#1676): the confirmation copy, the
+/// before → after line, and an Undo button that writes that one band back
+/// to its prior value. Shown only while Main LR is selected and something is
+/// applied. `canUndo` is the same armed-writer-and-live-link gate as
+/// Apply's `canApply` (#1676 rework) — while false, `undoLabel` reads
+/// "Unlock to undo" and the button is disabled, so a tap never sends the
+/// `.disarmed` throw into the void.
+private struct AppliedCoachingBlock: View {
+    let applied: ConsoleCoachingApplied
+    let undoLabel: String
+    let canUndo: Bool
+    let onUndo: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Layout.spacing) {
+            Text(applied.confirmation)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color.primary)
+                .accessibilityIdentifier("consoleEQ.applied.confirmation")
+            Text(applied.beforeAfter)
+                .font(.caption)
+                .foregroundStyle(Palette.secondaryText)
+            Button(undoLabel, action: onUndo)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Palette.accent)
+                .disabled(!canUndo)
+                .accessibilityIdentifier("consoleEQ.applied.undo")
         }
         .padding(Layout.padding)
         .background(Palette.surface, in: RoundedRectangle(cornerRadius: Layout.cornerRadius))
