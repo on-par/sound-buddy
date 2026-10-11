@@ -20,12 +20,15 @@ public struct CoachingStabilizer: Equatable, Sendable {
     public static let exitDwellSeconds: TimeInterval = 5.0
     /// Minimum time a tip stays on screen once it appears.
     public static let minimumVisibleSeconds: TimeInterval = 8.0
+    /// What the coach shows while `isOnTarget` is true (#1699).
+    public static let onTargetMessage = "Mix is on target"
 
     public private(set) var visible: Set<Band> = []
     private var offSince: [Band: Date] = [:]
     private var shownAt: [Band: Date] = [:]
     private var recoveringSince: [Band: Date] = [:]
     private var lastTime: Date?
+    private var hasReading = false
 
     public init() {}
 
@@ -37,6 +40,7 @@ public struct CoachingStabilizer: Equatable, Sendable {
             return visible
         }
         lastTime = time
+        hasReading = deltas.values.contains { $0.isFinite }
 
         for band in Band.allCases {
             let magnitude = deltas[band].flatMap { $0.isFinite ? abs($0) : nil }
@@ -86,5 +90,15 @@ public struct CoachingStabilizer: Equatable, Sendable {
     /// Returns the stabilizer to its initial empty state.
     public mutating func reset() {
         self = CoachingStabilizer()
+    }
+
+    /// The calm 'Mix is on target' state (#1699): true when the last accepted
+    /// frame carried a real reading and no band's tip has entered through the
+    /// enter dwell. A band still dwelling above `enterThresholdDb` keeps the
+    /// calm state until its tip actually enters, so the calm state inherits the
+    /// dwell/hysteresis smoothing instead of flickering with raw dynamics.
+    /// Never true while any tip is visible.
+    public var isOnTarget: Bool {
+        hasReading && visible.isEmpty
     }
 }
