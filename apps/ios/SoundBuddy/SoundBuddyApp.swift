@@ -18,10 +18,17 @@ struct SoundBuddyApp: App {
         // (lists and changes it).
         let inputs = MicInputController(session: SystemMicInputSession())
         _micInputs = State(initialValue: inputs)
+        let target = IdealCurveLibrary.liveDefault()
+        var source: LiveAudioSource = MicCapture(inputs: inputs)
+        #if DEBUG
+        if CoachingDemoSource.isRequested(by: ProcessInfo.processInfo.arguments) {
+            source = CoachingDemoSource(target: target)
+        }
+        #endif
         _model = State(initialValue: AnalyzeModel(
             permission: SystemMicPermission(),
-            source: MicCapture(inputs: inputs),
-            target: IdealCurveLibrary.liveDefault()
+            source: source,
+            target: target
         ))
 
         #if DEBUG
@@ -107,6 +114,77 @@ private enum ConsoleDemoSeed {
         case "offline": return .noNetwork
         default: return nil
         }
+    }
+}
+#endif
+
+#if DEBUG
+/// `-coachingDemo`: replaces the mic with a synthetic, fluctuating reading
+/// stream so the coaching stack can be recorded on a simulator with no audio
+/// input (#1700). Bass and Presence trade which is worse every ~1.5 s (the
+/// coach re-sorts them each refresh), Low-mid comes and goes, and every band
+/// jitters a little, so the recording shows cards holding position while
+/// their numbers update. Compiles out of Release, like `-consoleDemo`.
+@MainActor
+private final class CoachingDemoSource: LiveAudioSource {
+    static func isRequested(by arguments: [String]) -> Bool {
+        arguments.contains("-coachingDemo")
+    }
+
+    private static let readingsPerSecond = 20.0
+    private static let baseDb = -30.0
+    private let targets: [Band: Double]
+    private let rtaBands: [Band]
+    private var task: Task<Void, Never>?
+
+    init(target: IdealCurve) {
+        targets = target.bandTargets
+        rtaBands = RTALayout.standard.bands.map { Band.containing(hz: $0.centerHz) ?? .brilliance }
+    }
+
+    func start(onReading: @escaping @MainActor (SpectrumReading) -> Void) throws {
+        stop()
+        let interval = Duration.seconds(1 / Self.readingsPerSecond)
+        let started = Date()
+        task = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: interval)
+                guard let self else { return }
+                onReading(self.reading(at: Date().timeIntervalSince(started)))
+            }
+        }
+    }
+
+    func stop() {
+        task?.cancel()
+        task = nil
+    }
+
+    /// Offsets from the target (dB) at `t` seconds into the demo.
+    private func offsets(at t: Double) -> [Band: Double] {
+        let swap = sin(t * .pi / 1.5) // flips sign every 1.5 s
+        var result: [Band: Double] = [
+            .bass: 7 + 2.5 * swap,
+            .presence: -(7 - 2.5 * swap),
+        ]
+        // Low-mid joins for 4 s out of every 10 s.
+        if t.truncatingRemainder(dividingBy: 10) > 6 {
+            result[.lowMid] = 5 + 0.8 * sin(t * 3.1)
+        }
+        return result
+    }
+
+    private func reading(at t: Double) -> SpectrumReading {
+        let offsets = offsets(at: t)
+        var db: [Band: Double] = [:]
+        for band in Band.allCases {
+            let jitter = 0.4 * sin(t * 7.3 + Double(Band.allCases.firstIndex(of: band) ?? 0))
+            db[band] = Self.baseDb + (targets[band] ?? 0) + (offsets[band] ?? 0) + jitter
+        }
+        let rta = rtaBands.enumerated().map { index, band in
+            (db[band] ?? Self.baseDb) - 6 + 1.5 * sin(t * 11 + Double(index) * 0.7)
+        }
+        return SpectrumReading(bands: BandLevels(db: db), rtaDb: rta, overallDb: -18)
     }
 }
 #endif
