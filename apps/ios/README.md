@@ -162,13 +162,41 @@ testing needs it.
 - The internal and external tester groups you want to ship to, and Beta App
   Review contact information under **TestFlight > Test Information**.
 
+**Signing (#1696):** the script signs **manually** with the existing App
+Store distribution profile and never creates certificates or profiles. The
+defaults live in the `signing` block of `apps/ios/testflight.config.json`:
+
+| Key | Default |
+| --- | --- |
+| `teamId` | `Q7LB49TPBS` |
+| `provisioningProfile` | `Sound Buddy iOS App Store` |
+| `identity` | `Apple Distribution: On PAR Dev, LLC (Q7LB49TPBS)` |
+| `keychain` | `~/Library/Keychains/soundbuddy-build.keychain-db` |
+
+Override them per run with `--team`, `--profile`, `--identity` and
+`--keychain` (or the `DEVELOPMENT_TEAM` and `TESTFLIGHT_SIGNING_KEYCHAIN` env
+vars). The keychain is passed to codesign explicitly
+(`OTHER_CODE_SIGN_FLAGS=--keychain <path>`), and the profile reaches only the
+app target through `SOUNDBUDDY_PROVISIONING_PROFILE` (see `project.yml`; the
+SoundBuddyKit package targets reject a provisioning profile). Before
+archiving, a read-only preflight checks that the identity is in that
+keychain, the profile is installed, and the keychain is **unlocked**. The
+script never unlocks it: unlock the build keychain yourself first, or the run
+stops at the preflight instead of hanging on a codesign password prompt.
+
+Xcode's automatic provisioning updates (`-allowProvisioningUpdates`,
+automatic signing) are off unless you pass `--allow-provisioning-updates`.
+Only use that flag when you mean to let Xcode create or change certificates
+and profiles in the team.
+
 **Env vars:**
-- `DEVELOPMENT_TEAM` — your Apple Developer Team ID.
-- `ASC_KEY_ID`, `ASC_ISSUER_ID` — from the API key you create in **Users and
+- `ASC_KEY_ID`, `ASC_ISSUER_ID`: from the API key you create in **Users and
   Access > Integrations**.
-- `ASC_KEY_PATH` — path to the downloaded `.p8` private key, or
-  `ASC_KEYCHAIN_SERVICE` — the name of a generic-password keychain item on
+- `ASC_KEY_PATH`: path to the downloaded `.p8` private key, or
+  `ASC_KEYCHAIN_SERVICE`: the name of a generic-password keychain item on
   the Mini holding the key, read via `security find-generic-password`.
+- Optional signing overrides: `DEVELOPMENT_TEAM` (team ID) and
+  `TESTFLIGHT_SIGNING_KEYCHAIN` (build keychain path).
 - Optional config overrides: `ASC_BUNDLE_ID`, `ASC_INTERNAL_GROUPS` and
   `ASC_EXTERNAL_GROUPS` (comma-separated group names), and
   `ASC_PROCESSING_TIMEOUT_SECONDS`.
@@ -185,15 +213,26 @@ apps/ios/scripts/testflight.sh [--build-number N] [--notes "What changed"]
 The build number defaults to the latest App Store Connect build for this
 version plus one.
 
-**Dry run** (no writes — prints the resolved app, build and group ids plus
-the planned writes):
+**Dry run** (no writes, no archive, no upload):
+
+```bash
+apps/ios/scripts/testflight.sh --dry-run
+```
+
+prints the signing plan (style, team, profile, identity, keychain, and
+whether provisioning updates are allowed), the exact `xcodebuild archive` and
+`-exportArchive` commands with the API key values redacted, the generated
+`ExportOptions.plist`, and the signing preflight. When the ASC env vars are
+set it then prints the next build number and the read-only distribution plan
+for the latest build already in App Store Connect. The distributor alone:
 
 ```bash
 node apps/ios/scripts/asc-distribute.mjs --dry-run --version 0.1.0 --build-number N
 ```
 
-`testflight.sh --dry-run` does the same against the latest build, skipping
-the archive/export/upload.
+**Local archive, no upload:** `testflight.sh --no-upload --build-number N`
+archives and exports an `.ipa` with the same signing into
+`$TMPDIR/soundbuddy-testflight-export` and skips the upload and distribution.
 
 **Tester groups:** add or rename groups by editing
 `apps/ios/testflight.config.json` (or the `ASC_*_GROUPS` env vars above). A
@@ -217,6 +256,7 @@ the repo) and point `ASC_KEY_PATH`/`ASC_KEYCHAIN_SERVICE` at it, update
 ```bash
 node --test apps/ios/scripts/asc-distribute.test.mjs
 python3 -m unittest discover -s apps/ios/scripts -p 'test_*.py'
+python3 apps/ios/scripts/test_testflight_signing.py   # signing plan + dry-run (#1696)
 ```
 
 ## Tests

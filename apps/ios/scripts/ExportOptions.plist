@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Checked-in export options for `xcodebuild -exportArchive` (#1691).
-  teamID is deliberately absent — testflight.sh injects it into a temp copy
-  via `plutil -replace teamID` so no team identifier is committed.
+  Checked-in export options template for `xcodebuild -exportArchive` (#1691).
+  testflight_signing.py (#1696) writes the real plist from this template:
+  teamID, signingCertificate and provisioningProfiles come from the signing
+  block of testflight.config.json, and destination becomes "export" for a
+  local no-upload run of testflight.sh.
 -->
 <plist version="1.0">
 <dict>
@@ -12,7 +14,7 @@
 	<key>destination</key>
 	<string>upload</string>
 	<key>signingStyle</key>
-	<string>automatic</string>
+	<string>manual</string>
 	<key>manageAppVersionAndBuildNumber</key>
 	<false/>
 	<key>uploadSymbols</key>
