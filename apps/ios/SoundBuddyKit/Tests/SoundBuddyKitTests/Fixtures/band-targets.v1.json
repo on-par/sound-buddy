@@ -1,0 +1,190 @@
+{
+  "schemaVersion": 1,
+  "source": "packages/audio-engine/src/profiles/index.ts bandTargetsFromProfile",
+  "toleranceDb": 0.01,
+  "builtIn": [
+    {
+      "id": "flat",
+      "targets": {
+        "subBass": 0,
+        "bass": 0,
+        "lowMid": 0,
+        "mid": 0,
+        "highMid": 0,
+        "presence": 0,
+        "brilliance": 0
+      }
+    },
+    {
+      "id": "music-fullrange",
+      "targets": {
+        "subBass": 2.961141,
+        "bass": 1.212712,
+        "lowMid": 0.036138,
+        "mid": 0.671191,
+        "highMid": 2.101886,
+        "presence": 2.438596,
+        "brilliance": 0.419044
+      }
+    },
+    {
+      "id": "worship-service",
+      "targets": {
+        "subBass": 16.107808,
+        "bass": 12.876726,
+        "lowMid": 6.495669,
+        "mid": 2.905598,
+        "highMid": -9.23661,
+        "presence": -14.262857,
+        "brilliance": -17.500146
+      }
+    },
+    {
+      "id": "speech-podcast",
+      "targets": {
+        "subBass": -5.895429,
+        "bass": -1.676024,
+        "lowMid": 0.047973,
+        "mid": 1.888844,
+        "highMid": 3.833376,
+        "presence": 2.933789,
+        "brilliance": -0.620819
+      }
+    }
+  ],
+  "edgeCases": [
+    {
+      "name": "sparse-grid",
+      "note": "few points: bands between and beyond them are interpolated and clamped",
+      "freqs": [
+        30,
+        50,
+        100,
+        1000
+      ],
+      "dbOffsets": [
+        2,
+        4,
+        -3,
+        1
+      ],
+      "targets": {
+        "subBass": 2.857584,
+        "bass": -1.65065,
+        "lowMid": -0.723689,
+        "mid": 0.833626,
+        "highMid": 1,
+        "presence": 1,
+        "brilliance": 1
+      }
+    },
+    {
+      "name": "length-mismatch",
+      "note": "freqs and dbOffsets differ in length: treated as flat",
+      "freqs": [
+        100,
+        1000
+      ],
+      "dbOffsets": [
+        3
+      ],
+      "targets": {
+        "subBass": 0,
+        "bass": 0,
+        "lowMid": 0,
+        "mid": 0,
+        "highMid": 0,
+        "presence": 0,
+        "brilliance": 0
+      }
+    },
+    {
+      "name": "empty",
+      "note": "no points: treated as flat",
+      "freqs": [],
+      "dbOffsets": [],
+      "targets": {
+        "subBass": 0,
+        "bass": 0,
+        "lowMid": 0,
+        "mid": 0,
+        "highMid": 0,
+        "presence": 0,
+        "brilliance": 0
+      }
+    },
+    {
+      "name": "non-finite-gap",
+      "note": "a non-finite offset is skipped: neighbours stand in for it",
+      "freqs": [
+        20,
+        100,
+        1000,
+        5000,
+        20000
+      ],
+      "dbOffsets": [
+        6,
+        null,
+        -2,
+        4,
+        null
+      ],
+      "targets": {
+        "subBass": 6,
+        "bass": 1.263334,
+        "lowMid": -2,
+        "mid": -0.943595,
+        "highMid": 2.085713,
+        "presence": 3.807527,
+        "brilliance": 4
+      }
+    },
+    {
+      "name": "all-non-finite",
+      "note": "nothing finite to sample: every band falls back to 0",
+      "freqs": [
+        20,
+        20000
+      ],
+      "dbOffsets": [
+        null,
+        null
+      ],
+      "targets": {
+        "subBass": 0,
+        "bass": 0,
+        "lowMid": 0,
+        "mid": 0,
+        "highMid": 0,
+        "presence": 0,
+        "brilliance": 0
+      }
+    },
+    {
+      "name": "degenerate-grid",
+      "note": "duplicate frequencies hold the lower value instead of producing NaN",
+      "freqs": [
+        0,
+        100,
+        100,
+        20000
+      ],
+      "dbOffsets": [
+        3,
+        3,
+        9,
+        9
+      ],
+      "targets": {
+        "subBass": 3,
+        "bass": 8.253366,
+        "lowMid": 9,
+        "mid": 9,
+        "highMid": 9,
+        "presence": 9,
+        "brilliance": 9
+      }
+    }
+  ]
+}

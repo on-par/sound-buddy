@@ -55,17 +55,20 @@ private func roundTrip<T: Codable>(_ value: T) throws -> T {
         #expect(flat.dbOffsets.allSatisfy { $0 == 0 })
     }
 
-    @Test func bandTargetsAverageTheOffsetsInsideEachBand() {
+    /// The full reduction is pinned against the Mac in
+    /// IdealCurveBandTargetsTests (#1724); this keeps the contract-level
+    /// behaviour readable: a band past the last point clamps to the end value
+    /// instead of falling back to a neutral 0 dB like the old grid-point mean.
+    @Test func bandTargetsInterpolateAndClampLikeTheMac() {
         let curve = IdealCurve(
             id: "t", label: "T", description: "",
             freqs: [30, 50, 100, 1000],
             dbOffsets: [2, 4, -3, 1]
         )
         let targets = curve.bandTargets
-        #expect(targets[.subBass] == 3)
-        #expect(targets[.bass] == -3)
-        #expect(targets[.mid] == 1)
-        #expect(targets[.presence] == 0, "a band with no grid points has a neutral target")
+        #expect(abs(targets[.subBass]! - 2.857584) < 0.01)
+        #expect(abs(targets[.bass]! - -1.65065) < 0.01)
+        #expect(abs(targets[.presence]! - 1) < 1e-9, "past the last point the curve holds its end value")
     }
 }
 
