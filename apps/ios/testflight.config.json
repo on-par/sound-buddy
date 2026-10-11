@@ -3,5 +3,11 @@
   "internalGroups": ["Internal Testers"],
   "externalGroups": ["External Testers"],
   "processingTimeoutSeconds": 1800,
-  "pollIntervalSeconds": 30
+  "pollIntervalSeconds": 30,
+  "signing": {
+    "teamId": "Q7LB49TPBS",
+    "provisioningProfile": "Sound Buddy iOS App Store",
+    "identity": "Apple Distribution: On PAR Dev, LLC (Q7LB49TPBS)",
+    "keychain": "~/Library/Keychains/soundbuddy-build.keychain-db"
+  }
 }
