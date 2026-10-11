@@ -70,4 +70,119 @@ private final class Recorder {
         #expect(recorder.effects.isEmpty)
         #expect(model.phase == .idle)
     }
+
+    @Test func armReturnsNilUnlessLinkUp() {
+        let recorder = Recorder()
+        let model = ConsoleSessionModel(now: { recorder.clock }, perform: recorder.perform)
+
+        #expect(model.arm() == nil)
+        #expect(model.isArmed == false)
+
+        model.send(.connect(foh))
+        #expect(model.phase == .connecting)
+        #expect(model.arm() == nil)
+        #expect(model.isArmed == false)
+
+        model.send(.identityReceived(foh))
+        #expect(model.phase == .syncing)
+        #expect(model.arm() == nil)
+        #expect(model.isArmed == false)
+
+        model.send(.syncCompleted)
+        #expect(model.phase == .live)
+        #expect(model.arm() != nil)
+        #expect(model.isArmed == true)
+    }
+
+    @Test func eqWriterIsNilWhenDisarmedAndSameInstanceOnReArm() {
+        let recorder = Recorder()
+        let model = ConsoleSessionModel(now: { recorder.clock }, perform: recorder.perform)
+
+        #expect(model.eqWriter == nil)
+
+        model.send(.connect(foh))
+        model.send(.identityReceived(foh))
+        model.send(.syncCompleted)
+
+        let writer1 = model.arm()
+        #expect(writer1 != nil)
+        #expect(model.eqWriter === writer1)
+
+        model.disarm()
+        #expect(model.eqWriter == nil)
+        #expect(model.isArmed == false)
+
+        let writer2 = model.arm()
+        #expect(writer2 === writer1)
+        #expect(model.eqWriter === writer2)
+    }
+
+    @Test func disarmedSessionEmitsNoEQSetDatagram() throws {
+        let capture = EQDatagramCapture()
+        let model = ConsoleSessionModel(now: { capture.clock }, perform: capture.perform, sendDatagram: capture.sendDatagram)
+
+        model.send(.connect(foh))
+        model.send(.identityReceived(foh))
+        model.send(.syncCompleted)
+        model.send(.statusReply)
+        model.send(.pushReceived)
+        model.send(.targetOpened("/ch/01/eq"))
+        for path in ConsoleEQTarget.channel(1).nodeQueryPaths {
+            capture.encodeRead(OSCMessage("/node", [.string(path)]))
+        }
+
+        capture.clock += ConsoleSessionTiming.statusInterval
+        model.send(.tick)
+        capture.clock += ConsoleSessionTiming.xremoteRenewInterval
+        model.send(.tick)
+        capture.clock += ConsoleSessionTiming.targetResyncInterval
+        model.send(.tick)
+
+        model.send(.enteredBackground)
+        model.send(.enteredForeground)
+        model.send(.networkLost)
+        model.send(.networkAvailable)
+        model.send(.disconnect)
+
+        #expect(model.eqWriter == nil)
+        #expect(capture.sentDatagrams.isEmpty)
+        #expect(!capture.readDatagrams.isEmpty)
+
+        for data in capture.readDatagrams {
+            let decoded = try OSCCodec.decode(data)
+            #expect(ConsoleEQWriteAllowlist.isEQSet(decoded) == false, "\(decoded.address)")
+        }
+    }
+}
+
+/// Encodes every read-path message an effect implies (mirroring what the
+/// #1666 adapter would send) and separately captures whatever the model
+/// hands to `sendDatagram` — the only place an EQ-set datagram could appear.
+private final class EQDatagramCapture {
+    var clock: TimeInterval = 0
+    var sentDatagrams: [Data] = []
+    var readDatagrams: [Data] = []
+
+    func sendDatagram(_ data: Data) {
+        sentDatagrams.append(data)
+    }
+
+    func encodeRead(_ message: OSCMessage) {
+        guard let bytes = try? OSCCodec.encode(message) else { return }
+        readDatagrams.append(bytes)
+    }
+
+    func perform(_ effect: ConsoleSessionEffect) {
+        for message in ConsoleTargetCatalog.walkMessages(for: effect) {
+            encodeRead(message)
+        }
+        switch effect {
+        case .sendXInfo: encodeRead(OSCMessage("/xinfo"))
+        case .sendStatus: encodeRead(OSCMessage("/status"))
+        case .sendXRemote: encodeRead(OSCMessage("/xremote"))
+        case let .resyncTarget(path): encodeRead(OSCMessage("/node", [.string(path)]))
+        case .openSocket, .closeSocket, .requestFullResync, .returnToConnectFlow:
+            break
+        }
+    }
 }

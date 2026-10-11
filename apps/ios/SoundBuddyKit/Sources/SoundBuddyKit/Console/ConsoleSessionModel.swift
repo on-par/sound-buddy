@@ -9,12 +9,28 @@ import Observation
 public final class ConsoleSessionModel {
     public private(set) var state: ConsoleSessionState = .idle
 
+    /// Whether `eqWriter` currently hands out the session's `ConsoleEQWriter`
+    /// (ADR-0161 §3's explicit arm/disarm). `false` both before the first
+    /// `arm()` and after any `disarm()`.
+    public private(set) var isArmed = false
+
     private let now: () -> TimeInterval
     private let perform: (ConsoleSessionEffect) -> Void
+    private let sendDatagram: (Data) -> Void
 
-    public init(now: @escaping () -> TimeInterval, perform: @escaping (ConsoleSessionEffect) -> Void) {
+    /// One writer per model, created on the first `arm()` and reused on
+    /// every re-arm, so a target's pre-session snapshot survives a
+    /// disarm/re-arm cycle.
+    private var sessionWriter: ConsoleEQWriter?
+
+    public init(
+        now: @escaping () -> TimeInterval,
+        perform: @escaping (ConsoleSessionEffect) -> Void,
+        sendDatagram: @escaping (Data) -> Void = { _ in }
+    ) {
         self.now = now
         self.perform = perform
+        self.sendDatagram = sendDatagram
     }
 
     public var phase: ConsoleSessionPhase { state.phase }
@@ -31,4 +47,35 @@ public final class ConsoleSessionModel {
             perform(effect)
         }
     }
+
+    /// Arms the session for EQ writes. Returns `nil`, and leaves `isArmed`
+    /// false, unless the link is currently up (`phase.isLinkUp`). The auto-
+    /// relock triggers (ADR-0161 §3: idle timeout, background, reconnect,
+    /// identity change, disconnect) are #1674's job, calling `disarm()`;
+    /// this slice only exposes the explicit toggle. `ConsoleEQWriter` itself
+    /// re-checks `isArmed` on every submit and every pump, so a writer
+    /// reference retained across a later `disarm()` cannot write.
+    @discardableResult
+    public func arm() -> ConsoleEQWriter? {
+        guard state.phase.isLinkUp else { return nil }
+        isArmed = true
+        if sessionWriter == nil {
+            sessionWriter = ConsoleEQWriter(
+                now: now,
+                isArmed: { [weak self] in self?.isArmed ?? false },
+                send: sendDatagram
+            )
+        }
+        return sessionWriter
+    }
+
+    /// Disarms the session: `eqWriter` goes back to `nil`, and the writer
+    /// itself stops sending (it re-checks `isArmed` on its own).
+    public func disarm() {
+        isArmed = false
+    }
+
+    /// The session's `ConsoleEQWriter`, or `nil` whenever `isArmed` is
+    /// false.
+    public var eqWriter: ConsoleEQWriter? { isArmed ? sessionWriter : nil }
 }
