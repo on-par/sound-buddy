@@ -63,7 +63,10 @@ private func feed(
 
         let result = stabilizer.ingest([.mid: 0, .bass: 0], at: t0.addingTimeInterval(5.3))
         #expect(result.isEmpty, "no tip should linger through minimumVisibleSeconds or the exit dwell")
-        #expect(stabilizer.isOnTarget, "a real on-target reading under the new target should report calm")
+        #expect(!stabilizer.isOnTarget, "one reading under the new target is not yet enough evidence for calm")
+
+        _ = stabilizer.ingest([.mid: 0, .bass: 0], at: t0.addingTimeInterval(5.3 + CoachingStabilizer.calmDwellSeconds))
+        #expect(stabilizer.isOnTarget, "a sustained on-target run under the new target should report calm")
     }
 
     @Test func tipAfterSwitchNeedsFullEnterDwell() {

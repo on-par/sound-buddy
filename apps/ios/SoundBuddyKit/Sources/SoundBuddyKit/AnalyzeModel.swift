@@ -630,6 +630,9 @@ public final class AnalyzeModel {
         let smoothed = deviations.isEmpty ? [:] : deltaSmoother.ingest(deviations, at: time)
         let previouslyVisible = stabilizer.visible
         let visible = stabilizer.ingest(smoothed, at: time)
+        // The calm state follows the stabilizer every reading, not the card
+        // refresh, so calm never lingers while a band dwells (#1773).
+        defer { isMixOnTarget = stabilizer.isOnTarget && coaching.isEmpty }
         if visible == previouslyVisible, let last = lastCoachingAt,
            time.timeIntervalSince(last) < Self.coachingRefreshSeconds {
             return
@@ -639,7 +642,6 @@ public final class AnalyzeModel {
         coaching = coachingCards.update(with: coach.events(forDeviations: smoothed, bands: visible, sessionTime: elapsed))
         let markers = coach.problemMarkers(forDeviations: smoothed, bands: visible)
         problemMarkers = coaching.compactMap { card in markers.first { $0.band == card.band } }
-        isMixOnTarget = stabilizer.isOnTarget && coaching.isEmpty
     }
 
     /// Reconciles the drawn/coaching target with `programMode` while the
