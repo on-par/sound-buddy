@@ -30,7 +30,7 @@ class MakeRtaDisplayFixtureTest(unittest.TestCase):
 
     def test_spec_constants(self) -> None:
         constants = mk.build_fixture()["constants"]
-        self.assertEqual(constants["ballistics"]["medium"], {"attackTauS": 0.05, "releaseTauS": 0.4})
+        self.assertEqual(constants["ballistics"]["medium"], {"attackTauS": 0.1, "releaseTauS": 1.0})
         self.assertEqual(constants["ballistics"]["slow"], {"attackTauS": 0.25, "releaseTauS": 1.5})
         self.assertEqual(constants["peakHoldS"], 1.5)
         self.assertEqual(constants["peakReleaseDbPerS"], 20.0)
@@ -55,13 +55,22 @@ class MakeRtaDisplayFixtureTest(unittest.TestCase):
         self.assertAlmostEqual(held["relativeDb"][0], 6.0, delta=0.1)
         self.assertEqual(held["tone"][0], "over")
 
-    def test_ac2_release_decays_63_percent_of_the_power_step_in_tau_not_16_db_linear(self) -> None:
-        expected = case("medium-rise-to-plus-six-then-drop-twenty")["expected"]
-        after = expected[20 + 8]["levelsDb"][0]  # 8 frames x 0.05 s = 0.4 s = release tau
+    def test_ac2_release_decays_63_percent_of_the_power_step_in_tau_not_linear(self) -> None:
+        c = case("medium-rise-to-plus-six-then-drop-twenty")
+        tau_frames = round(mk.BALLISTICS["medium"]["releaseTauS"] / 0.05)  # 20 x 0.05 s = 1.0 s
+        self.assertGreaterEqual(len(c["frames"]), 21 + tau_frames, "the drop runs at least one tau")
+        after = c["expected"][20 + tau_frames]["levelsDb"][0]
         p_old, p_new = mk.db_to_power(-32.0), mk.db_to_power(-52.0)
         remaining = (mk.db_to_power(after) - p_new) / (p_old - p_new)
         self.assertAlmostEqual(remaining, math.exp(-1), delta=0.002)
-        self.assertGreater(after, -32.0 - 16.0 + 5, "not the old linear 40 dB/s release")
+        self.assertGreater(after, -40.0, "not the old linear 40 dB/s release")
+
+    def test_1772_medium_is_clearly_smoother_than_build_14_and_quicker_than_slow(self) -> None:
+        medium, slow = mk.BALLISTICS["medium"], mk.BALLISTICS["slow"]
+        self.assertGreaterEqual(medium["attackTauS"], 2 * 0.05)
+        self.assertGreaterEqual(medium["releaseTauS"], 2 * 0.4)
+        self.assertLess(medium["attackTauS"], slow["attackTauS"])
+        self.assertLess(medium["releaseTauS"], slow["releaseTauS"])
 
     def test_ac3_a_spike_peak_holds_one_and_a_half_seconds_then_falls_twenty_db_per_second(self) -> None:
         c = case("peak-hold-after-one-frame-spike")

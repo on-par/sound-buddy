@@ -4,13 +4,15 @@ import SwiftUI
 /// Console-style real-time analyzer: ~60 log-spaced 1/6-octave bars from
 /// 20 Hz to 20 kHz (numeric ticks only, no unit title, #1610), drawn per the
 /// shared RTA display spec (#1707, docs/rta-display-spec.md):
-/// - **Relative** (default): each bar is the band's deviation from the
-///   level-matched target, growing up or down from a solid 0 line on a
-///   ±15 dB grid; gray within ±3 dB, amber over, cyan under; values past
-///   ±15 clamp with a cap marker.
-/// - **Absolute**: dBFS bars on −96…0 with the dashed level-matched target
-///   line, warm lows and cool mids/highs (RTAColor). Target editing always
-///   draws Absolute.
+/// - **Absolute** (default, #1772): dBFS bars on −96…0 with the dashed
+///   bandwidth-corrected target line level-matched to those same bars, warm
+///   lows and cool mids/highs (RTAColor). Listening and target editing draw
+///   this same picture.
+/// - **Relative** (Settings opt-in): each bar is the band's deviation from
+///   the level-matched target, growing up or down from a solid 0 line on a
+///   ±15 dB grid, captioned "vs target, 0 = target"; gray within ±3 dB,
+///   amber over, cyan under; values past ±15 clamp with a cap marker.
+///   Target editing always draws Absolute.
 /// Bars are semi-transparent; peak ticks hold then fall in both views. When
 /// showsProblemMarkers is on, pulsing amber/cyan regions hug the target (the
 /// 0 line in Relative) over each coaching problem band (#1553), text-free.
@@ -51,9 +53,16 @@ struct RTAView: View {
                 targetOffsets: targetOffsets,
                 ballistics: ballistics
             )
+            // #1772: outside editing the line is level-matched to these very
+            // bars, so Absolute agrees with Relative to the dB. Editing keeps
+            // the model's line, whose shift freezes under a dragged handle.
+            let line = isEditingTarget ? target : target.flatMap { _ in display.targetLine(offsets: targetOffsets) }
             Canvas { context, size in
                 let plot = plotRect(in: size)
                 drawGrid(in: &context, plot: plot, mode: viewMode)
+                if let caption = viewMode.caption {
+                    drawCaption(caption, in: &context, plot: plot)
+                }
                 let pulse = RTAProblemMarkers.pulseOpacity(atSeconds: timeline.date.timeIntervalSinceReferenceDate)
                 switch viewMode {
                 case .relative:
@@ -67,11 +76,11 @@ struct RTAView: View {
                     }
                 case .absolute:
                     drawAbsoluteBars(in: &context, plot: plot, layout: layout, display: display)
-                    if let target, target.count == layout.bands.count {
+                    if let line, line.count == layout.bands.count {
                         if !spans.isEmpty {
-                            drawProblemMarkers(in: &context, plot: plot, layout: layout, target: target, spans: spans, opacity: pulse)
+                            drawProblemMarkers(in: &context, plot: plot, layout: layout, target: line, spans: spans, opacity: pulse)
                         }
-                        drawTarget(in: &context, plot: plot, layout: layout, target: target, isEditing: isEditingTarget)
+                        drawTarget(in: &context, plot: plot, layout: layout, target: line, isEditing: isEditingTarget)
                     }
                 }
             }
@@ -189,6 +198,17 @@ struct RTAView: View {
                 anchor: .top
             )
         }
+    }
+
+    /// Relative's small scale caption, in the top inset above the plot's
+    /// right edge, so its 0 line can't be read as 0 dBFS (#1772).
+    private func drawCaption(_ caption: String, in context: inout GraphicsContext, plot: CGRect) {
+        context.draw(
+            Text(caption).font(.system(size: RTAMetrics.labelFontSize))
+                .foregroundStyle(RTAPalette.label),
+            at: CGPoint(x: plot.maxX, y: plot.minY - RTAMetrics.topInset / 2),
+            anchor: .trailing
+        )
     }
 
     private func barRect(for band: RTABand, in plot: CGRect) -> (left: CGFloat, width: CGFloat) {

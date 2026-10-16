@@ -126,7 +126,7 @@ private func loadFixture() throws -> DisplayFixture {
 
 @Suite struct RTADisplayConstantsTests {
     @Test func ballisticsAreTheSpecTimeConstants() {
-        #expect(RTABallistics.medium == RTABallistics(attackTauSeconds: 0.05, releaseTauSeconds: 0.4))
+        #expect(RTABallistics.medium == RTABallistics(attackTauSeconds: 0.1, releaseTauSeconds: 1.0))
         #expect(RTABallistics.slow == RTABallistics(attackTauSeconds: 0.25, releaseTauSeconds: 1.5))
         #expect(RTABallisticsMode.defaultValue == .medium)
         #expect(RTABallisticsMode.medium.ballistics == .medium)
@@ -171,9 +171,22 @@ private func loadFixture() throws -> DisplayFixture {
         #expect(RTADeviationTone(deviationDb: .nan) == .neutral)
     }
 
-    @Test func viewModeDefaultsToRelativeAndEditingForcesAbsolute() {
-        #expect(RTAViewMode.defaultValue == .relative)
-        #expect(RTAViewMode.allCases == [.relative, .absolute])
+    /// #1772: Medium was too jerky on live FOH and pink noise (build 14's
+    /// 0.05 s / 0.4 s). It now sits between that and Slow: both taus at
+    /// least doubled, still quicker than Slow's 0.25 s / 1.5 s.
+    @Test func mediumIsClearlySmootherThanBuild14ButStillQuickerThanSlow() {
+        let build14 = RTABallistics(attackTauSeconds: 0.05, releaseTauSeconds: 0.4)
+        #expect(RTABallistics.medium.attackTauSeconds >= 2 * build14.attackTauSeconds)
+        #expect(RTABallistics.medium.releaseTauSeconds >= 2 * build14.releaseTauSeconds)
+        #expect(RTABallistics.medium.attackTauSeconds < RTABallistics.slow.attackTauSeconds)
+        #expect(RTABallistics.medium.releaseTauSeconds < RTABallistics.slow.releaseTauSeconds)
+    }
+
+    /// #1772: Absolute (with the target line) is the default; Relative is a
+    /// Settings opt-in, listed second.
+    @Test func viewModeDefaultsToAbsoluteAndEditingForcesAbsolute() {
+        #expect(RTAViewMode.defaultValue == .absolute)
+        #expect(RTAViewMode.allCases == [.absolute, .relative])
         #expect(RTAViewMode(rawValue: "relative") == .relative)
         #expect(RTAViewMode(rawValue: "absolute") == .absolute)
         #expect(RTAViewMode.defaultsKey != RTABallisticsMode.defaultsKey)
@@ -182,6 +195,70 @@ private func loadFixture() throws -> DisplayFixture {
         #expect(RTAViewMode.effective(requested: .relative, isEditingTarget: false) == .relative)
         #expect(RTAViewMode.effective(requested: .relative, isEditingTarget: true) == .absolute)
         #expect(RTAViewMode.effective(requested: .absolute, isEditingTarget: false) == .absolute)
+        #expect(RTAViewMode.effective(requested: .absolute, isEditingTarget: true) == .absolute)
+    }
+
+    /// #1772: Listening and edit mode draw the same RTA by default, so
+    /// tapping Edit curve (or Done) never flips the scale.
+    @Test func theDefaultViewDoesNotFlipScaleWhenEditingStartsOrEnds() {
+        let listening = RTAViewMode.effective(requested: .defaultValue, isEditingTarget: false)
+        let editing = RTAViewMode.effective(requested: .defaultValue, isEditingTarget: true)
+        #expect(listening == editing)
+        #expect(listening.scale == .absolute)
+    }
+
+    /// #1772: only Relative carries the small "vs target" caption; Absolute
+    /// needs none, its dashed line is the target.
+    @Test func onlyRelativeCarriesTheVsTargetCaption() {
+        #expect(RTAViewMode.relative.caption == "vs target, 0 = target")
+        #expect(RTAViewMode.absolute.caption == nil)
+    }
+}
+
+// MARK: One-time view-mode migration (#1772)
+
+@Suite struct RTAViewModeMigrationTests {
+    private func defaults() -> UserDefaults {
+        let suite = "RTAViewModeMigrationTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        return defaults
+    }
+
+    @Test func aStoredRelativeChoiceIsResetToAbsoluteOnce() {
+        let store = defaults()
+        store.set(RTAViewMode.relative.rawValue, forKey: RTAViewMode.defaultsKey)
+        #expect(RTAViewMode.migrateToAbsoluteDefault(in: store))
+        #expect(store.string(forKey: RTAViewMode.defaultsKey) == RTAViewMode.absolute.rawValue)
+        #expect(store.bool(forKey: RTAViewMode.absoluteDefaultMigrationKey))
+    }
+
+    @Test func choosingRelativeAgainAfterTheMigrationSticks() {
+        let store = defaults()
+        store.set(RTAViewMode.relative.rawValue, forKey: RTAViewMode.defaultsKey)
+        RTAViewMode.migrateToAbsoluteDefault(in: store)
+        store.set(RTAViewMode.relative.rawValue, forKey: RTAViewMode.defaultsKey)
+        #expect(!RTAViewMode.migrateToAbsoluteDefault(in: store), "runs once only")
+        #expect(store.string(forKey: RTAViewMode.defaultsKey) == RTAViewMode.relative.rawValue)
+    }
+
+    @Test func aFreshInstallStoresNothingButTheFlag() {
+        let store = defaults()
+        #expect(!RTAViewMode.migrateToAbsoluteDefault(in: store))
+        #expect(store.object(forKey: RTAViewMode.defaultsKey) == nil, "the Absolute default applies")
+        #expect(store.bool(forKey: RTAViewMode.absoluteDefaultMigrationKey))
+    }
+
+    @Test func aStoredAbsoluteChoiceIsLeftAlone() {
+        let store = defaults()
+        store.set(RTAViewMode.absolute.rawValue, forKey: RTAViewMode.defaultsKey)
+        #expect(!RTAViewMode.migrateToAbsoluteDefault(in: store))
+        #expect(store.string(forKey: RTAViewMode.defaultsKey) == RTAViewMode.absolute.rawValue)
+    }
+
+    @Test func theMigrationFlagHasItsOwnKey() {
+        #expect(RTAViewMode.absoluteDefaultMigrationKey != RTAViewMode.defaultsKey)
+        #expect(RTAViewMode.absoluteDefaultMigrationKey != RTABallisticsMode.defaultsKey)
     }
 }
 
@@ -219,21 +296,23 @@ private func loadFixture() throws -> DisplayFixture {
         #expect(RTAScale.relative.clamp(model.deviations[0]).overflow == nil)
     }
 
-    /// AC2, second half: after a 20 dB drop, one release tau (0.4 s) later
-    /// the bar has decayed ~63% of the step in power, not 16 dB linear.
+    /// AC2, second half: after a 20 dB drop, one release tau (1.0 s, #1772)
+    /// later the bar has decayed ~63% of the step in power, not 40 dB linear.
     @Test func afterATwentyDbDropTheBarDecaysSixtyThreePercentOfThePowerStepInOneTau() {
         var model = RTADisplayModel()
+        let frame = 0.05
+        let frames = Int((RTABallistics.medium.releaseTauSeconds / frame).rounded())
         model.step(input: [-32], targetOffsets: nil, dt: 0)
-        for _ in 0..<8 { model.step(input: [-52], targetOffsets: nil, dt: 0.05) }
+        for _ in 0..<frames { model.step(input: [-52], targetOffsets: nil, dt: frame) }
         let remaining = (power(model.levels[0]) - power(-52)) / (power(-32) - power(-52))
         #expect(abs(remaining - exp(-1)) < 0.002)
         #expect(model.levels[0] > -40, "not the old linear 40 dB/s release (-48 dB)")
     }
 
-    @Test func attackUsesTheFiftyMillisecondTau() {
+    @Test func attackUsesTheMediumAttackTau() {
         var model = RTADisplayModel()
         model.step(input: [-60], targetOffsets: nil, dt: 0)
-        model.step(input: [-20], targetOffsets: nil, dt: 0.05)
+        model.step(input: [-20], targetOffsets: nil, dt: RTABallistics.medium.attackTauSeconds)
         let risen = (power(model.levels[0]) - power(-60)) / (power(-20) - power(-60))
         #expect(abs(risen - (1 - exp(-1))) < 1e-9)
     }
@@ -273,7 +352,9 @@ private func loadFixture() throws -> DisplayFixture {
             elapsed += frame
             #expect(model.peaks[0] == peak, "held at \(elapsed) s")
         }
-        while elapsed < RTAPeakHold.holdSeconds + 0.5 {
+        // A quarter second past the hold: long enough to see the fall, short
+        // enough that the 1 s Medium release (#1772) keeps the bar under it.
+        while elapsed < RTAPeakHold.holdSeconds + 0.25 {
             model.step(input: [-40], targetOffsets: nil, dt: frame)
             elapsed += frame
         }
@@ -298,6 +379,31 @@ private func loadFixture() throws -> DisplayFixture {
         for d in model.deviations { #expect(abs(d) < 1e-9, "a mix on the target's shape sits on the 0 line") }
         model.step(input: [-30, -40, -50], targetOffsets: [0, 0, 0], dt: 0.05)
         #expect(abs(model.deviations[0] - 10) < 1e-9 && abs(model.deviations[2] + 10) < 1e-9)
+    }
+
+    /// #1772 accuracy: the Absolute target line is level-matched against the
+    /// very bars it is drawn over, with the same (bandwidth-corrected)
+    /// offsets, so Absolute and Relative are one picture: each deviation is
+    /// exactly bar minus line.
+    @Test func theTargetLineIsLevelMatchedToTheseBarsAndAgreesWithTheDeviations() throws {
+        var model = RTADisplayModel()
+        let offsets = [6.0, 3, 0, -3, -6]
+        model.step(input: [-20, -40, -50, -70, -90], targetOffsets: offsets, dt: 0)
+        model.step(input: [-15, -40, -55, -75, -85], targetOffsets: offsets, dt: 0.05)
+        let line = try #require(model.targetLine(offsets: offsets))
+        #expect(line.count == model.levels.count)
+        let shift = try #require(RTATarget.levelShift(offsets: offsets, measured: model.levels))
+        for i in line.indices {
+            #expect(abs(line[i] - (offsets[i] + shift)) < 1e-9)
+            #expect(abs(model.deviations[i] - (model.levels[i] - line[i])) < 1e-9)
+        }
+    }
+
+    @Test func thereIsNoTargetLineBeforeAnyBarsOrForAMismatchedTarget() {
+        var model = RTADisplayModel()
+        #expect(model.targetLine(offsets: []) == nil)
+        model.step(input: [-30, -50], targetOffsets: nil, dt: 0)
+        #expect(model.targetLine(offsets: [1, 2, 3]) == nil)
     }
 
     @Test func aMismatchedTargetFallsBackToTheMeasuredMean() {

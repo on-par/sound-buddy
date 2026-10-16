@@ -33,7 +33,7 @@ DB_DECIMALS = 6
 # Spec constants (docs/rta-display-spec.md). Mirrored by RTABallistics,
 # RTAPeakHold, RTAScale.relative/.absolute and RTADeviationTone in Swift.
 BALLISTICS = {
-    "medium": {"attackTauS": 0.05, "releaseTauS": 0.4},
+    "medium": {"attackTauS": 0.1, "releaseTauS": 1.0},
     "slow": {"attackTauS": 0.25, "releaseTauS": 1.5},
 }
 PEAK_HOLD_S = 1.5
@@ -157,14 +157,14 @@ def cases() -> list[dict]:
         {
             # AC2: band 0 rises 8 dB over three steady bands, which puts it
             # +6 dB over the level-matched flat target (dev = 8 * 3/4), held
-            # 1 s; then it drops 20 dB and releases with tau 0.4 s.
+            # 1 s; then it drops 20 dB and releases with tau 1.0 s (#1772).
             "name": "medium-rise-to-plus-six-then-drop-twenty",
             "ballistics": "medium",
             "bandsHz": [250.0, 500.0, 1000.0, 2000.0],
             "targetOffsetsDb": flat4,
             "frames": frames(1, 0.0, [-40.0] * 4)
             + frames(20, 0.05, [-32.0, -40.0, -40.0, -40.0])
-            + frames(16, 0.05, [-52.0, -40.0, -40.0, -40.0]),
+            + frames(30, 0.05, [-52.0, -40.0, -40.0, -40.0]),
         },
         {
             # AC3: a one-frame spike; the peak holds 1.5 s then falls 20 dB/s.

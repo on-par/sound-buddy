@@ -15,6 +15,9 @@ struct SoundBuddyApp: App {
     @State private var consoleConsent: ConsoleConsentStore
 
     init() {
+        // #1772: Absolute became the default; reset build 14's stored
+        // Relative once, before any @AppStorage reads it.
+        RTAViewMode.migrateToAbsoluteDefault(in: .standard)
         // One controller shared by capture (applies the choice) and Settings
         // (lists and changes it).
         let inputs = MicInputController(session: SystemMicInputSession())
