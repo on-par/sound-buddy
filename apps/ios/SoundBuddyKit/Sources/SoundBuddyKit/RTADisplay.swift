@@ -16,8 +16,10 @@ public struct RTABallistics: Equatable, Sendable {
         self.releaseTauSeconds = releaseTauSeconds
     }
 
-    /// The default: fast attack so transients still show peaks, 0.4 s release.
-    public static let medium = RTABallistics(attackTauSeconds: 0.05, releaseTauSeconds: 0.4)
+    /// The default: quick enough attack that transients still show, and a
+    /// 1 s release so bars glide on live FOH and pink noise. Build 14's
+    /// 0.05 s / 0.4 s read as jerky (#1772).
+    public static let medium = RTABallistics(attackTauSeconds: 0.1, releaseTauSeconds: 1.0)
     /// The optional calmer setting.
     public static let slow = RTABallistics(attackTauSeconds: 0.25, releaseTauSeconds: 1.5)
 
@@ -52,14 +54,18 @@ public enum RTABallisticsMode: String, CaseIterable, Sendable {
     }
 }
 
-/// Which RTA view is drawn, persisted with @AppStorage. Relative is the
-/// default: bars are deviations from the level-matched target.
+/// Which RTA view is drawn, persisted with @AppStorage. Absolute is the
+/// default (#1772): dBFS bars with the bandwidth-corrected target line drawn
+/// over them, the same picture in Listening and edit mode. Relative
+/// (deviations from the level-matched target) is a Settings opt-in.
 public enum RTAViewMode: String, CaseIterable, Sendable {
-    case relative
     case absolute
+    case relative
 
     public static let defaultsKey = "analyze.rtaViewMode"
-    public static let defaultValue = RTAViewMode.relative
+    public static let defaultValue = RTAViewMode.absolute
+    /// Set once `migrateToAbsoluteDefault(in:)` has run.
+    public static let absoluteDefaultMigrationKey = "analyze.rtaViewMode.absoluteDefaultMigrated"
 
     public var scale: RTAScale {
         switch self {
@@ -75,11 +81,35 @@ public enum RTAViewMode: String, CaseIterable, Sendable {
         }
     }
 
+    /// The small scale caption, drawn only in Relative so its 0 line can't
+    /// be read as 0 dBFS. Absolute needs none: its dashed line is the target.
+    public var caption: String? {
+        switch self {
+        case .relative: "vs target, 0 = target"
+        case .absolute: nil
+        }
+    }
+
     /// Target editing always draws Absolute: the handles reshape the dashed
     /// target over the dBFS bars, and a Relative view would move its own 0
-    /// line under the finger.
+    /// line under the finger. With the Absolute default, entering or leaving
+    /// edit never changes the scale.
     public static func effective(requested: RTAViewMode, isEditingTarget: Bool) -> RTAViewMode {
         isEditingTarget ? .absolute : requested
+    }
+
+    /// One-time reset (#1772): Relative was the default through build 14,
+    /// so a stored "relative" is almost always that old default rather than
+    /// a choice. The first launch with this code resets it to Absolute and
+    /// records `absoluteDefaultMigrationKey`; a Relative chosen in Settings
+    /// after that sticks. Returns whether the stored choice changed.
+    @discardableResult
+    public static func migrateToAbsoluteDefault(in defaults: UserDefaults) -> Bool {
+        guard !defaults.bool(forKey: absoluteDefaultMigrationKey) else { return false }
+        defaults.set(true, forKey: absoluteDefaultMigrationKey)
+        guard defaults.string(forKey: defaultsKey) == RTAViewMode.relative.rawValue else { return false }
+        defaults.set(RTAViewMode.absolute.rawValue, forKey: defaultsKey)
+        return true
     }
 }
 
@@ -204,6 +234,14 @@ public struct RTADisplayModel: Equatable, Sendable {
 
     public mutating func reset() {
         self = RTADisplayModel(ballistics: ballistics)
+    }
+
+    /// The Absolute view's target line: `offsets` (the same bandwidth-
+    /// corrected display offsets `step` takes) level-matched to these bars,
+    /// so each deviation is exactly bar minus line (#1772). `nil` before any
+    /// bars or for a mismatched band count.
+    public func targetLine(offsets: [Double]) -> [Double]? {
+        RTATarget.levelMatched(offsets: offsets, measured: levels)
     }
 
     static func deviations(levels: [Double], targetOffsets: [Double]?) -> [Double] {

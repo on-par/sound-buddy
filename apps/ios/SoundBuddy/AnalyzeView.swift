@@ -507,7 +507,7 @@ private struct SettingsView: View {
                 } header: {
                     Text("Analyzer")
                 } footer: {
-                    Text("Relative shows each band above or below the target, ±15 dB. Absolute shows dBFS from −96 to 0 with the dashed target line. Target editing always uses Absolute.")
+                    Text("Absolute (default) shows dBFS from −96 to 0 with the dashed target line, the same view as target editing. Relative shows each band above or below the target, ±15 dB; target editing still uses Absolute.")
                 }
                 .listRowBackground(Palette.surface)
 

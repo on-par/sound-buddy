@@ -424,7 +424,7 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         try deliver(reading(.silent, rta: [-20]))
         clock.advance(0.1)
         try deliver(reading(.silent, rta: [-90]))
-        // #1707: exponential release in the power domain with tau 0.4 s.
+        // #1707: exponential release in the power domain with the Medium tau.
         let tau = RTABallistics.medium.releaseTauSeconds
         let expected = 10 * log10(pow(10, -9.0) + (pow(10, -2.0) - pow(10, -9.0)) * exp(-0.1 / tau))
         // Date arithmetic at epoch 1000 s keeps ~1e-7 s of precision.
@@ -543,10 +543,11 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         let targetMean = target.reduce(0, +) / Double(count)
         #expect(abs(targetMean - measuredMean) < 1e-6)
 
-        // #1707: levels rise with the 0.05 s attack tau, so a uniform +10 dB
-        // gain held for 1 s (20 taus) has fully arrived.
+        // #1707: levels rise with the Medium attack tau, so a uniform +10 dB
+        // gain held for 20 taus has fully arrived.
         let shifted = measured.map { $0 + 10 }
-        for _ in 0..<20 {
+        let frames = Int((20 * RTABallistics.medium.attackTauSeconds / 0.05).rounded())
+        for _ in 0..<frames {
             clock.advance(0.05)
             try deliver(reading(.silent, rta: shifted))
         }

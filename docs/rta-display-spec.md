@@ -6,21 +6,25 @@ One RTA look on every Sound Buddy surface: iOS (reference implementation, #1707)
 
 ## 1. Views
 
-### Relative to target (default)
+### Absolute (default)
+
+- Fixed **−96…0 dBFS** on every platform, ticks every **12 dB**, with the dashed level-matched target line. Same window everywhere, no auto-ranging.
+- The target is resampled onto the band grid with the band-sum bandwidth correction (section 3), then level-matched by mean dB (ADR-0154) against the **same smoothed bars it is drawn over**, so every bar minus the line equals its Relative deviation exactly (iOS: `RTADisplayModel.targetLine(offsets:)`, #1772).
+- −96 sits just under a quiet room's per-band floor (about −90 to −100 dBFS per 1/6 octave off a phone mic), so idle bars don't vanish.
+- Labels stay dBFS or "relative dB", never SPL (ADR-0158).
+- Listening and target editing draw this same view, so tapping Edit curve or Done never changes the scale (#1772).
+
+### Relative to target (opt-in)
 
 - Each bar = smoothed band level minus the level-matched target at that band.
 - Fixed **±15 dB** grid with ticks every **5 dB**. The 0 line is the target, drawn solid (white, 85%).
-- The target is resampled onto the band grid with the band-sum bandwidth correction (section 3), then level-matched by mean dB (ADR-0154).
+- A small caption **"vs target, 0 = target"** sits above the plot, only in this view.
 - With no target, deviations are relative to a flat line at the measured mean.
 - Bars grow up or down from the 0 line. Values beyond ±15 dB clamp to the edge and show a **2 pt cap marker**.
 
-### Absolute
-
-- Fixed **−96…0 dBFS** on every platform, ticks every **12 dB**, with the dashed level-matched target line. Same window everywhere, no auto-ranging.
-- −96 sits just under a quiet room's per-band floor (about −90 to −100 dBFS per 1/6 octave off a phone mic), so idle bars don't vanish.
-- Labels stay dBFS or "relative dB", never SPL (ADR-0158).
-
 The choice persists (iOS: `@AppStorage("analyze.rtaViewMode")`, Settings > Analyzer). Target editing always draws Absolute: the handles reshape the dashed target over the dBFS bars.
+
+**Default change and migration (#1772).** Relative was the default through iOS build 14. Against a mismatched target (for example full-band music graded against a speech curve) it pinned both ends at ±15 dB and read as broken, so Absolute is now the default on every surface. On iOS, the first launch with this change runs `RTAViewMode.migrateToAbsoluteDefault(in:)` once: a stored `relative` is reset to `absolute`, and `analyze.rtaViewMode.absoluteDefaultMigrated` is set. A Relative chosen in Settings after that sticks. The pegged-bars "switch to Absolute" hint proposed in #1772's first draft is not built; the Absolute default removes the need for it.
 
 ## 2. Band grid
 
@@ -49,12 +53,14 @@ L    = 10 * log10(p)
 
 | Setting | Attack tau | Release tau |
 |---|---|---|
-| **Medium (default)** | 0.05 s | 0.4 s |
+| **Medium (default)** | 0.1 s | 1.0 s |
 | Slow (optional) | 0.25 s | 1.5 s |
+
+Medium was 0.05 s / 0.4 s until #1772; on live FOH and pink noise that read as jerky bars. Both taus at least doubled, and Medium stays quicker than Slow.
 
 - The first frame (or a band-count change) is adopted as-is.
 - A held input stays exactly put.
-- After a drop, one release tau later the bar has decayed about 63% of the step **in power**. This replaces iOS's old instant attack and linear 40 dB/s release, which made the bars look tall and flat.
+- After a drop, one release tau later the bar has decayed about 63% of the step **in power** (1.0 s on Medium). This replaces iOS's old instant attack and linear 40 dB/s release, which made the bars look tall and flat.
 - Non-finite inputs read as the analyzer's silence floor (−120 dBFS).
 - The choice persists (iOS: `@AppStorage("analyze.rtaBallistics")`, Settings > Analyzer).
 
@@ -92,6 +98,8 @@ Every platform's tests run this file to **±0.01 dB**. iOS reads a byte-identica
 ```
 python3 apps/ios/scripts/make_rta_display_fixture.py
 ```
+
+#1772 changed the Medium taus and regenerated v1 in place (the drop case now runs a full 1.0 s release). The Mac port (`app/renderer/src/rta-display-model.ts`) covers only the band grid so far and the web analyzer has no shared ballistics yet, so neither needed a code change; both pick up the new constants from this file when they port section 4.
 
 ## Built-in mic limits (iOS, #1708)
 
