@@ -164,28 +164,57 @@ private let speechFeatures = ProgramFeatures(
     @Test func theCalmStateShowsWhenEveryBandIsInTolerance() async throws {
         let m = await liveModel()
         #expect(!m.isMixOnTarget, "nothing measured yet")
-        try run(2, { _ in [.mid: 1.5, .bass: -1] })
+        try run(CoachingStabilizer.calmDwellSeconds + 1, { _ in [.mid: 1.5, .bass: -1] })
         #expect(m.isMixOnTarget)
         #expect(m.coaching.isEmpty)
         #expect(m.coachingPlaceholder == CoachingStabilizer.onTargetMessage)
     }
 
-    @Test func theCalmStateIsNeverShownWithATip() async throws {
+    /// #1773: calm needs the calm dwell, and then shows on that frame rather
+    /// than waiting for the next once-a-second card refresh.
+    @Test func theCalmStateArrivesWhenTheCalmDwellCompletes() async throws {
         let m = await liveModel()
-        try run(15, { _ in [.bass: 9] }) { _ in
-            #expect(!(m.isMixOnTarget && !m.coaching.isEmpty))
+        var firstCalmAt: TimeInterval?
+        try run(4, { _ in [.mid: 1.5, .bass: -1] }) { t in
+            if firstCalmAt == nil, m.isMixOnTarget { firstCalmAt = t }
         }
-        #expect(!m.isMixOnTarget)
-        #expect(m.coachingPlaceholder != CoachingStabilizer.onTargetMessage)
+        let calm = try #require(firstCalmAt, "an in-tolerance mix must reach calm")
+        #expect(calm >= CoachingStabilizer.calmDwellSeconds - Self.frame, "not before the calm dwell")
+        #expect(calm <= CoachingStabilizer.calmDwellSeconds + 2 * Self.frame, "and not a card refresh later (t=\(calm))")
     }
 
-    @Test func silenceIsNotTheCalmState() async throws {
+    /// #1773: while a band dwells toward a tip, the coach shows the neutral
+    /// listening placeholder, never 'Mix is on target'.
+    @Test func aBandDwellingTowardATipShowsListeningNotCalm() async throws {
         let m = await liveModel()
-        let send = try #require(source.onReading)
-        clock.now += 1
-        send(SpectrumReading(bands: .silent, rtaDb: [-120], overallDb: -120))
-        #expect(!m.isMixOnTarget)
-        #expect(m.coachingPlaceholder != CoachingStabilizer.onTargetMessage)
+        try run(CoachingStabilizer.enterDwellSeconds - 0.5, { _ in [.lowMid: 13, .highMid: -16.7] }) { t in
+            #expect(m.coaching.isEmpty, "still inside the enter dwell (t=\(t))")
+            #expect(!m.isMixOnTarget, "a band 13 dB off is not calm (t=\(t))")
+            #expect(m.coachingPlaceholder != CoachingStabilizer.onTargetMessage)
+            #expect(m.coachingPlaceholder.hasPrefix("Listening"))
+        }
+    }
+
+    /// Calm drops on the reading where the smoothed delta reaches the enter
+    /// threshold — the same reading that starts the enter dwell — not on the
+    /// next card refresh, so it is gone a full enter dwell before the tip.
+    /// The prelude lengths put that reading at different phases of the
+    /// once-a-second card refresh.
+    @Test(arguments: [0.0, 0.25, 0.5, 0.75])
+    func calmDropsOnTheReadingABandStartsDwelling(refreshPhase: TimeInterval) async throws {
+        let m = await liveModel()
+        try run(CoachingStabilizer.calmDwellSeconds + 1 + refreshPhase, { _ in [:] })
+        #expect(m.isMixOnTarget)
+        var droppedAt: TimeInterval?
+        var tipAt: TimeInterval?
+        try run(10, { _ in [.lowMid: 13] }) { t in
+            if droppedAt == nil, !m.isMixOnTarget { droppedAt = t }
+            if droppedAt != nil { #expect(!m.isMixOnTarget, "calm must not come back while low-mid is off (t=\(t))") }
+            if tipAt == nil, !m.coaching.isEmpty { tipAt = t }
+        }
+        let dropped = try #require(droppedAt, "a 13 dB low-mid must drop calm")
+        let tip = try #require(tipAt, "and eventually raise a tip")
+        #expect(tip - dropped >= CoachingStabilizer.enterDwellSeconds - Self.frame, "calm dropped only \(tip - dropped) s before the tip")
     }
 
     // MARK: Resets

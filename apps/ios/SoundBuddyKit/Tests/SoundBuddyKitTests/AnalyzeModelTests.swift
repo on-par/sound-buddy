@@ -613,7 +613,7 @@ private func speechOverAPadFeatures(levelDb: Double = -47) -> ProgramFeatures {
         let worshipModel = model(target: worship)
 
         await flatModel.appear()
-        try deliver(reading(levels(base: -30)))
+        try sustain(levels(base: -30), seconds: CoachingStabilizer.calmDwellSeconds + 0.5)
         #expect(flatModel.coaching.isEmpty)
         #expect(flatModel.isMixOnTarget)
         #expect(flatModel.coachingPlaceholder == CoachingStabilizer.onTargetMessage)
