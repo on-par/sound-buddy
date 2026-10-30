@@ -79,6 +79,11 @@ struct AnalyzeView: View {
     /// `nil` hides it entirely — Release passes `nil` while the flag is off.
     var channelSetupBanner: ChannelSetupBanner? = nil
     var onReviewChannelSetup: () -> Void = {}
+    /// Settings > Console (beta)'s saved-setup list (#1797): the rows, Redo
+    /// setup and Forget this console. `nil` hides the block — Release
+    /// passes `nil` while the flag is off.
+    let channelSetups: ChannelSetupSettingsModel?
+    var onRedoChannelSetup: () -> Void = {}
     /// Injected until the #1667/#1674 adapter hands over a live armed
     /// writer; Release passes `nil`, so Apply always reads "Unlock to
     /// apply" there.
@@ -119,7 +124,9 @@ struct AnalyzeView: View {
                 consent: consoleConsent,
                 onConnect: onConsoleConnect,
                 onRevoke: onConsoleConsentRevoked,
-                onDiscoverChannelSetup: onDiscoverChannelSetup
+                onDiscoverChannelSetup: onDiscoverChannelSetup,
+                channelSetups: channelSetups,
+                onRedoChannelSetup: onRedoChannelSetup
             ) { id in
                 micInputs.select(id)
                 Task { await model.restartListening() }
@@ -525,12 +532,17 @@ private struct SettingsView: View {
     let onConnect: () -> Void
     let onRevoke: () -> Void
     let onDiscoverChannelSetup: () -> Void
+    /// Settings > Console (beta)'s saved-setup list (#1797). `nil` hides the
+    /// whole block, same as `showsConsoleSection` hides the connect section.
+    let channelSetups: ChannelSetupSettingsModel?
+    var onRedoChannelSetup: () -> Void = {}
     let onSelectMic: (String?) -> Void
     @Environment(\.dismiss) private var dismiss
     /// RTA display choices (#1707), read directly by RTAView and AnalyzeView.
     @AppStorage(RTAViewMode.defaultsKey) private var rtaViewMode = RTAViewMode.defaultValue
     @AppStorage(RTABallisticsMode.defaultsKey) private var rtaBallistics = RTABallisticsMode.defaultValue
     @State private var consentSheetOpen = false
+    @State private var pendingForget: ChannelSetupSettingsRow?
 
     var body: some View {
         NavigationStack {
@@ -624,6 +636,10 @@ private struct SettingsView: View {
                     }
                     .accessibilityIdentifier("settings.console")
                     .listRowBackground(Palette.surface)
+
+                    if let channelSetups, ChannelSetupSettingsModel.isSectionVisible(flagEnabled: showsConsoleSection, consentGranted: consent.isGranted) {
+                        channelSetupSection(channelSetups)
+                    }
                 }
             }
             .scrollContentBackground(.hidden)
@@ -639,7 +655,10 @@ private struct SettingsView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .onAppear { micInputs.refresh() }
+        .onAppear {
+            micInputs.refresh()
+            channelSetups?.refresh()
+        }
         #if canImport(UIKit)
         // A mic plugged in or pulled while the sheet is up.
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification).receive(on: RunLoop.main)) { _ in
@@ -655,6 +674,71 @@ private struct SettingsView: View {
                 },
                 onCancel: { consentSheetOpen = false }
             )
+        }
+        .confirmationDialog(
+            pendingForget.map { ChannelSetupSettingsCopy.forgetTitle(consoleName: $0.title) } ?? "",
+            isPresented: Binding(get: { pendingForget != nil }, set: { if !$0 { pendingForget = nil } }),
+            titleVisibility: .visible,
+            presenting: pendingForget
+        ) { row in
+            Button(ChannelSetupSettingsCopy.forgetConfirm, role: .destructive) {
+                channelSetups?.forget(row.console)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text(ChannelSetupSettingsCopy.forgetMessage)
+        }
+    }
+
+    /// The Channel setup block (#1797): the saved-setup rows (or the empty
+    /// copy), each with Redo setup and Forget this console.
+    @ViewBuilder
+    private func channelSetupSection(_ channelSetups: ChannelSetupSettingsModel) -> some View {
+        Section {
+            if channelSetups.rows.isEmpty {
+                Text(ChannelSetupSettingsCopy.empty)
+                    .foregroundStyle(Palette.secondaryText)
+                    .accessibilityIdentifier("settings.console.channelSetup.empty")
+            } else {
+                ForEach(channelSetups.rows) { row in
+                    ChannelSetupSettingsRowView(row: row, onRedo: onRedoChannelSetup, onForget: { pendingForget = row })
+                }
+            }
+        } header: {
+            Text(ChannelSetupSettingsCopy.header)
+        }
+        .listRowBackground(Palette.surface)
+    }
+}
+
+/// One saved-console row in the Channel setup block (#1797): its title and
+/// detail, then Redo setup and Forget this console.
+private struct ChannelSetupSettingsRowView: View {
+    let row: ChannelSetupSettingsRow
+    let onRedo: () -> Void
+    let onForget: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading) {
+                Text(row.title)
+                    .font(.body)
+                Text(row.detail)
+                    .font(.footnote)
+                    .foregroundStyle(Palette.secondaryText)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(row.accessibilityLabel)
+            .accessibilityIdentifier("settings.console.channelSetup.row")
+            HStack {
+                Button(ChannelSetupSettingsCopy.redo, action: onRedo)
+                    .accessibilityHint("Redoes channel setup for \(row.title)")
+                    .accessibilityIdentifier("settings.console.channelSetup.redo")
+                Spacer()
+                Button(ChannelSetupSettingsCopy.forget, role: .destructive, action: onForget)
+                    .accessibilityIdentifier("settings.console.channelSetup.forget")
+            }
+            .buttonStyle(.borderless)
         }
     }
 }

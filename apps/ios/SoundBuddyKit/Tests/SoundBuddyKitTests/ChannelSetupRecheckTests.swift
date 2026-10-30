@@ -472,4 +472,65 @@ private func isStringArgument(_ argument: OSCArgument) -> Bool {
         #expect(banner.message == ChannelSetupCopy.readFailed(error))
         #expect(banner.action == .discover)
     }
+
+    @Test(arguments: ChannelSetupFixture.allCases)
+    func forgetThenNextConnectOffersSetup(_ fixture: ChannelSetupFixture) async throws {
+        let setupDefaults = UserDefaults(suiteName: UUID().uuidString)!
+        try ChannelSetupStore(defaults: setupDefaults).save(try confirmedSetup(fixture), ipHint: fixture.xInfo.ip)
+
+        let transport = FakeChannelTransport(xInfoDatagram: try xInfoDatagram(for: fixture), nodeLines: nodeLinesByPath(fixture.nodeLines))
+        let (recheck, store) = makeRecheck(transport: transport, setupDefaults: setupDefaults)
+
+        await store.connect(manualAddress: fixture.xInfo.ip)
+        guard case let .connected(info) = store.phase else {
+            Issue.record("expected .connected, got \(store.phase)")
+            return
+        }
+        await recheck.connected(info)
+        let identity = ConsoleIdentity(info)
+        guard case .applied = recheck.state else {
+            Issue.record("expected .applied, got \(recheck.state)")
+            return
+        }
+        let datagramsBeforeForget = transport.datagrams.count
+
+        recheck.forget(identity)
+
+        #expect(recheck.state == .idle)
+        #expect(ChannelSetupStore(defaults: setupDefaults).setup(for: identity) == .notFound)
+        #expect(transport.datagrams.count == datagramsBeforeForget)
+
+        await recheck.connected(info)
+
+        #expect(recheck.state == .offerSetup(identity))
+        for datagram in transport.datagrams[datagramsBeforeForget...] {
+            let message = try OSCCodec.decode(datagram)
+            #expect(message.address != "/node")
+        }
+    }
+
+    @Test func forgetDropsAppliedStateForThatConsoleOnly() throws {
+        let setupDefaults = UserDefaults(suiteName: UUID().uuidString)!
+        let spikeSaved = try confirmedSetup(.spike)
+        try ChannelSetupStore(defaults: setupDefaults).save(spikeSaved, ipHint: ChannelSetupFixture.spike.xInfo.ip)
+
+        let transport = FakeChannelTransport(xInfoDatagram: Data(), nodeLines: [:])
+        let (recheck, _) = makeRecheck(transport: transport, setupDefaults: setupDefaults)
+        recheck.evaluate(SavedChannelSetup(setup: spikeSaved, ipHint: ChannelSetupFixture.spike.xInfo.ip), info: ChannelSetupFixture.spike.xInfo, read: ChannelSetupFixture.spike.readResult())
+        guard case .applied = recheck.state else {
+            Issue.record("expected .applied, got \(recheck.state)")
+            return
+        }
+
+        let syntheticIdentity = ConsoleIdentity(ChannelSetupFixture.synthetic.xInfo)
+        recheck.forget(syntheticIdentity)
+
+        #expect(recheck.state == .applied(spikeSaved))
+        let spikeIdentity = ConsoleIdentity(ChannelSetupFixture.spike.xInfo)
+        guard case let .found(stillSaved) = ChannelSetupStore(defaults: setupDefaults).setup(for: spikeIdentity) else {
+            Issue.record("expected .found")
+            return
+        }
+        #expect(stillSaved.setup == spikeSaved)
+    }
 }

@@ -31,6 +31,9 @@ struct SoundBuddyApp: App {
     @State private var channelSetupStore: ChannelSetupStore
     /// Re-checks the saved setup against the desk on every reconnect (#1796).
     @State private var channelSetupRecheck: ChannelSetupRecheck
+    /// Settings > Console (beta)'s saved-setup list, Redo setup and Forget
+    /// this console (#1797).
+    @State private var channelSetupSettings: ChannelSetupSettingsModel
     private let consoleFlagBox = ConsoleFeatureFlagBox()
 
     init() {
@@ -59,7 +62,9 @@ struct SoundBuddyApp: App {
         let flagBox = consoleFlagBox
         let resolvedFlags = FeatureFlags.resolve(Self.launchEnvironment(store: nil))
         flagBox.isEnabled = resolvedFlags.isEnabled(.console)
-        _channelSetupRecheck = State(initialValue: ChannelSetupRecheck(store: store, setupStore: setupStore, isEnabled: { flagBox.isEnabled }))
+        let recheck = ChannelSetupRecheck(store: store, setupStore: setupStore, isEnabled: { flagBox.isEnabled })
+        _channelSetupRecheck = State(initialValue: recheck)
+        _channelSetupSettings = State(initialValue: ChannelSetupSettingsModel(setupStore: setupStore, forget: { recheck.forget($0) }))
         var target = IdealCurveLibrary.liveDefault()
         var targetIsAuto = true
         // Demo sources replace the mic entirely: MicCapture (and its
@@ -176,6 +181,43 @@ struct SoundBuddyApp: App {
         }
         #endif
 
+        #if DEBUG
+        // `-channelSetupSettingsFixture spike|synthetic` (#1797): seeds
+        // Settings > Console (beta)'s Channel setup block with one saved
+        // setup — no desk, no transport call — for Simulator screenshots of
+        // the saved-setup row and its Forget confirmation. Combine with
+        // `-openSettings` to land straight on the sheet. A throwaway
+        // UserDefaults suite (never `.standard`) keeps this from ever
+        // marking the real app as having a saved setup.
+        if let flagIndex = ProcessInfo.processInfo.arguments.firstIndex(of: "-channelSetupSettingsFixture"), Self.isDebugBuild,
+           flagIndex + 1 < ProcessInfo.processInfo.arguments.count,
+           let settingsFixture = ChannelSetupFixture(rawValue: ProcessInfo.processInfo.arguments[flagIndex + 1]) {
+            let fixtureDefaults = UserDefaults(suiteName: "channelSetupSettingsFixture") ?? .standard
+            let fixtureConsent = ConsoleConsentStore(defaults: fixtureDefaults)
+            fixtureConsent.grant()
+            let fixtureConsoleStore = ConsoleStore(
+                transport: ConsoleNWTransport(),
+                currentWiFi: WiFiInterfaceReader.current,
+                isConsentGranted: { fixtureConsent.isGranted },
+                defaults: fixtureDefaults
+            )
+            let fixtureSetupStore = ChannelSetupStore(defaults: fixtureDefaults)
+            let read = settingsFixture.readResult()
+            var seedReview = ChannelSetupReview(
+                console: ConsoleIdentity(settingsFixture.xInfo), inventory: read.inventory,
+                guesses: read.guesses, roomMicCandidates: read.roomMicCandidates
+            )
+            seedReview.confirmAll()
+            if let seedSetup = seedReview.done(confirmedAt: Date()) {
+                try? fixtureSetupStore.save(seedSetup, ipHint: settingsFixture.xInfo.ip)
+                let fixtureRecheck = ChannelSetupRecheck(store: fixtureConsoleStore, setupStore: fixtureSetupStore, isEnabled: { true })
+                _consoleConsent = State(initialValue: fixtureConsent)
+                _channelSetupRecheck = State(initialValue: fixtureRecheck)
+                _channelSetupSettings = State(initialValue: ChannelSetupSettingsModel(setupStore: fixtureSetupStore, forget: { fixtureRecheck.forget($0) }))
+            }
+        }
+        #endif
+
         _featureFlags = State(initialValue: resolvedFlags)
     }
 
@@ -199,17 +241,15 @@ struct SoundBuddyApp: App {
                 onConsoleConnect: {
                     consoleConnectOpen = true
                 },
-                onDiscoverChannelSetup: {
-                    channelSetupRecheck.cancel()
-                    channelSetupFlow.restart()
-                    channelSetupOpen = true
-                },
+                onDiscoverChannelSetup: openChannelSetup,
                 channelSetupBanner: featureFlags.isEnabled(.console) ? channelSetupRecheck.banner : nil,
                 onReviewChannelSetup: {
                     guard case let .needsReview(info, read, diff) = channelSetupRecheck.state else { return }
                     channelSetupFlow.beginRecheckReview(info: info, read: read, diff: diff)
                     channelSetupOpen = true
-                }
+                },
+                channelSetups: channelSetupSettings,
+                onRedoChannelSetup: openChannelSetup
             )
             .task {
                 let store = await Self.storeEnvironment()
@@ -229,10 +269,22 @@ struct SoundBuddyApp: App {
                 ChannelSetupFlowView(
                     flow: channelSetupFlow,
                     onDismiss: { channelSetupOpen = false },
-                    onConfirmed: { channelSetupRecheck.adopt($0, ipHint: consoleStore.savedConsole?.ip) }
+                    onConfirmed: {
+                        channelSetupRecheck.adopt($0, ipHint: consoleStore.savedConsole?.ip)
+                        channelSetupSettings.refresh()
+                    }
                 )
             }
         }
+    }
+
+    /// "Discover channel setup" (#1781) and Settings' "Redo setup" (#1797)
+    /// share this: drop any in-flight recheck, restart the flow fresh, and
+    /// open it.
+    private func openChannelSetup() {
+        channelSetupRecheck.cancel()
+        channelSetupFlow.restart()
+        channelSetupOpen = true
     }
 
     private static func launchEnvironment(store: StoreEnvironment?) -> FeatureFlagEnvironment {
