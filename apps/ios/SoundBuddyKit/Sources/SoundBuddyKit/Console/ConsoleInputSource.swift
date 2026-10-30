@@ -8,7 +8,7 @@ import Foundation
 /// 1...4 L/R (two raw values per unit, L then R), 49...64 Bus 1...16 (post
 /// fader, as a source). Anything outside these ranges is `.unknown(raw)` —
 /// a future firmware value this type doesn't know yet, never a crash.
-public enum ConsoleInputSource: Equatable, Sendable {
+public enum ConsoleInputSource: Codable, Equatable, Sendable {
     case off
     case input(Int)
     case aux(Int)

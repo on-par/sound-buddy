@@ -29,7 +29,7 @@ public enum ConsoleSessionTiming {
 /// A console's identity for session matching: name + model only, ignoring
 /// ip/firmware so a DHCP lease change or a firmware bump never looks like a
 /// different console walked onto the network.
-public struct ConsoleIdentity: Equatable, Sendable {
+public struct ConsoleIdentity: Codable, Equatable, Sendable {
     public let name: String
     public let model: String
 
