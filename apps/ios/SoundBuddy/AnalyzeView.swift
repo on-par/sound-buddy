@@ -73,6 +73,7 @@ struct AnalyzeView: View {
     let consoleConsent: ConsoleConsentStore
     var onConsoleConsentRevoked: () -> Void = {}
     var onConsoleConnect: () -> Void = {}
+    var onDiscoverChannelSetup: () -> Void = {}
     /// Injected until the #1667/#1674 adapter hands over a live armed
     /// writer; Release passes `nil`, so Apply always reads "Unlock to
     /// apply" there.
@@ -111,6 +112,7 @@ struct AnalyzeView: View {
                 showsConsoleSection: featureFlags.isEnabled(.console),
                 consent: consoleConsent,
                 onConnect: onConsoleConnect,
+                onDiscoverChannelSetup: onDiscoverChannelSetup,
                 onRevoke: onConsoleConsentRevoked
             ) { id in
                 micInputs.select(id)
@@ -479,6 +481,7 @@ private struct SettingsView: View {
     let showsConsoleSection: Bool
     let consent: ConsoleConsentStore
     let onConnect: () -> Void
+    let onDiscoverChannelSetup: () -> Void
     let onRevoke: () -> Void
     let onSelectMic: (String?) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -542,6 +545,10 @@ private struct SettingsView: View {
 
                 if showsConsoleSection {
                     Section {
+                        Button(ChannelSetupCopy.rowTitle) {
+                            onDiscoverChannelSetup()
+                        }
+                        .accessibilityIdentifier("settings.console.channelSetup")
                         if consent.isGranted {
                             LabeledContent("Access", value: ConsoleConsentCopy.grantedStatus)
                                 .accessibilityIdentifier("settings.console.status")

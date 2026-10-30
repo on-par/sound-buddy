@@ -8,12 +8,15 @@ import UIKit
 /// only `ConsoleStore`.
 struct ConsoleConnectView: View {
     let store: ConsoleStore
+    let channelSetup: ChannelSetupFlow?
     let onDismiss: () -> Void
 
     @State private var manualAddress: String
+    @Environment(\.scenePhase) private var scenePhase
 
-    init(store: ConsoleStore, onDismiss: @escaping () -> Void) {
+    init(store: ConsoleStore, channelSetup: ChannelSetupFlow? = nil, onDismiss: @escaping () -> Void) {
         self.store = store
+        self.channelSetup = channelSetup
         self.onDismiss = onDismiss
         _manualAddress = State(initialValue: store.savedConsole?.ip ?? "")
     }
@@ -28,7 +31,7 @@ struct ConsoleConnectView: View {
                 .padding(Layout.screenPadding)
             }
             .background(Palette.background.ignoresSafeArea())
-            .navigationTitle(ConsoleConnectCopy.title)
+            .navigationTitle(channelSetup == nil ? ConsoleConnectCopy.title : ChannelSetupCopy.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -40,6 +43,9 @@ struct ConsoleConnectView: View {
         }
         .preferredColorScheme(.dark)
         .task { await store.open() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { store.returnedToForeground() }
+        }
     }
 
     private var header: some View {
@@ -68,7 +74,7 @@ struct ConsoleConnectView: View {
             ProgressView("Connecting to \(ip.description)…")
                 .accessibilityIdentifier("console.connect.connecting")
         case let .connected(info):
-            connectedCard(info)
+            connectedContent(info)
         case let .noReply(ip):
             noReplyView(ip)
         case .permissionDenied:
@@ -77,6 +83,30 @@ struct ConsoleConnectView: View {
             Text(message)
                 .foregroundStyle(Palette.error)
                 .accessibilityIdentifier("console.connect.failed")
+        }
+    }
+
+    @ViewBuilder
+    private func connectedContent(_ info: ConsoleXInfo) -> some View {
+        if let channelSetup {
+            switch channelSetup.step {
+            case .unsupported:
+                unsupportedView(info)
+            case .identified:
+                VStack(alignment: .leading, spacing: Layout.innerSpacing) {
+                    connectedCard(info)
+                    Button(ChannelSetupCopy.continueButton) {
+                        channelSetup.continueToChannels()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Palette.accent)
+                    .accessibilityIdentifier("console.connect.continue")
+                }
+            default:
+                connectedCard(info)
+            }
+        } else {
+            connectedCard(info)
         }
     }
 
@@ -134,6 +164,19 @@ struct ConsoleConnectView: View {
         .padding(Layout.cardPadding)
         .background(Palette.surface, in: RoundedRectangle(cornerRadius: Layout.cornerRadius))
         .accessibilityIdentifier("console.connect.card")
+    }
+
+    private func unsupportedView(_ info: ConsoleXInfo) -> some View {
+        VStack(alignment: .leading, spacing: Layout.innerSpacing) {
+            Text(ChannelSetupCopy.unsupportedTitle)
+                .font(.title2.weight(.bold))
+            Text(ChannelSetupCopy.unsupportedDetail(model: info.model))
+                .font(.subheadline)
+                .foregroundStyle(Palette.secondaryText)
+        }
+        .padding(Layout.cardPadding)
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: Layout.cornerRadius))
+        .accessibilityIdentifier("console.connect.unsupported")
     }
 
     private func noReplyView(_ ip: ConsoleIPv4) -> some View {

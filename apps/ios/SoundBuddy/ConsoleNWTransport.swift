@@ -4,9 +4,10 @@ import SoundBuddyKit
 
 /// The real `ConsoleTransport` (#1666): one Wi-Fi-only UDP `NWConnection`,
 /// reused while the host:port is unchanged, cancelled and replaced
-/// otherwise. Untestable Network.framework adapter wiring — `ConsoleLink`'s
-/// probe logic is covered against a fake in SoundBuddyKit's
-/// `ConsoleLinkTests`.
+/// otherwise. A Local Network denial drops the cached connection after the
+/// exchange resumes so a later retry after Settings gets a fresh connection.
+/// Untestable Network.framework adapter wiring — `ConsoleLink`'s probe logic
+/// is covered against a fake in SoundBuddyKit's `ConsoleLinkTests`.
 private extension ConsoleIPv4 {
     /// Byte-based bridge to `IPv4Address`, safe by construction since
     /// `ConsoleIPv4` guarantees `octets.count == 4`.
@@ -61,12 +62,22 @@ final class ConsoleNWTransport: ConsoleTransport, @unchecked Sendable {
             connection.send(content: datagram, completion: .contentProcessed { error in
                 guard let self else { return }
                 if let error {
-                    state.resume(.failure(self.transportError(for: connection, error: error)))
+                    self.resume(
+                        state,
+                        .failure(self.transportError(for: connection, error: error)),
+                        connection: connection,
+                        dropIfDenied: true
+                    )
                     return
                 }
                 connection.receiveMessage { data, _, _, error in
                     if let error {
-                        state.resume(.failure(self.transportError(for: connection, error: error)))
+                        self.resume(
+                            state,
+                            .failure(self.transportError(for: connection, error: error)),
+                            connection: connection,
+                            dropIfDenied: true
+                        )
                         return
                     }
                     state.resume(.success(data))
@@ -80,10 +91,18 @@ final class ConsoleNWTransport: ConsoleTransport, @unchecked Sendable {
             case .ready:
                 sendAndReceive()
             case let .failed(error):
-                state.resume(.failure(self.transportError(for: connection, error: error)))
-                self.resetConnection()
+                let result = Result<Data?, ConsoleTransportError>.failure(self.transportError(for: connection, error: error))
+                self.resume(state, result, connection: connection, dropIfDenied: true)
+                if case .failure(.localNetworkDenied) = result {} else {
+                    self.resetConnection()
+                }
             case let .waiting(error):
-                state.resume(.failure(self.transportError(for: connection, error: error)))
+                self.resume(
+                    state,
+                    .failure(self.transportError(for: connection, error: error)),
+                    connection: connection,
+                    dropIfDenied: true
+                )
             default:
                 break
             }
@@ -101,6 +120,19 @@ final class ConsoleNWTransport: ConsoleTransport, @unchecked Sendable {
         default:
             break
         }
+    }
+
+    private func resume(
+        _ state: ExchangeState,
+        _ result: Result<Data?, ConsoleTransportError>,
+        connection: NWConnection,
+        dropIfDenied: Bool
+    ) {
+        state.resume(result)
+        guard dropIfDenied else { return }
+        guard case .failure(.localNetworkDenied) = result else { return }
+        connection.cancel()
+        resetConnection()
     }
 
     private func transportError(for connection: NWConnection, error: NWError) -> ConsoleTransportError {

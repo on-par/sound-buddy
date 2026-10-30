@@ -170,6 +170,14 @@ public final class ConsoleStore {
         phase = .manual(notice: nil)
     }
 
+    /// The app became active again (e.g. back from iOS Settings after a Local
+    /// Network denial). Only `.permissionDenied` changes — back to the Manual
+    /// IP form so the user can tap Connect; nothing is sent (no retry loop).
+    public func returnedToForeground() {
+        guard phase == .permissionDenied else { return }
+        phase = .manual(notice: nil)
+    }
+
     /// `savedIdentity` non-nil gates persistence on an identity match (the
     /// open/rescan auto-connect path); nil (manual connect/retry) always
     /// persists on a reply.
