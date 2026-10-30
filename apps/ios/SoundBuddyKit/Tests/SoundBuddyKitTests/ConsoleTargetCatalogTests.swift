@@ -156,4 +156,26 @@ private let captureConfigLines = [
         #expect(label.name == "")
         #expect(label.color == .off)
     }
+
+    @Test func configLineParserExposesSourceToken() {
+        let withSource = ConsoleConfigLine(nodeLine: "/ch/02/config \"Vox 1\" 1 MG 2")
+        #expect(withSource?.path == "/ch/02/config")
+        #expect(withSource?.name == "Vox 1")
+        #expect(withSource?.icon == 1)
+        #expect(withSource?.colorToken == "MG")
+        #expect(withSource?.sourceToken == "2")
+
+        let withoutSource = ConsoleConfigLine(nodeLine: "/main/st/config \"\" 66 WH")
+        #expect(withoutSource?.path == "/main/st/config")
+        #expect(withoutSource?.sourceToken == nil)
+
+        #expect(ConsoleConfigLine(nodeLine: "/ch/01/config \"Vox 1 1 MG 1") == nil) // unterminated quote
+    }
+
+    @Test func colorFromRawInt() {
+        #expect(ConsoleChannelColor(rawInt: 0) == .off)
+        #expect(ConsoleChannelColor(rawInt: 15) == .whiteInverted)
+        #expect(ConsoleChannelColor(rawInt: 16) == nil)
+        #expect(ConsoleChannelColor(rawInt: -1) == nil)
+    }
 }
