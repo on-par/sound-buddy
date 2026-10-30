@@ -20,7 +20,7 @@ struct ConsoleEQPanel: View {
     let console: ConsoleTargetModel
     let analyze: AnalyzeModel
     var showsTargetButton = false
-    /// `nil` until the #1666/#1674 adapter supplies a live armed writer —
+    /// `nil` until the #1667/#1674 adapter supplies a live armed writer —
     /// until then Apply always reads "Unlock to apply" and sends nothing.
     var eqWriter: ConsoleEQWriter? = nil
     var onDone: (() -> Void)?
