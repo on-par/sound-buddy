@@ -8,14 +8,34 @@ public enum ChannelSetupCopy {
     public static let title = "Channel setup"
     public static let unsupportedTitle = "Not supported yet"
     public static let continueButton = "Continue"
+    public static let retry = "Retry"
 
     public static func unsupportedDetail(model: String) -> String {
         "Sound Buddy can read X32 and M32 consoles. \(model) support is coming later."
     }
 
-    /// Step-2 placeholder copy until #1782's UI slice reads real channels.
-    public static func channelsPlaceholder(name: String, model: String) -> String {
-        "\(name) (\(model)) is connected. Reading its channels is next."
+    public static func reading(count: Int) -> String {
+        "Reading \(count) channels…"
+    }
+
+    public static func readSummary(count: Int) -> String {
+        count == 1 ? "Read 1 channel" : "Read \(count) channels"
+    }
+
+    /// Always actionable: every case ends with what to do next.
+    public static func readFailed(_ error: ConsoleChannelReadError) -> String {
+        switch error {
+        case .transport(.localNetworkDenied):
+            ConsoleConnectCopy.permissionDenied
+        case .transport(.noWiFi):
+            "Join the console's Wi-Fi, then tap Retry."
+        case let .transport(.failed(message)):
+            "Couldn't read the channels (\(message)). Check the console is on, then tap Retry."
+        case let .unsupportedModel(model):
+            unsupportedDetail(model: model)
+        case .cancelled:
+            "Reading stopped. Tap Retry to read again."
+        }
     }
 }
 
@@ -28,6 +48,14 @@ public enum ChannelSetupStep: Equatable, Sendable {
     case channels(ConsoleXInfo)
 }
 
+/// Step 2's own progress, driven by `ConsoleChannelReader` (#1791).
+public enum ChannelReadState: Equatable, Sendable {
+    case idle
+    case reading(stripCount: Int)
+    case done(ConsoleChannelReadResult)
+    case failed(ConsoleChannelReadError)
+}
+
 /// Drives "Discover channel setup" (#1781): consent, then the existing
 /// #1666 connect flow, then a model gate shared with step 2's reader, then
 /// handoff to the channels step. Every side effect (transport, consent) is
@@ -38,6 +66,8 @@ public final class ChannelSetupFlow {
     @ObservationIgnored public let store: ConsoleStore
     @ObservationIgnored private let consent: ConsoleConsentStore
     private var handedOff: ConsoleXInfo?
+    public private(set) var channelRead: ChannelReadState = .idle
+    @ObservationIgnored private var readTask: Task<Void, Never>?
 
     public init(store: ConsoleStore, consent: ConsoleConsentStore) {
         self.store = store
@@ -82,5 +112,66 @@ public final class ChannelSetupFlow {
     /// Clears a previous handoff so re-opening the row starts at step 1.
     public func restart() {
         handedOff = nil
+        cancelRead()
+        channelRead = .idle
+    }
+
+    /// The walk, then (if anything is missing) one sweep, over the store's
+    /// one socket. A no-op outside the `.channels` step.
+    public func readChannels() async {
+        guard case let .channels(info) = step else { return }
+        guard let host = store.lastAttemptedAddress ?? ConsoleIPv4(info.ip) else {
+            channelRead = .failed(.transport(.failed("no console address")))
+            return
+        }
+
+        let stripCount = ConsoleChannelInventory.stripCounts(forModel: info.model)?.values.reduce(0, +) ?? 0
+        channelRead = .reading(stripCount: stripCount)
+        let reader = store.channelReader()
+        await runRead(cancelledState: .idle) { await reader.read(info, host: host) }
+    }
+
+    /// Resweeps only the previous read's missing strips. A no-op unless the
+    /// previous read finished with something missing.
+    public func retryMissingChannels() async {
+        guard case let .done(previous) = channelRead, !previous.missing.isEmpty else { return }
+        guard case let .channels(info) = step else { return }
+        guard let host = store.lastAttemptedAddress ?? ConsoleIPv4(info.ip) else { return }
+
+        channelRead = .reading(stripCount: previous.missing.count)
+        let reader = store.channelReader()
+        await runRead(cancelledState: .done(previous)) { await reader.retryMissing(previous, host: host) }
+    }
+
+    /// Stops an in-flight read (sheet closed / restart) without changing
+    /// `channelRead` — the caller decides what state follows.
+    public func cancelRead() {
+        readTask?.cancel()
+        readTask = nil
+    }
+
+    /// Cancels any previous read, runs `operation` in a fresh task and waits
+    /// for it, so both entry points above resolve `channelRead` the same
+    /// way: `.success` → `.done`, `.failure(.cancelled)` → `cancelledState`,
+    /// any other failure → `.failed`.
+    private func runRead(
+        cancelledState: ChannelReadState,
+        _ operation: @escaping () async -> Result<ConsoleChannelReadResult, ConsoleChannelReadError>
+    ) async {
+        readTask?.cancel()
+        let task = Task { @MainActor [weak self] in
+            let result = await operation()
+            guard let self else { return }
+            switch result {
+            case let .success(readResult):
+                self.channelRead = .done(readResult)
+            case .failure(.cancelled):
+                self.channelRead = cancelledState
+            case let .failure(error):
+                self.channelRead = .failed(error)
+            }
+        }
+        readTask = task
+        await task.value
     }
 }

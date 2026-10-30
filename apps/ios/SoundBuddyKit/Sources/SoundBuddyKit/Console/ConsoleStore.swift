@@ -170,6 +170,10 @@ public final class ConsoleStore {
         phase = .manual(notice: nil)
     }
 
+    /// A channel reader over this store's own transport — the one socket
+    /// (ADR-0060). Never builds a second transport.
+    public func channelReader() -> ConsoleChannelReader { ConsoleChannelReader(transport: transport) }
+
     /// `savedIdentity` non-nil gates persistence on an identity match (the
     /// open/rescan auto-connect path); nil (manual connect/retry) always
     /// persists on a reply.
