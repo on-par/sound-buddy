@@ -65,14 +65,15 @@ struct AnalyzeView: View {
     let model: AnalyzeModel
     let keepAwake: KeepAwakeController
     let micInputs: MicInputController
-    /// Injected until #1666 (transport/connect) lands: Release passes
-    /// `console: nil`, so the chip never shows there.
+    /// Injected until the heartbeat/session slice (#1667) wires a live
+    /// `ConsoleSessionReducer` in: Release passes `console: nil`, so the
+    /// chip never shows there.
     let console: ConsoleTargetModel?
     let featureFlags: FeatureFlags
     let consoleConsent: ConsoleConsentStore
     var onConsoleConsentRevoked: () -> Void = {}
     var onConsoleConnect: () -> Void = {}
-    /// Injected until the #1666/#1674 adapter hands over a live armed
+    /// Injected until the #1667/#1674 adapter hands over a live armed
     /// writer; Release passes `nil`, so Apply always reads "Unlock to
     /// apply" there.
     var consoleEQWriter: ConsoleEQWriter? = nil
@@ -544,6 +545,10 @@ private struct SettingsView: View {
                         if consent.isGranted {
                             LabeledContent("Access", value: ConsoleConsentCopy.grantedStatus)
                                 .accessibilityIdentifier("settings.console.status")
+                            Button(ConsoleConsentCopy.connectTitle) {
+                                onConnect()
+                            }
+                            .accessibilityIdentifier("settings.console.connect")
                             Button(ConsoleConsentCopy.revokeButton, role: .destructive) {
                                 consent.revoke()
                                 onRevoke()

@@ -8,11 +8,14 @@ struct SoundBuddyApp: App {
     @State private var model: AnalyzeModel
     @State private var micInputs: MicInputController
     @State private var keepAwake = KeepAwakeController(timer: UIApplication.shared)
-    /// nil until #1666 (transport/connect) wires a real console model in;
-    /// the chip stays hidden without one.
+    /// nil until the heartbeat/session slice (#1667) wires a live
+    /// `ConsoleSessionReducer` in; the chip stays hidden without one.
     @State private var console: ConsoleTargetModel?
     @State private var featureFlags: FeatureFlags
     @State private var consoleConsent: ConsoleConsentStore
+    /// Drives the manual-IP / last-known-console connect sheet (#1666).
+    @State private var consoleStore: ConsoleStore
+    @State private var consoleConnectOpen = false
 
     init() {
         // #1772: Absolute became the default; reset build 14's stored
@@ -22,7 +25,14 @@ struct SoundBuddyApp: App {
         // (lists and changes it).
         let inputs = MicInputController(session: SystemMicInputSession())
         _micInputs = State(initialValue: inputs)
-        _consoleConsent = State(initialValue: ConsoleConsentStore())
+        let consent = ConsoleConsentStore()
+        _consoleConsent = State(initialValue: consent)
+        _consoleStore = State(initialValue: ConsoleStore(
+            transport: ConsoleNWTransport(),
+            currentWiFi: WiFiInterfaceReader.current,
+            isConsentGranted: { consent.isGranted },
+            defaults: .standard
+        ))
         var target = IdealCurveLibrary.liveDefault()
         var targetIsAuto = true
         // Demo sources replace the mic entirely: MicCapture (and its
@@ -90,18 +100,22 @@ struct SoundBuddyApp: App {
                 featureFlags: featureFlags,
                 consoleConsent: consoleConsent,
                 onConsoleConsentRevoked: {
-                    // #1666 will also call ConsoleSessionModel.consentRevoked()
-                    // here once a live session model exists.
+                    // The heartbeat/session slice (#1667) will also call
+                    // ConsoleSessionModel.consentRevoked() here once a live
+                    // session model exists.
                     console = nil
+                    consoleStore.disconnect()
                 },
                 onConsoleConnect: {
-                    // Connect/transport flow is #1666; consent alone has
-                    // nothing to continue into yet.
+                    consoleConnectOpen = true
                 }
             )
             .task {
                 let store = await Self.storeEnvironment()
                 featureFlags = FeatureFlags.resolve(Self.launchEnvironment(store: store))
+            }
+            .sheet(isPresented: $consoleConnectOpen) {
+                ConsoleConnectView(store: consoleStore) { consoleConnectOpen = false }
             }
         }
     }
