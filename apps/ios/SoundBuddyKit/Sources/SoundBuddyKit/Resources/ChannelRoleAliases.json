@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "note": "First table for #1783; #1678 may extend. Aliases are normalized labels (see ChannelRoleGuesser.normalizedLabel).",
+  "aliases": {
+    "vocal": ["vocal","vocals","vox","voc","ld vox","lead vox","lead vocal","bgv","bgvs","bv","bvs","wl","singer","harmony"],
+    "speech": ["pastor","mc","headset","lectern","pulpit","podium","preacher","sermon","host","speaker","announce","lav","lapel"],
+    "choir": ["choir","chr","chorus"],
+    "kick": ["kick","kik","kck","bd","kd","bass drum","kick drum"],
+    "snare": ["snare","sn","snr","sd"],
+    "tom": ["tom","toms","rack tom","floor tom","ft","rt"],
+    "hiHat": ["hihat","hi hat","hh","hat","hats"],
+    "overheads": ["oh","ohs","overhead","overheads","cymbals","cymbal","cym","cyms","ride","crash"],
+    "bass": ["bass","bs","bass di","bass gtr","bass guitar","bass amp","b gtr"],
+    "electricGuitar": ["eg","gtr","guitar","e gtr","egtr","elec gtr","electric","elec","lead gtr","rhythm gtr"],
+    "acousticGuitar": ["ag","agtr","a gtr","ac gtr","acoustic","acoustic gtr","ac guitar","acc"],
+    "keys": ["keys","key","kb","kbd","keyboard","piano","pno","organ","rhodes","nord"],
+    "synth": ["synth","synths","syn","pad","pads","moog"],
+    "tracks": ["trk","trks","track","tracks","trax","mt","multitrack","stems","loop","loops","seq","ableton"],
+    "click": ["click","clk","met","metronome"],
+    "guide": ["guide","cue","cues"],
+    "playback": ["prop","pro pres","propres","propresenter","pp","spotify","usb","video","vid","cd","pc","mac","laptop","computer","ipad","iphone","phone","media","bt","bluetooth","walkin","youtube","playback","pb"],
+    "roomMic": ["room","room mic","crowd","crowd mic","audience","aud","aud mic","amb","ambient","ambience","house","cong","congregation"],
+    "talkback": ["tb","talkback","talk back","talk","comms","coms"]
+  },
+  "tracksPrefixes": ["trk","t"],
+  "tracksStems": ["perc","percussion","drums","drum","strings","str","fx","sfx","horns","brass"]
+}
