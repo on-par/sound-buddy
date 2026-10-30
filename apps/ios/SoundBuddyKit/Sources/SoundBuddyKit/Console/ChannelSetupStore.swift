@@ -81,7 +81,8 @@ public final class ChannelSetupStore {
             .compactMap { key -> ConsoleIdentity? in
                 guard let raw = defaults.object(forKey: key) else { return nil }
                 guard let data = raw as? Data, let envelope = Self.migrate(data) else { return nil }
-                return envelope.setup.console
+                guard case .found(let saved) = setup(for: envelope.setup.console) else { return nil }
+                return saved.setup.console
             }
         return identities.sorted { ($0.model, $0.name) < ($1.model, $1.name) }
     }
