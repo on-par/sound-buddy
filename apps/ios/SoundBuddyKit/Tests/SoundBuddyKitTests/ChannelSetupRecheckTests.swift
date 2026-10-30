@@ -78,21 +78,13 @@ private func nodeLinesByPath(_ lines: [String]) -> [String: String] {
     return dict
 }
 
-private func closingQuoteIndex(in line: String) -> String.Index? {
-    guard let openQuote = line.firstIndex(of: "\"") else { return nil }
-    return line[line.index(after: openQuote)...].firstIndex(of: "\"")
-}
-
-private func rename(_ lines: inout [String], id: ConsoleStripID, to newName: String) {
-    guard let index = lines.firstIndex(where: { $0.hasPrefix(id.configPath + " ") }) else { return }
-    guard let openQuote = lines[index].firstIndex(of: "\""), let closeQuote = closingQuoteIndex(in: lines[index]) else { return }
-    lines[index].replaceSubrange(lines[index].index(after: openQuote)..<closeQuote, with: newName)
-}
-
+/// Both share `ChannelSetupFixture.closingQuoteIndex`/`.rename` (internal,
+/// not private, for exactly this reuse) rather than re-deriving the quote
+/// scan the fixture already has.
 private func recolor(_ lines: inout [String], id: ConsoleStripID, to color: ConsoleChannelColor) {
     guard let index = lines.firstIndex(where: { $0.hasPrefix(id.configPath + " ") }) else { return }
     let line = lines[index]
-    guard let closeQuote = closingQuoteIndex(in: line) else { return }
+    guard let closeQuote = ChannelSetupFixture.closingQuoteIndex(in: line) else { return }
     let head = line[...closeQuote]
     var tokens = line[line.index(after: closeQuote)...].split(separator: " ").map(String.init)
     guard tokens.count >= 2 else { return }
@@ -103,7 +95,7 @@ private func recolor(_ lines: inout [String], id: ConsoleStripID, to color: Cons
 private func resource(_ lines: inout [String], id: ConsoleStripID, to sourceRaw: Int) {
     guard let index = lines.firstIndex(where: { $0.hasPrefix(id.configPath + " ") }) else { return }
     let line = lines[index]
-    guard let closeQuote = closingQuoteIndex(in: line) else { return }
+    guard let closeQuote = ChannelSetupFixture.closingQuoteIndex(in: line) else { return }
     let head = line[...closeQuote]
     var tokens = line[line.index(after: closeQuote)...].split(separator: " ").map(String.init)
     guard tokens.count >= 3 else { return }
@@ -296,7 +288,7 @@ private func isStringArgument(_ argument: OSCArgument) -> Bool {
 
         let edits = fixture.recheckEdits
         let read = freshRead(fixture) { lines in
-            rename(&lines, id: edits.nameStrip, to: edits.newName)
+            ChannelSetupFixture.rename(&lines, id: edits.nameStrip, to: edits.newName)
             resource(&lines, id: edits.sourceStrip, to: edits.newSourceRaw)
         }
 
@@ -323,7 +315,7 @@ private func isStringArgument(_ argument: OSCArgument) -> Bool {
 
         let edits = fixture.recheckEdits
         let read = freshRead(fixture) { lines in
-            rename(&lines, id: edits.nameStrip, to: edits.newName)
+            ChannelSetupFixture.rename(&lines, id: edits.nameStrip, to: edits.newName)
             resource(&lines, id: edits.sourceStrip, to: edits.newSourceRaw)
         }
 
@@ -357,7 +349,7 @@ private func isStringArgument(_ argument: OSCArgument) -> Bool {
         try setupStore.save(saved, ipHint: fixture.xInfo.ip)
         let roomMicID = try #require(saved.roomMic)
 
-        let read = freshRead(fixture) { lines in rename(&lines, id: roomMicID, to: "Kick 2") }
+        let read = freshRead(fixture) { lines in ChannelSetupFixture.rename(&lines, id: roomMicID, to: "Kick 2") }
 
         let transport = FakeChannelTransport(xInfoDatagram: Data(), nodeLines: [:])
         let (recheck, _) = makeRecheck(transport: transport, setupDefaults: setupDefaults)

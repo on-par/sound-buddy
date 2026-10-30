@@ -93,12 +93,14 @@ public enum ChannelSetupFixture: String, CaseIterable, Sendable {
         )
     }
 
-    private static func closingQuoteIndex(in line: String) -> String.Index? {
+    /// Internal (not `private`) so the recheck tests' own line-editing
+    /// helpers (recolor, resource) can share this instead of re-deriving it.
+    static func closingQuoteIndex(in line: String) -> String.Index? {
         guard let openQuote = line.firstIndex(of: "\"") else { return nil }
         return line[line.index(after: openQuote)...].firstIndex(of: "\"")
     }
 
-    private static func rename(_ lines: inout [String], id: ConsoleStripID, to newName: String) {
+    static func rename(_ lines: inout [String], id: ConsoleStripID, to newName: String) {
         guard let index = lines.firstIndex(where: { $0.hasPrefix(id.configPath + " ") }) else { return }
         guard let openQuote = lines[index].firstIndex(of: "\""), let closeQuote = closingQuoteIndex(in: lines[index]) else { return }
         lines[index].replaceSubrange(lines[index].index(after: openQuote)..<closeQuote, with: newName)
