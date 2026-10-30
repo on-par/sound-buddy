@@ -7,6 +7,7 @@ import SwiftUI
 struct ChannelSetupFlowView: View {
     let flow: ChannelSetupFlow
     let onDismiss: () -> Void
+    var onConfirmed: (ConfirmedChannelSetup) -> Void = { _ in }
 
     @Environment(\.scenePhase) private var scenePhase
 
@@ -58,32 +59,42 @@ struct ChannelSetupFlowView: View {
 
     private func channelsView(_ info: ConsoleXInfo) -> some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: Layout.innerSpacing) {
-                Text(info.name)
-                    .font(.headline)
-                Text(info.model)
-                    .font(.subheadline)
-                    .foregroundStyle(Palette.secondaryText)
-                readStatusView
-                Text("Firmware \(info.firmware)")
-                    .font(.footnote)
-                    .foregroundStyle(Palette.secondaryText)
-                Text(info.ip)
-                    .font(.footnote)
-                    .foregroundStyle(Palette.secondaryText)
+            Group {
+                if flow.review != nil {
+                    VStack(alignment: .leading, spacing: 0) {
+                        compactHeader(info)
+                        ChannelSetupReviewView(flow: flow, onDone: { onConfirmed($0); onDismiss() })
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: Layout.innerSpacing) {
+                        Text(info.name)
+                            .font(.headline)
+                        Text(info.model)
+                            .font(.subheadline)
+                            .foregroundStyle(Palette.secondaryText)
+                        readStatusView
+                        Text("Firmware \(info.firmware)")
+                            .font(.footnote)
+                            .foregroundStyle(Palette.secondaryText)
+                        Text(info.ip)
+                            .font(.footnote)
+                            .foregroundStyle(Palette.secondaryText)
+                    }
+                    .padding(Layout.cardPadding)
+                    .background(Palette.surface, in: RoundedRectangle(cornerRadius: Layout.cornerRadius))
+                    .padding(Layout.screenPadding)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
             }
-            .padding(Layout.cardPadding)
-            .background(Palette.surface, in: RoundedRectangle(cornerRadius: Layout.cornerRadius))
-            .padding(Layout.screenPadding)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(Palette.background.ignoresSafeArea())
             .accessibilityIdentifier("channelSetup.channels")
             .navigationTitle(ChannelSetupCopy.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done", action: onDismiss)
-                        .foregroundStyle(Palette.accent)
+                // The review's own Done (ChannelSetupReviewView) is the only
+                // commit action; this sheet's toolbar only ever cancels.
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close", action: onDismiss)
                 }
             }
         }
@@ -92,6 +103,31 @@ struct ChannelSetupFlowView: View {
             if flow.channelRead == .idle { await flow.readChannels() }
         }
         .onDisappear { flow.cancelRead() }
+    }
+
+    private func compactHeader(_ info: ConsoleXInfo) -> some View {
+        VStack(alignment: .leading, spacing: Layout.innerSpacing) {
+            HStack(spacing: Layout.innerSpacing) {
+                Text(info.name)
+                    .font(.headline)
+                Text(info.model)
+                    .font(.subheadline)
+                    .foregroundStyle(Palette.secondaryText)
+            }
+            if case let .done(result) = flow.channelRead, let missingSummary = result.missingSummary {
+                HStack(spacing: Layout.innerSpacing) {
+                    Text(missingSummary)
+                        .font(.footnote)
+                        .foregroundStyle(Palette.secondaryText)
+                        .accessibilityIdentifier("channelSetup.missing")
+                    Button(ChannelSetupCopy.retry) { Task { await flow.retryMissingChannels() } }
+                        .accessibilityIdentifier("channelSetup.retry")
+                }
+            }
+        }
+        .padding(.horizontal, Layout.screenPadding)
+        .padding(.top, Layout.innerSpacing)
+        .padding(.bottom, Layout.cardPadding)
     }
 
     @ViewBuilder

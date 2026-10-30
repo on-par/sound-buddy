@@ -37,6 +37,54 @@ public enum ChannelSetupCopy {
             "Reading stopped. Tap Retry to read again."
         }
     }
+
+    public static let checkTheseHeader = "Check these"
+    public static let showUnused = "Show unused"
+    public static let confirmAll = "Confirm all"
+    public static let done = "Done"
+    public static let roomMicHeader = "Room mic (optional)"
+    public static let roomMicOther = "Other channel…"
+    public static let roomMicNone = "None, use this iPad's mic"
+    public static let rolePickerTitle = "Role"
+
+    public static func looksRight(count: Int) -> String {
+        "Looks right (\(count))"
+    }
+
+    /// `ChannelSetupReview.spokenName(for:)` with its first letter
+    /// uppercased — "Kick drum", "Hi-hat", "Room mic".
+    public static func roleTitle(_ role: ChannelRole) -> String {
+        let spoken = ChannelSetupReview.spokenName(for: role)
+        guard let first = spoken.first else { return spoken }
+        return first.uppercased() + spoken.dropFirst()
+    }
+
+    /// "Confirmed" once the volunteer has confirmed the row, otherwise the
+    /// guesser's own confidence bucket.
+    public static func confidenceChip(for row: ChannelSetupReview.Row) -> String {
+        guard row.origin == .confirmed else {
+            switch row.confidence {
+            case .high: return "High"
+            case .medium: return "Medium"
+            case .low: return "Low"
+            }
+        }
+        return "Confirmed"
+    }
+
+    /// `.none` reads as `roomMicNone`; a candidate or other channel reads as
+    /// that row's desk name, or `roomMicOther` if its id isn't a row at all.
+    public static func roomMicChoiceLabel(_ choice: ChannelSetupReview.RoomMicChoice, in review: ChannelSetupReview) -> String {
+        let id: ConsoleStripID
+        switch choice {
+        case .none:
+            return roomMicNone
+        case .candidate(let candidateID), .otherChannel(let candidateID):
+            id = candidateID
+        }
+        guard let row = review.rows.first(where: { $0.id == id }) else { return roomMicOther }
+        return row.strip.displayName
+    }
 }
 
 /// Where the setup flow is. Derived, never set directly, except for the
@@ -67,6 +115,9 @@ public final class ChannelSetupFlow {
     @ObservationIgnored private let consent: ConsoleConsentStore
     private var handedOff: ConsoleXInfo?
     public private(set) var channelRead: ChannelReadState = .idle
+    /// Built from a finished read (or a loaded fixture); `nil` until then and
+    /// cleared only by `restart()`. The review screen's whole model.
+    public private(set) var review: ChannelSetupReview?
     @ObservationIgnored private var readTask: Task<Void, Never>?
 
     public init(store: ConsoleStore, consent: ConsoleConsentStore) {
@@ -114,6 +165,7 @@ public final class ChannelSetupFlow {
         handedOff = nil
         cancelRead()
         channelRead = .idle
+        review = nil
     }
 
     /// The walk, then (if anything is missing) one sweep, over the store's
@@ -128,7 +180,7 @@ public final class ChannelSetupFlow {
         let stripCount = ConsoleChannelInventory.stripCounts(forModel: info.model)?.values.reduce(0, +) ?? 0
         channelRead = .reading(stripCount: stripCount)
         let reader = store.channelReader()
-        await runRead(cancelledState: .idle) { await reader.read(info, host: host) }
+        await runRead(cancelledState: .idle, console: ConsoleIdentity(info)) { await reader.read(info, host: host) }
     }
 
     /// Resweeps only the previous read's missing strips. A no-op unless the
@@ -140,7 +192,7 @@ public final class ChannelSetupFlow {
 
         channelRead = .reading(stripCount: previous.missing.count)
         let reader = store.channelReader()
-        await runRead(cancelledState: .done(previous)) { await reader.retryMissing(previous, host: host) }
+        await runRead(cancelledState: .done(previous), console: ConsoleIdentity(info)) { await reader.retryMissing(previous, host: host) }
     }
 
     /// Stops an in-flight read (sheet closed / restart) without changing
@@ -152,10 +204,12 @@ public final class ChannelSetupFlow {
 
     /// Cancels any previous read, runs `operation` in a fresh task and waits
     /// for it, so both entry points above resolve `channelRead` the same
-    /// way: `.success` → `.done`, `.failure(.cancelled)` → `cancelledState`,
-    /// any other failure → `.failed`.
+    /// way: `.success` → `.done` (and a fresh `review`),
+    /// `.failure(.cancelled)` → `cancelledState` (leaving `review`
+    /// untouched), any other failure → `.failed` (same).
     private func runRead(
         cancelledState: ChannelReadState,
+        console: ConsoleIdentity,
         _ operation: @escaping () async -> Result<ConsoleChannelReadResult, ConsoleChannelReadError>
     ) async {
         readTask?.cancel()
@@ -165,6 +219,7 @@ public final class ChannelSetupFlow {
             switch result {
             case let .success(readResult):
                 self.channelRead = .done(readResult)
+                self.review = Self.makeReview(readResult, console: console)
             case .failure(.cancelled):
                 self.channelRead = cancelledState
             case let .failure(error):
@@ -173,5 +228,38 @@ public final class ChannelSetupFlow {
         }
         readTask = task
         await task.value
+    }
+
+    private static func makeReview(_ result: ConsoleChannelReadResult, console: ConsoleIdentity) -> ChannelSetupReview {
+        ChannelSetupReview(
+            console: console, inventory: result.inventory,
+            guesses: result.guesses, roomMicCandidates: result.roomMicCandidates
+        )
+    }
+
+    /// Applies `mutate` to the current review and writes the result back. A
+    /// no-op before any review exists.
+    public func updateReview(_ mutate: (inout ChannelSetupReview) -> Void) {
+        guard var current = review else { return }
+        mutate(&current)
+        review = current
+    }
+
+    /// `nil` unless the review is done (nothing left to check, or the
+    /// volunteer tapped Confirm all); otherwise the finished setup, with
+    /// `date` injected by the caller. No side effect, no transport.
+    public func finish(at date: Date) -> ConfirmedChannelSetup? {
+        review?.done(confirmedAt: date)
+    }
+
+    /// Debug/UI-test-only: seeds `channelRead`/`review` from a fixture
+    /// (#1793) with no transport call at all — `step` still requires
+    /// consent, same as a real read.
+    public func loadFixture(_ fixture: ChannelSetupFixture) {
+        cancelRead()
+        handedOff = fixture.xInfo
+        let result = fixture.readResult()
+        channelRead = .done(result)
+        review = Self.makeReview(result, console: ConsoleIdentity(fixture.xInfo))
     }
 }

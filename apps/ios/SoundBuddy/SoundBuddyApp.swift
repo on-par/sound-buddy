@@ -19,6 +19,8 @@ struct SoundBuddyApp: App {
     /// Drives "Discover channel setup" (#1781).
     @State private var channelSetupFlow: ChannelSetupFlow
     @State private var channelSetupOpen = false
+    /// Held in memory only; #1785 persists it.
+    @State private var confirmedChannelSetup: ConfirmedChannelSetup?
 
     init() {
         // #1772: Absolute became the default; reset build 14's stored
@@ -92,6 +94,31 @@ struct SoundBuddyApp: App {
         }
         #endif
 
+        #if DEBUG
+        // `-channelSetupFixture spike|synthetic` (#1793): opens "Discover
+        // channel setup" straight into the review screen, with no desk and no
+        // consent tap, for Simulator screenshots of both layouts. Granting
+        // consent in a throwaway UserDefaults suite (never `.standard`) keeps
+        // this from ever marking the real app as consented. The console
+        // feature flag is left alone: the sheet opens directly below, so the
+        // flag-gated Settings row isn't on the path.
+        if let fixture = ChannelSetupFixture.requested(by: ProcessInfo.processInfo.arguments, isDebugBuild: Self.isDebugBuild) {
+            let fixtureDefaults = UserDefaults(suiteName: "channelSetupFixture") ?? .standard
+            let fixtureConsent = ConsoleConsentStore(defaults: fixtureDefaults)
+            fixtureConsent.grant()
+            let fixtureStore = ConsoleStore(
+                transport: ConsoleNWTransport(),
+                currentWiFi: WiFiInterfaceReader.current,
+                isConsentGranted: { fixtureConsent.isGranted },
+                defaults: fixtureDefaults
+            )
+            let fixtureFlow = ChannelSetupFlow(store: fixtureStore, consent: fixtureConsent)
+            fixtureFlow.loadFixture(fixture)
+            _channelSetupFlow = State(initialValue: fixtureFlow)
+            _channelSetupOpen = State(initialValue: true)
+        }
+        #endif
+
         _featureFlags = State(initialValue: FeatureFlags.resolve(Self.launchEnvironment(store: nil)))
     }
 
@@ -127,7 +154,11 @@ struct SoundBuddyApp: App {
                 ConsoleConnectView(store: consoleStore) { consoleConnectOpen = false }
             }
             .sheet(isPresented: $channelSetupOpen) {
-                ChannelSetupFlowView(flow: channelSetupFlow) { channelSetupOpen = false }
+                ChannelSetupFlowView(
+                    flow: channelSetupFlow,
+                    onDismiss: { channelSetupOpen = false },
+                    onConfirmed: { confirmedChannelSetup = $0 }
+                )
             }
         }
     }
