@@ -11,6 +11,7 @@
 		103C7871F627A5A38E5EE737 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 770C099101BBBDBF216FAB1C /* Assets.xcassets */; };
 		1C5FB7074EF7A338D4445847 /* ChannelSetupFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B3A06F042D250EFA8F6B42C /* ChannelSetupFlowView.swift */; };
 		29F10DF61584F0B16A2A178E /* EQCurveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A6AE62893D06035FDDB066F /* EQCurveView.swift */; };
+		2B9C84BEEF15D2192D5037C3 /* ChannelRolePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 348F4FEA6D2020BD5890AE00 /* ChannelRolePickerView.swift */; };
 		3279118DA6CB9871F5E784AF /* SoundBuddyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D108D9CDAC13447AF712A950 /* SoundBuddyApp.swift */; };
 		3C444817253DA43B3DAC9D3A /* ConsoleChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C9DA9493BA5F5B759F9A49A /* ConsoleChip.swift */; };
 		522189B2E927CBA97026824B /* ConsoleTargetPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40BD8EC6ED98F51D9150D3C5 /* ConsoleTargetPickerView.swift */; };
@@ -19,6 +20,7 @@
 		916A8C2FF1E1C54F80B2A226 /* RTAView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C666B2B6DB4351AE3267F91 /* RTAView.swift */; };
 		96D509041CC976F5A4EB18F4 /* SoundBuddyKit in Frameworks */ = {isa = PBXBuildFile; productRef = 9E121744FE2F1E49545AFCD3 /* SoundBuddyKit */; };
 		B292D2695BCEFEDB1D035DF0 /* IdleTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25A689F561FD8A4123685947 /* IdleTimer.swift */; };
+		B79F1ADC581064E384612AC3 /* ChannelSetupReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D14BD1E233487865DA0C9A07 /* ChannelSetupReviewView.swift */; };
 		C3BAC85D9E127E2B2518C263 /* ConsoleConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12277FA4F7945523590FB8BF /* ConsoleConnectView.swift */; };
 		D3997E9745264F1A4A625BEA /* ConsoleConsentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F17929D7DFCF7623DF965CE /* ConsoleConsentView.swift */; };
 		F93EF366C81681CE5813C78E /* ConsoleNWTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DF90837164C3F346F48B3B8 /* ConsoleNWTransport.swift */; };
@@ -28,6 +30,7 @@
 		0FAA0DA15310AF31C79E438F /* SoundBuddy.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SoundBuddy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		12277FA4F7945523590FB8BF /* ConsoleConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleConnectView.swift; sourceTree = "<group>"; };
 		25A689F561FD8A4123685947 /* IdleTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleTimer.swift; sourceTree = "<group>"; };
+		348F4FEA6D2020BD5890AE00 /* ChannelRolePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelRolePickerView.swift; sourceTree = "<group>"; };
 		3A6AE62893D06035FDDB066F /* EQCurveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EQCurveView.swift; sourceTree = "<group>"; };
 		3C666B2B6DB4351AE3267F91 /* RTAView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTAView.swift; sourceTree = "<group>"; };
 		3F17929D7DFCF7623DF965CE /* ConsoleConsentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleConsentView.swift; sourceTree = "<group>"; };
@@ -39,6 +42,7 @@
 		7B3A06F042D250EFA8F6B42C /* ChannelSetupFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelSetupFlowView.swift; sourceTree = "<group>"; };
 		7DF90837164C3F346F48B3B8 /* ConsoleNWTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleNWTransport.swift; sourceTree = "<group>"; };
 		D108D9CDAC13447AF712A950 /* SoundBuddyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoundBuddyApp.swift; sourceTree = "<group>"; };
+		D14BD1E233487865DA0C9A07 /* ChannelSetupReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelSetupReviewView.swift; sourceTree = "<group>"; };
 		DD263257E4F708EAFE55D813 /* SoundBuddyKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = SoundBuddyKit; path = SoundBuddyKit; sourceTree = SOURCE_ROOT; };
 		FC6E2606D58BB5B186B86D16 /* ConsoleEQPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleEQPanel.swift; sourceTree = "<group>"; };
 		FFE5C6E8ED35B6519E4778A2 /* MicCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicCapture.swift; sourceTree = "<group>"; };
@@ -70,7 +74,9 @@
 			children = (
 				6F16C27B342308E5868ED13A /* AnalyzeView.swift */,
 				770C099101BBBDBF216FAB1C /* Assets.xcassets */,
+				348F4FEA6D2020BD5890AE00 /* ChannelRolePickerView.swift */,
 				7B3A06F042D250EFA8F6B42C /* ChannelSetupFlowView.swift */,
+				D14BD1E233487865DA0C9A07 /* ChannelSetupReviewView.swift */,
 				6C9DA9493BA5F5B759F9A49A /* ConsoleChip.swift */,
 				12277FA4F7945523590FB8BF /* ConsoleConnectView.swift */,
 				3F17929D7DFCF7623DF965CE /* ConsoleConsentView.swift */,
@@ -180,7 +186,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				0CDC60465904A92EF0D2D810 /* AnalyzeView.swift in Sources */,
+				2B9C84BEEF15D2192D5037C3 /* ChannelRolePickerView.swift in Sources */,
 				1C5FB7074EF7A338D4445847 /* ChannelSetupFlowView.swift in Sources */,
+				B79F1ADC581064E384612AC3 /* ChannelSetupReviewView.swift in Sources */,
 				3C444817253DA43B3DAC9D3A /* ConsoleChip.swift in Sources */,
 				C3BAC85D9E127E2B2518C263 /* ConsoleConnectView.swift in Sources */,
 				D3997E9745264F1A4A625BEA /* ConsoleConsentView.swift in Sources */,
