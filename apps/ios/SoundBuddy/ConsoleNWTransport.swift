@@ -7,6 +7,14 @@ import SoundBuddyKit
 /// otherwise. Untestable Network.framework adapter wiring — `ConsoleLink`'s
 /// probe logic is covered against a fake in SoundBuddyKit's
 /// `ConsoleLinkTests`.
+private extension ConsoleIPv4 {
+    /// Byte-based bridge to `IPv4Address`, safe by construction since
+    /// `ConsoleIPv4` guarantees `octets.count == 4`.
+    var ipv4Address: IPv4Address {
+        IPv4Address(Data(octets))!
+    }
+}
+
 final class ConsoleNWTransport: ConsoleTransport, @unchecked Sendable {
     private final class ExchangeState: @unchecked Sendable {
         private var resumed = false
@@ -56,7 +64,11 @@ final class ConsoleNWTransport: ConsoleTransport, @unchecked Sendable {
                     state.resume(.failure(self.transportError(for: connection, error: error)))
                     return
                 }
-                connection.receiveMessage { data, _, _, _ in
+                connection.receiveMessage { data, _, _, error in
+                    if let error {
+                        state.resume(.failure(self.transportError(for: connection, error: error)))
+                        return
+                    }
                     state.resume(.success(data))
                 }
             })
@@ -109,7 +121,7 @@ final class ConsoleNWTransport: ConsoleTransport, @unchecked Sendable {
         let parameters = NWParameters.udp
         parameters.requiredInterfaceType = .wifi
         let endpoint = NWEndpoint.hostPort(
-            host: .ipv4(IPv4Address(host.description)!),
+            host: .ipv4(host.ipv4Address),
             port: NWEndpoint.Port(integerLiteral: port)
         )
         let newConnection = NWConnection(to: endpoint, using: parameters)
