@@ -56,4 +56,31 @@ private struct ChannelSetupFixtureJSON: Decodable {
             #expect(result.readCount == 56, "\(fixture)")
         }
     }
+
+    @Test(arguments: ChannelSetupFixture.allCases)
+    func renamingReadChangesOnlyThatStrip(_ fixture: ChannelSetupFixture) throws {
+        let id = ConsoleStripID(kind: .ch, number: 3)
+        let original = fixture.readResult()
+        let renamed = fixture.readResult(renaming: id, to: "Guest Vocal")
+
+        let originalStrip = try #require(original.inventory.strips[id])
+        let renamedStrip = try #require(renamed.inventory.strips[id])
+        #expect(renamedStrip.name == "Guest Vocal")
+        #expect(renamedStrip.color == originalStrip.color)
+        #expect(renamedStrip.source == originalStrip.source)
+        #expect(renamed.missing.isEmpty)
+
+        for otherID in original.inventory.stripIDs where otherID != id {
+            #expect(renamed.inventory.strips[otherID] == original.inventory.strips[otherID], "\(otherID.configPath)")
+        }
+    }
+
+    @Test(arguments: ChannelSetupFixture.allCases)
+    func renamingAStripWithNoLineLeavesTheReadUnedited(_ fixture: ChannelSetupFixture) {
+        let noLineID = ConsoleStripID(kind: .ch, number: 99)
+        let original = fixture.readResult()
+        let unedited = fixture.readResult(renaming: noLineID, to: "Nope")
+
+        #expect(unedited == original)
+    }
 }

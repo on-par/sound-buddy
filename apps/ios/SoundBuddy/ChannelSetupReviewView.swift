@@ -84,10 +84,12 @@ struct ChannelSetupReviewView: View {
                 .accessibilityIdentifier("channelSetup.showUnused")
             ForEach(review.unused) { rowBuilder($0) }
         }
-        Section(ChannelSetupCopy.roomMicHeader) {
-            roomMicMenu(review: review)
-            NavigationLink(ChannelSetupCopy.roomMicOther) {
-                otherChannelList(review: review)
+        if flow.showsRoomMicPicker {
+            Section(ChannelSetupCopy.roomMicHeader) {
+                roomMicMenu(review: review)
+                NavigationLink(ChannelSetupCopy.roomMicOther) {
+                    otherChannelList(review: review)
+                }
             }
         }
     }

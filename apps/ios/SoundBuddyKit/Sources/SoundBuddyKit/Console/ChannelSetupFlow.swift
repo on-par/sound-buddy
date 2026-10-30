@@ -119,6 +119,11 @@ public final class ChannelSetupFlow {
     /// cleared only by `restart()`. The review screen's whole model.
     public private(set) var review: ChannelSetupReview?
     @ObservationIgnored private var readTask: Task<Void, Never>?
+    /// Set only by `beginRecheckReview`: the diff the current review is
+    /// restricted to, so `finish(at:)` can merge the reviewed strips back
+    /// into the saved setup instead of replacing it outright. Cleared by
+    /// `restart()` and a fresh `readChannels()`.
+    @ObservationIgnored private var recheckBase: ChannelSetupDiff?
 
     public init(store: ConsoleStore, consent: ConsoleConsentStore) {
         self.store = store
@@ -166,12 +171,48 @@ public final class ChannelSetupFlow {
         cancelRead()
         channelRead = .idle
         review = nil
+        recheckBase = nil
+    }
+
+    /// Opens the review restricted to a reconnect diff's changed strips
+    /// (#1796): `info`/`read` hand off the step as if a fresh read had just
+    /// finished, and the review itself only lists `diff.changed`. A no-op
+    /// unless `diff.outcome` is `.needsReview`. When the room mic is
+    /// suspended (its own strip changed), the old pick is pre-filled from
+    /// `diff`'s merged setup — a candidate if the guesser still ranks it,
+    /// otherwise as another channel — but still needs Done to confirm it.
+    public func beginRecheckReview(info: ConsoleXInfo, read: ConsoleChannelReadResult, diff: ChannelSetupDiff) {
+        guard case let .needsReview(_, _, merged) = diff.outcome else { return }
+
+        cancelRead()
+        handedOff = info
+        channelRead = .done(read)
+        review = ChannelSetupReview(
+            console: ConsoleIdentity(info), inventory: read.inventory, guesses: read.guesses,
+            roomMicCandidates: read.roomMicCandidates, restricting: diff.changed
+        )
+        recheckBase = diff
+
+        if diff.roomMicSuspended, let roomMicID = merged.roomMic {
+            updateReview { review in
+                _ = review.selectRoomMic(.candidate(roomMicID)) || review.selectRoomMic(.otherChannel(roomMicID))
+            }
+        }
+    }
+
+    /// `true` for a normal (non-recheck) review, or a recheck review whose
+    /// room mic was suspended; `false` for a recheck review that left the
+    /// room mic untouched — nothing to re-pick.
+    public var showsRoomMicPicker: Bool {
+        guard let recheckBase else { return true }
+        return recheckBase.roomMicSuspended
     }
 
     /// The walk, then (if anything is missing) one sweep, over the store's
     /// one socket. A no-op outside the `.channels` step.
     public func readChannels() async {
         guard case let .channels(info) = step else { return }
+        recheckBase = nil
         guard let host = store.lastAttemptedAddress ?? ConsoleIPv4(info.ip) else {
             channelRead = .failed(.transport(.failed("no console address")))
             return
@@ -248,8 +289,23 @@ public final class ChannelSetupFlow {
     /// `nil` unless the review is done (nothing left to check, or the
     /// volunteer tapped Confirm all); otherwise the finished setup, with
     /// `date` injected by the caller. No side effect, no transport.
+    ///
+    /// Without a recheck base, this is just the review's own result. With
+    /// one, the result is the recheck diff's merged setup with only the
+    /// reviewed strips replaced — so strips the review never touched (because
+    /// `beginRecheckReview` restricted it to `diff.changed`) keep the merged
+    /// setup's values rather than being dropped — and the room mic taken
+    /// from the review only when the diff had suspended it.
     public func finish(at date: Date) -> ConfirmedChannelSetup? {
-        review?.done(confirmedAt: date)
+        guard let recheckBase else { return review?.done(confirmedAt: date) }
+        guard case let .needsReview(_, _, merged) = recheckBase.outcome else { return nil }
+        guard let reviewed = review?.done(confirmedAt: date) else { return nil }
+
+        let reviewedByID = Dictionary(uniqueKeysWithValues: reviewed.strips.map { ($0.id, $0) })
+        let strips = merged.strips.map { reviewedByID[$0.id] ?? $0 }
+        let roomMic = recheckBase.roomMicSuspended ? reviewed.roomMic : merged.roomMic
+
+        return ConfirmedChannelSetup(console: merged.console, strips: strips, roomMic: roomMic, confirmedAt: date)
     }
 
     /// Debug/UI-test-only: seeds `channelRead`/`review` from a fixture

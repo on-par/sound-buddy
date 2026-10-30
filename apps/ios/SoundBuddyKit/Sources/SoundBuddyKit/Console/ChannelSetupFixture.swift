@@ -64,10 +64,25 @@ public enum ChannelSetupFixture: String, CaseIterable, Sendable {
     /// Builds the inventory from `nodeLines` and guesses every role, exactly
     /// as a real read would — just with no socket involved.
     public func readResult(guesser: ChannelRoleGuesser = .bundled()) -> ConsoleChannelReadResult {
+        ChannelSetupFixture.readResult(lines: nodeLines, model: model, guesser: guesser)
+    }
+
+    /// Same as `readResult(guesser:)`, except `id`'s own line has its quoted
+    /// name replaced with `newName` first (the `ChannelSetupDiffTests.rename`
+    /// algorithm). A no-op edit — the unedited read — if `id` has no line.
+    /// Used by the recheck tests and the DEBUG `-channelSetupRecheckFixture`
+    /// proof seed to synthesize "the desk changed since last time".
+    public func readResult(renaming id: ConsoleStripID, to newName: String, guesser: ChannelRoleGuesser = .bundled()) -> ConsoleChannelReadResult {
+        var lines = nodeLines
+        ChannelSetupFixture.rename(&lines, id: id, to: newName)
+        return ChannelSetupFixture.readResult(lines: lines, model: model, guesser: guesser)
+    }
+
+    private static func readResult(lines: [String], model: String, guesser: ChannelRoleGuesser) -> ConsoleChannelReadResult {
         guard var inventory = ConsoleChannelInventory(model: model) else {
             preconditionFailure("ChannelSetupFixture.model (\(model)) must be in ConsoleChannelInventory's model table")
         }
-        for line in nodeLines {
+        for line in lines {
             inventory.apply(nodeLine: line)
         }
         let guesses = guesser.guess(ConsoleChannelReadResult.roleInputs(from: inventory))
@@ -76,6 +91,17 @@ public enum ChannelSetupFixture: String, CaseIterable, Sendable {
             guesses: guesses,
             roomMicCandidates: ChannelRoleGuesser.roomMicCandidates(in: guesses)
         )
+    }
+
+    private static func closingQuoteIndex(in line: String) -> String.Index? {
+        guard let openQuote = line.firstIndex(of: "\"") else { return nil }
+        return line[line.index(after: openQuote)...].firstIndex(of: "\"")
+    }
+
+    private static func rename(_ lines: inout [String], id: ConsoleStripID, to newName: String) {
+        guard let index = lines.firstIndex(where: { $0.hasPrefix(id.configPath + " ") }) else { return }
+        guard let openQuote = lines[index].firstIndex(of: "\""), let closeQuote = closingQuoteIndex(in: lines[index]) else { return }
+        lines[index].replaceSubrange(lines[index].index(after: openQuote)..<closeQuote, with: newName)
     }
 
     // test data: TPC M32R spike 2026-10-29 (person-name variant) — the same
