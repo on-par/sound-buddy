@@ -3,7 +3,7 @@ import Foundation
 /// The three `/node` config families a strip can belong to:
 /// `/ch/[01..32]/config`, `/auxin/[01..08]/config`, `/bus/[01..16]/config`.
 /// Main LR is `ConsoleTargetCatalog`'s territory, not this inventory's.
-public enum ConsoleStripKind: String, CaseIterable, Sendable {
+public enum ConsoleStripKind: String, CaseIterable, Codable, Sendable {
     case ch
     case auxin
     case bus
@@ -30,7 +30,7 @@ public enum ConsoleStripKind: String, CaseIterable, Sendable {
 }
 
 /// One strip's identity: its kind and its 1-based number within that kind.
-public struct ConsoleStripID: Hashable, Sendable {
+public struct ConsoleStripID: Hashable, Codable, Sendable {
     private static let numberWidth = 2
 
     public let kind: ConsoleStripKind

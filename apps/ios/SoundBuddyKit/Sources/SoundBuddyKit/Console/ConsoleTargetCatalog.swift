@@ -4,7 +4,7 @@ import Foundation
 /// [0..15] (Behringer X32/M32 unofficial OSC protocol doc, Patrick-Gilles
 /// Maillot): OFF RD GN YE BL MG CY WH, then the same eight inverted. Token
 /// order mirrors the desk's own enum order.
-public enum ConsoleChannelColor: String, CaseIterable, Equatable, Sendable {
+public enum ConsoleChannelColor: String, CaseIterable, Codable, Equatable, Sendable {
     case off = "OFF"
     case red = "RD"
     case green = "GN"
