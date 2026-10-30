@@ -8,12 +8,14 @@ import UIKit
 /// only `ConsoleStore`.
 struct ConsoleConnectView: View {
     let store: ConsoleStore
+    var onContinue: ((ConsoleXInfo) -> Void)? = nil
     let onDismiss: () -> Void
 
     @State private var manualAddress: String
 
-    init(store: ConsoleStore, onDismiss: @escaping () -> Void) {
+    init(store: ConsoleStore, onContinue: ((ConsoleXInfo) -> Void)? = nil, onDismiss: @escaping () -> Void) {
         self.store = store
+        self.onContinue = onContinue
         self.onDismiss = onDismiss
         _manualAddress = State(initialValue: store.savedConsole?.ip ?? "")
     }
@@ -126,6 +128,14 @@ struct ConsoleConnectView: View {
             Text(info.ip)
                 .font(.footnote)
                 .foregroundStyle(Palette.secondaryText)
+            if let onContinue {
+                Button(ChannelSetupCopy.continueButton) {
+                    onContinue(info)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Palette.accent)
+                .accessibilityIdentifier("console.connect.continue")
+            }
             Button(ConsoleConnectCopy.disconnect, role: .destructive) {
                 store.disconnect()
             }
