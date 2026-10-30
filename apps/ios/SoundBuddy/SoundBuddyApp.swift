@@ -3,6 +3,14 @@ import StoreKit
 import SwiftUI
 import UIKit
 
+/// Lets `channelSetupRecheck`'s `isEnabled` closure (built once in `init`,
+/// before `self` is fully initialized) see `featureFlags` update once the
+/// async `.task` resolves the real store environment (#1796) — a plain
+/// `@State` read isn't available that early.
+private final class ConsoleFeatureFlagBox {
+    var isEnabled = false
+}
+
 @main
 struct SoundBuddyApp: App {
     @State private var model: AnalyzeModel
@@ -19,8 +27,11 @@ struct SoundBuddyApp: App {
     /// Drives "Discover channel setup" (#1781).
     @State private var channelSetupFlow: ChannelSetupFlow
     @State private var channelSetupOpen = false
-    /// Held in memory only; #1785 persists it.
-    @State private var confirmedChannelSetup: ConfirmedChannelSetup?
+    /// One saved setup per console (#1794).
+    @State private var channelSetupStore: ChannelSetupStore
+    /// Re-checks the saved setup against the desk on every reconnect (#1796).
+    @State private var channelSetupRecheck: ChannelSetupRecheck
+    private let consoleFlagBox = ConsoleFeatureFlagBox()
 
     init() {
         // #1772: Absolute became the default; reset build 14's stored
@@ -40,6 +51,15 @@ struct SoundBuddyApp: App {
         )
         _consoleStore = State(initialValue: store)
         _channelSetupFlow = State(initialValue: ChannelSetupFlow(store: store, consent: consent))
+        let setupStore = ChannelSetupStore()
+        _channelSetupStore = State(initialValue: setupStore)
+        // The flag box, not a captured `featureFlags` snapshot, so the
+        // recheck's `isEnabled` sees the real flag once `.task` resolves it
+        // (see `ConsoleFeatureFlagBox`'s own doc comment).
+        let flagBox = consoleFlagBox
+        let resolvedFlags = FeatureFlags.resolve(Self.launchEnvironment(store: nil))
+        flagBox.isEnabled = resolvedFlags.isEnabled(.console)
+        _channelSetupRecheck = State(initialValue: ChannelSetupRecheck(store: store, setupStore: setupStore, isEnabled: { flagBox.isEnabled }))
         var target = IdealCurveLibrary.liveDefault()
         var targetIsAuto = true
         // Demo sources replace the mic entirely: MicCapture (and its
@@ -119,7 +139,44 @@ struct SoundBuddyApp: App {
         }
         #endif
 
-        _featureFlags = State(initialValue: FeatureFlags.resolve(Self.launchEnvironment(store: nil)))
+        #if DEBUG
+        // `-channelSetupRecheckFixture spike|synthetic` (#1796): seeds the
+        // Analyze banner through `ChannelSetupRecheck.evaluate` with ch 3
+        // renamed — no desk, no transport call — for Simulator screenshots of
+        // the "1 channel changed" banner and its filtered Review. A
+        // throwaway UserDefaults suite (never `.standard`) keeps this from
+        // ever marking the real app as having a saved setup.
+        if let flagIndex = ProcessInfo.processInfo.arguments.firstIndex(of: "-channelSetupRecheckFixture"), Self.isDebugBuild,
+           flagIndex + 1 < ProcessInfo.processInfo.arguments.count,
+           let recheckFixture = ChannelSetupFixture(rawValue: ProcessInfo.processInfo.arguments[flagIndex + 1]) {
+            let fixtureDefaults = UserDefaults(suiteName: "channelSetupRecheckFixture") ?? .standard
+            let fixtureConsent = ConsoleConsentStore(defaults: fixtureDefaults)
+            fixtureConsent.grant()
+            let fixtureConsoleStore = ConsoleStore(
+                transport: ConsoleNWTransport(),
+                currentWiFi: WiFiInterfaceReader.current,
+                isConsentGranted: { fixtureConsent.isGranted },
+                defaults: fixtureDefaults
+            )
+            let fixtureSetupStore = ChannelSetupStore(defaults: fixtureDefaults)
+            let unedited = recheckFixture.readResult()
+            var seedReview = ChannelSetupReview(
+                console: ConsoleIdentity(recheckFixture.xInfo), inventory: unedited.inventory,
+                guesses: unedited.guesses, roomMicCandidates: unedited.roomMicCandidates
+            )
+            seedReview.confirmAll()
+            if let seedSetup = seedReview.done(confirmedAt: Date()) {
+                try? fixtureSetupStore.save(seedSetup, ipHint: recheckFixture.xInfo.ip)
+                let fixtureRecheck = ChannelSetupRecheck(store: fixtureConsoleStore, setupStore: fixtureSetupStore, isEnabled: { true })
+                let saved = SavedChannelSetup(setup: seedSetup, ipHint: recheckFixture.xInfo.ip)
+                let renamedID = ConsoleStripID(kind: .ch, number: 3)
+                fixtureRecheck.evaluate(saved, info: recheckFixture.xInfo, read: recheckFixture.readResult(renaming: renamedID, to: "Guest Vocal"))
+                _channelSetupRecheck = State(initialValue: fixtureRecheck)
+            }
+        }
+        #endif
+
+        _featureFlags = State(initialValue: resolvedFlags)
     }
 
     var body: some Scene {
@@ -137,18 +194,33 @@ struct SoundBuddyApp: App {
                     // session model exists.
                     console = nil
                     consoleStore.disconnect()
+                    channelSetupRecheck.reset()
                 },
                 onConsoleConnect: {
                     consoleConnectOpen = true
                 },
                 onDiscoverChannelSetup: {
+                    channelSetupRecheck.cancel()
                     channelSetupFlow.restart()
+                    channelSetupOpen = true
+                },
+                channelSetupBanner: featureFlags.isEnabled(.console) ? channelSetupRecheck.banner : nil,
+                onReviewChannelSetup: {
+                    guard case let .needsReview(info, read, diff) = channelSetupRecheck.state else { return }
+                    channelSetupFlow.beginRecheckReview(info: info, read: read, diff: diff)
                     channelSetupOpen = true
                 }
             )
             .task {
                 let store = await Self.storeEnvironment()
-                featureFlags = FeatureFlags.resolve(Self.launchEnvironment(store: store))
+                let resolved = FeatureFlags.resolve(Self.launchEnvironment(store: store))
+                featureFlags = resolved
+                consoleFlagBox.isEnabled = resolved.isEnabled(.console)
+            }
+            .onChange(of: consoleStore.phase) { old, new in
+                if let info = ChannelSetupRecheck.connectedInfo(from: old, to: new), !channelSetupOpen {
+                    Task { await channelSetupRecheck.connected(info) }
+                }
             }
             .sheet(isPresented: $consoleConnectOpen) {
                 ConsoleConnectView(store: consoleStore) { consoleConnectOpen = false }
@@ -157,7 +229,7 @@ struct SoundBuddyApp: App {
                 ChannelSetupFlowView(
                     flow: channelSetupFlow,
                     onDismiss: { channelSetupOpen = false },
-                    onConfirmed: { confirmedChannelSetup = $0 }
+                    onConfirmed: { channelSetupRecheck.adopt($0, ipHint: consoleStore.savedConsole?.ip) }
                 )
             }
         }

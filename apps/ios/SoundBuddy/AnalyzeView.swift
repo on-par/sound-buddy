@@ -74,6 +74,11 @@ struct AnalyzeView: View {
     var onConsoleConsentRevoked: () -> Void = {}
     var onConsoleConnect: () -> Void = {}
     var onDiscoverChannelSetup: () -> Void = {}
+    /// The reconnect re-check's own banner (#1796): offer Discover, a
+    /// "quick re-check" notice, or a list of what changed with Review.
+    /// `nil` hides it entirely — Release passes `nil` while the flag is off.
+    var channelSetupBanner: ChannelSetupBanner? = nil
+    var onReviewChannelSetup: () -> Void = {}
     /// Injected until the #1667/#1674 adapter hands over a live armed
     /// writer; Release passes `nil`, so Apply always reads "Unlock to
     /// apply" there.
@@ -102,6 +107,7 @@ struct AnalyzeView: View {
                     coachingPeekOpen = AnalyzeLayout.peekOpen(afterEditingChange: editing, wasOpen: coachingPeekOpen)
                 }
         }
+        .safeAreaInset(edge: .top) { channelSetupBannerView }
         .padding(Layout.screenPadding)
         .background(Palette.background.ignoresSafeArea())
         .preferredColorScheme(.dark)
@@ -180,6 +186,42 @@ struct AnalyzeView: View {
 
     private func applyKeepAwake() {
         keepAwake.apply(keepAwake: keepAwakeEnabled, isSceneActive: scenePhase == .active)
+    }
+
+    /// The reconnect re-check banner, inset above the RTA (#1796). Always
+    /// actionable: its one button either opens the filtered review or offers
+    /// Discover, per `channelSetupBanner.action`.
+    @ViewBuilder
+    private var channelSetupBannerView: some View {
+        if let channelSetupBanner {
+            VStack(alignment: .leading, spacing: Layout.cardSpacing) {
+                Text(channelSetupBanner.message)
+                    .font(.subheadline.weight(.semibold))
+                if let detail = channelSetupBanner.detail {
+                    Text(detail)
+                        .font(.footnote)
+                        .foregroundStyle(Palette.secondaryText)
+                }
+                Button(channelSetupBanner.actionTitle, action: channelSetupBannerTapped)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Palette.accent)
+                    .accessibilityIdentifier("analyze.channelSetupBanner.action")
+            }
+            .padding(Layout.cardPadding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Palette.surface, in: RoundedRectangle(cornerRadius: Layout.cornerRadius))
+            .padding(.bottom, Layout.cardSpacing)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("analyze.channelSetupBanner")
+        }
+    }
+
+    private func channelSetupBannerTapped() {
+        guard let channelSetupBanner else { return }
+        switch channelSetupBanner.action {
+        case .review: onReviewChannelSetup()
+        case .discover: onDiscoverChannelSetup()
+        }
     }
 
     @ViewBuilder

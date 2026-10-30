@@ -112,6 +112,16 @@ private final class FakeChannelTransport: ConsoleTransport, @unchecked Sendable 
     }
 }
 
+/// Same shape as `ChannelSetupDiffTests`' own helper (that file is the only
+/// other place a confirmed-all setup is built from a fixture) — kept private
+/// to this file rather than shared, per the suite's no-shared-test-dirs rule.
+private func confirmedSetup(_ fixture: ChannelSetupFixture, at date: Date = Date(timeIntervalSince1970: 1_700_000_000)) throws -> ConfirmedChannelSetup {
+    let read = fixture.readResult()
+    var review = ChannelSetupReview(console: ConsoleIdentity(fixture.xInfo), inventory: read.inventory, guesses: read.guesses, roomMicCandidates: read.roomMicCandidates)
+    review.confirmAll()
+    return try #require(review.done(confirmedAt: date))
+}
+
 private struct SyntheticInventoryFixture: Decodable {
     let model: String
     let nodeLines: [String]
@@ -762,5 +772,81 @@ private func seedSavedConsole(_ saved: SavedConsole, in defaults: UserDefaults) 
         let reviewAfter = try #require(flow.review)
         let afterRow = try #require(reviewAfter.rows.first { $0.id == Self.ryanID })
         #expect(ChannelSetupCopy.confidenceChip(for: afterRow) == "Confirmed")
+    }
+
+    // MARK: - Recheck review (#1796)
+
+    @Test(arguments: ChannelSetupFixture.allCases)
+    func recheckReviewShowsOnlyChangedStripsWithFreshGuesses(_ fixture: ChannelSetupFixture) throws {
+        let saved = try confirmedSetup(fixture)
+        let renamedID = ConsoleStripID(kind: .ch, number: 3)
+        let read = fixture.readResult(renaming: renamedID, to: "Guest Vocal")
+        let diff = ChannelSetupDiff.compare(saved: saved, inventory: read.inventory, guesses: read.guesses)
+        guard case .needsReview = diff.outcome else {
+            Issue.record("expected .needsReview, got \(diff.outcome)")
+            return
+        }
+
+        let flow = noTransportFlow()
+        flow.beginRecheckReview(info: fixture.xInfo, read: read, diff: diff)
+
+        let review = try #require(flow.review)
+        #expect(Set(review.rows.map(\.id)) == Set(diff.changed))
+
+        let freshGuessByID = Dictionary(uniqueKeysWithValues: read.guesses.map { ($0.id, $0) })
+        for row in review.rows {
+            let guess = try #require(freshGuessByID[row.id.configPath])
+            #expect(row.role == guess.role, "\(row.id.configPath)")
+        }
+    }
+
+    @Test(arguments: ChannelSetupFixture.allCases)
+    func finishingRecheckReviewMergesIntoSavedSetup(_ fixture: ChannelSetupFixture) throws {
+        let saved = try confirmedSetup(fixture)
+        let renamedID = ConsoleStripID(kind: .ch, number: 3)
+        let read = fixture.readResult(renaming: renamedID, to: "Guest Vocal")
+        let diff = ChannelSetupDiff.compare(saved: saved, inventory: read.inventory, guesses: read.guesses)
+        guard case let .needsReview(changed, _, merged) = diff.outcome else {
+            Issue.record("expected .needsReview, got \(diff.outcome)")
+            return
+        }
+
+        let flow = noTransportFlow()
+        flow.beginRecheckReview(info: fixture.xInfo, read: read, diff: diff)
+        flow.updateReview { $0.confirmAll() }
+
+        let finished = try #require(flow.finish(at: Date(timeIntervalSince1970: 1_700_000_500)))
+        #expect(finished.strips.count == merged.strips.count)
+
+        let finishedByID = Dictionary(uniqueKeysWithValues: finished.strips.map { ($0.id, $0) })
+        let changedIDs = Set(changed)
+        for stripID in changedIDs {
+            let stripFinished = try #require(finishedByID[stripID])
+            #expect(stripFinished.origin == .confirmed, "\(stripID.configPath)")
+        }
+        for savedStrip in saved.strips where !changedIDs.contains(savedStrip.id) {
+            let stripFinished = try #require(finishedByID[savedStrip.id])
+            #expect(stripFinished.role == savedStrip.role, "\(savedStrip.id.configPath)")
+            #expect(stripFinished.origin == savedStrip.origin, "\(savedStrip.id.configPath)")
+        }
+    }
+
+    @Test(arguments: ChannelSetupFixture.allCases)
+    func recheckReviewHidesRoomMicPickerUnlessSuspended(_ fixture: ChannelSetupFixture) throws {
+        let saved = try confirmedSetup(fixture)
+
+        let otherID = ConsoleStripID(kind: .ch, number: 3)
+        let unrelatedRead = fixture.readResult(renaming: otherID, to: "Guest Vocal")
+        let unrelatedDiff = ChannelSetupDiff.compare(saved: saved, inventory: unrelatedRead.inventory, guesses: unrelatedRead.guesses)
+        let unrelatedFlow = noTransportFlow()
+        unrelatedFlow.beginRecheckReview(info: fixture.xInfo, read: unrelatedRead, diff: unrelatedDiff)
+        #expect(!unrelatedFlow.showsRoomMicPicker)
+
+        let roomMicID = try #require(saved.roomMic)
+        let roomMicRead = fixture.readResult(renaming: roomMicID, to: "New Room Name")
+        let roomMicDiff = ChannelSetupDiff.compare(saved: saved, inventory: roomMicRead.inventory, guesses: roomMicRead.guesses)
+        let roomMicFlow = noTransportFlow()
+        roomMicFlow.beginRecheckReview(info: fixture.xInfo, read: roomMicRead, diff: roomMicDiff)
+        #expect(roomMicFlow.showsRoomMicPicker)
     }
 }
