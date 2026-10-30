@@ -47,6 +47,87 @@ private final class FakeTransport: ConsoleTransport, @unchecked Sendable {
     }
 }
 
+/// Same path-keyed shape as `ConsoleChannelReaderTests`'s
+/// `RecordingNodeTransport`, plus a scripted `/xinfo` reply so the existing
+/// connect flow still works: the one transport the whole flow (connect, then
+/// read) shares.
+private final class FakeChannelTransport: ConsoleTransport, @unchecked Sendable {
+    struct Call: Equatable {
+        let host: ConsoleIPv4
+        let port: UInt16
+        let timeout: TimeInterval
+    }
+
+    private let xInfoDatagram: Data
+    private var nodeLines: [String: String]
+    private var silent: Set<String>
+    private let onExchange: @Sendable (Int) -> Void
+
+    private(set) var calls: [Call] = []
+    private(set) var datagrams: [Data] = []
+    private(set) var cancelCount = 0
+
+    init(
+        xInfoDatagram: Data,
+        nodeLines: [String: String],
+        silent: Set<String> = [],
+        onExchange: @escaping @Sendable (Int) -> Void = { _ in }
+    ) {
+        self.xInfoDatagram = xInfoDatagram
+        self.nodeLines = nodeLines
+        self.silent = silent
+        self.onExchange = onExchange
+    }
+
+    func unsilence(_ path: String, reply line: String) {
+        silent.remove(path)
+        nodeLines[path] = line
+    }
+
+    func resetRecording() {
+        calls = []
+        datagrams = []
+    }
+
+    func exchange(_ datagram: Data, with host: ConsoleIPv4, port: UInt16, timeout: TimeInterval) async throws(ConsoleTransportError) -> Data? {
+        calls.append(Call(host: host, port: port, timeout: timeout))
+        datagrams.append(datagram)
+        onExchange(calls.count)
+
+        guard let message = try? OSCCodec.decode(datagram) else { return nil }
+        if message.address == "/xinfo" {
+            return xInfoDatagram
+        }
+        guard message.address == "/node", message.arguments.count == 1, case let .string(value) = message.arguments[0] else {
+            return nil
+        }
+        let path = "/" + value
+        if silent.contains(path) { return nil }
+        guard let line = nodeLines[path] else { return nil }
+        return try? OSCCodec.encode(OSCMessage("/node", [.string(line + "\n")]))
+    }
+
+    func cancel() {
+        cancelCount += 1
+    }
+}
+
+private struct SyntheticInventoryFixture: Decodable {
+    let model: String
+    let nodeLines: [String]
+}
+
+private func syntheticNodeLines() throws -> [String: String] {
+    let data = try Data(contentsOf: TestPaths.fixture("console-channel-inventory.synthetic.json"))
+    let fixture = try JSONDecoder().decode(SyntheticInventoryFixture.self, from: data)
+    var dict: [String: String] = [:]
+    for line in fixture.nodeLines {
+        guard let configLine = ConsoleConfigLine(nodeLine: line) else { continue }
+        dict[configLine.path] = line
+    }
+    return dict
+}
+
 // Two fixtures per the issue's layout rule: no test may depend on the TPC
 // spike console alone.
 private let syntheticWiFi = ConsoleWiFiNetwork(address: ConsoleIPv4("10.0.0.20")!, netmask: ConsoleIPv4("255.255.255.0")!)
@@ -69,7 +150,7 @@ private func makeConsent(granted: Bool = true) -> ConsoleConsentStore {
 
 @MainActor
 private func makeFlow(
-    transport: FakeTransport,
+    transport: any ConsoleTransport,
     wifi: ConsoleWiFiNetwork?,
     consent: ConsoleConsentStore,
     defaults: UserDefaults = UserDefaults(suiteName: UUID().uuidString)!
@@ -322,5 +403,133 @@ private func seedSavedConsole(_ saved: SavedConsole, in defaults: UserDefaults) 
             #expect(message.arguments.isEmpty)
             try ReadOnlyOSCGuard.check(message)
         }
+    }
+
+    @Test func channelsStepReadsAllStripsAndSummarises() async throws {
+        let transport = FakeChannelTransport(xInfoDatagram: try syntheticXInfoDatagram(), nodeLines: try syntheticNodeLines())
+        let flow = makeFlow(transport: transport, wifi: syntheticWiFi, consent: makeConsent())
+
+        await flow.store.connect(manualAddress: "10.0.0.7")
+        #expect(flow.continueToChannels() != nil)
+
+        await flow.readChannels()
+
+        guard case let .done(result) = flow.channelRead else {
+            Issue.record("expected .done, got \(flow.channelRead)")
+            return
+        }
+        #expect(result.readCount == 56)
+        #expect(result.missingSummary == nil)
+    }
+
+    @Test func channelsStepSummarisesTwoMissingStripsAndRetrySweepsOnlyThem() async throws {
+        let silentPaths = ["/ch/01/config", "/bus/01/config"]
+        let lines = try syntheticNodeLines()
+        let transport = FakeChannelTransport(
+            xInfoDatagram: try syntheticXInfoDatagram(), nodeLines: lines, silent: Set(silentPaths)
+        )
+        let flow = makeFlow(transport: transport, wifi: syntheticWiFi, consent: makeConsent())
+
+        await flow.store.connect(manualAddress: "10.0.0.7")
+        #expect(flow.continueToChannels() != nil)
+        await flow.readChannels()
+
+        guard case let .done(result) = flow.channelRead else {
+            Issue.record("expected .done, got \(flow.channelRead)")
+            return
+        }
+        #expect(result.missingSummary == "2 channels didn't answer — Retry")
+
+        transport.resetRecording()
+        for path in silentPaths {
+            transport.unsilence(path, reply: try #require(lines[path]))
+        }
+
+        await flow.retryMissingChannels()
+
+        var sentPaths: Set<String> = []
+        for datagram in transport.datagrams {
+            let message = try OSCCodec.decode(datagram)
+            guard message.address == "/node", case let .string(value) = message.arguments[0] else { continue }
+            sentPaths.insert("/" + value)
+        }
+        #expect(sentPaths == Set(silentPaths))
+
+        guard case let .done(retried) = flow.channelRead else {
+            Issue.record("expected .done, got \(flow.channelRead)")
+            return
+        }
+        #expect(retried.missing.isEmpty)
+    }
+
+    @Test func cancelReadStopsSendingAndReturnsToIdle() async throws {
+        let cancelAtCall = 2
+        let transport = FakeChannelTransport(
+            xInfoDatagram: try syntheticXInfoDatagram(),
+            nodeLines: try syntheticNodeLines(),
+            onExchange: { count in
+                if count == cancelAtCall { withUnsafeCurrentTask { $0?.cancel() } }
+            }
+        )
+        let flow = makeFlow(transport: transport, wifi: syntheticWiFi, consent: makeConsent())
+
+        await flow.store.connect(manualAddress: "10.0.0.7")
+        #expect(flow.continueToChannels() != nil)
+
+        await flow.readChannels()
+
+        #expect(flow.channelRead == .idle)
+        #expect(transport.calls.count == cancelAtCall)
+    }
+
+    @Test func restartCancelsAndResetsTheRead() async throws {
+        let transport = FakeChannelTransport(xInfoDatagram: try syntheticXInfoDatagram(), nodeLines: try syntheticNodeLines())
+        let flow = makeFlow(transport: transport, wifi: syntheticWiFi, consent: makeConsent())
+
+        await flow.store.connect(manualAddress: "10.0.0.7")
+        #expect(flow.continueToChannels() != nil)
+        await flow.readChannels()
+
+        guard case .done = flow.channelRead else {
+            Issue.record("expected .done, got \(flow.channelRead)")
+            return
+        }
+
+        flow.restart()
+
+        #expect(flow.channelRead == .idle)
+        #expect(flow.step == .connect)
+    }
+
+    @Test func readChannelsOutsideTheChannelsStepSendsNothing() async {
+        let transport = FakeChannelTransport(xInfoDatagram: Data(), nodeLines: [:])
+        let flow = makeFlow(transport: transport, wifi: syntheticWiFi, consent: makeConsent())
+
+        #expect(flow.step == .connect)
+
+        await flow.readChannels()
+
+        #expect(flow.channelRead == .idle)
+        #expect(transport.calls.isEmpty)
+    }
+
+    @Test func readingCopyShowsTheCount() {
+        #expect(ChannelSetupCopy.reading(count: 12) == "Reading 12 channels…")
+    }
+
+    @Test func readSummaryCopySingularAndPlural() {
+        #expect(ChannelSetupCopy.readSummary(count: 1) == "Read 1 channel")
+        #expect(ChannelSetupCopy.readSummary(count: 56) == "Read 56 channels")
+    }
+
+    @Test func readFailedCopyIsActionableForEveryCase() {
+        #expect(ChannelSetupCopy.readFailed(.transport(.localNetworkDenied)) == ConsoleConnectCopy.permissionDenied)
+        #expect(ChannelSetupCopy.readFailed(.transport(.noWiFi)) == "Join the console's Wi-Fi, then tap Retry.")
+        #expect(
+            ChannelSetupCopy.readFailed(.transport(.failed("timeout")))
+                == "Couldn't read the channels (timeout). Check the console is on, then tap Retry."
+        )
+        #expect(ChannelSetupCopy.readFailed(.unsupportedModel("XR18")) == ChannelSetupCopy.unsupportedDetail(model: "XR18"))
+        #expect(ChannelSetupCopy.readFailed(.cancelled) == "Reading stopped. Tap Retry to read again.")
     }
 }

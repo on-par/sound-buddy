@@ -59,8 +59,12 @@ struct ChannelSetupFlowView: View {
     private func channelsView(_ info: ConsoleXInfo) -> some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: Layout.innerSpacing) {
-                Text(ChannelSetupCopy.channelsPlaceholder(name: info.name, model: info.model))
-                    .font(.subheadline.weight(.semibold))
+                Text(info.name)
+                    .font(.headline)
+                Text(info.model)
+                    .font(.subheadline)
+                    .foregroundStyle(Palette.secondaryText)
+                readStatusView
                 Text("Firmware \(info.firmware)")
                     .font(.footnote)
                     .foregroundStyle(Palette.secondaryText)
@@ -84,6 +88,50 @@ struct ChannelSetupFlowView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .task {
+            if flow.channelRead == .idle { await flow.readChannels() }
+        }
+        .onDisappear { flow.cancelRead() }
+    }
+
+    @ViewBuilder
+    private var readStatusView: some View {
+        switch flow.channelRead {
+        case .idle:
+            readingView(count: 0)
+        case let .reading(count):
+            readingView(count: count)
+        case let .done(result):
+            VStack(alignment: .leading, spacing: Layout.innerSpacing) {
+                Text(ChannelSetupCopy.readSummary(count: result.readCount))
+                    .font(.subheadline.weight(.semibold))
+                    .accessibilityIdentifier("channelSetup.summary")
+                if let missingSummary = result.missingSummary {
+                    Text(missingSummary)
+                        .font(.footnote)
+                        .foregroundStyle(Palette.secondaryText)
+                        .accessibilityIdentifier("channelSetup.missing")
+                    Button(ChannelSetupCopy.retry) { Task { await flow.retryMissingChannels() } }
+                        .accessibilityIdentifier("channelSetup.retry")
+                }
+            }
+        case let .failed(error):
+            VStack(alignment: .leading, spacing: Layout.innerSpacing) {
+                Text(ChannelSetupCopy.readFailed(error))
+                    .font(.subheadline.weight(.semibold))
+                Button(ChannelSetupCopy.retry) { Task { await flow.readChannels() } }
+                    .accessibilityIdentifier("channelSetup.retry")
+            }
+        }
+    }
+
+    private func readingView(count: Int) -> some View {
+        HStack(spacing: Layout.innerSpacing) {
+            ProgressView()
+            Text(ChannelSetupCopy.reading(count: count))
+        }
+        .font(.subheadline.weight(.semibold))
+        .accessibilityIdentifier("channelSetup.reading")
     }
 
     private enum Layout {
