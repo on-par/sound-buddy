@@ -184,6 +184,31 @@ public final class ChannelSetupRecheck {
         cancel()
     }
 
+    /// Settings' "Forget this console" (#1797): removes the saved setup and, if
+    /// the current state belongs to that console, drops it so nothing keeps
+    /// applying a forgotten setup. The next `connected(_:)` then offers setup.
+    public func forget(_ console: ConsoleIdentity) {
+        setupStore.forget(console)
+        if stateConsole == console { cancel() }
+    }
+
+    /// The console `state` currently belongs to, or `nil` for the states
+    /// with no identity (`.idle`, `.needsRecheck`, `.readFailed`).
+    private var stateConsole: ConsoleIdentity? {
+        switch state {
+        case let .checking(id):
+            id
+        case let .offerSetup(id):
+            id
+        case let .applied(setup):
+            setup.console
+        case let .needsReview(info, _, _):
+            ConsoleIdentity(info)
+        case .idle, .needsRecheck, .readFailed:
+            nil
+        }
+    }
+
     private func runRead(
         saved: SavedChannelSetup, info: ConsoleXInfo,
         _ operation: @escaping () async -> Result<ConsoleChannelReadResult, ConsoleChannelReadError>
