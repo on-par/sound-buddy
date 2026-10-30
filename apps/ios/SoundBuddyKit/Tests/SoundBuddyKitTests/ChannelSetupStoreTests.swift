@@ -16,7 +16,7 @@ private func confirmedSetup(_ fixture: ChannelSetupFixture, at date: Date = Date
         let store = ChannelSetupStore(defaults: defaults)
         let setup = try confirmedSetup(fixture)
 
-        store.save(setup, ipHint: fixture.xInfo.ip)
+        try store.save(setup, ipHint: fixture.xInfo.ip)
 
         let identity = ConsoleIdentity(name: fixture.xInfo.name, model: fixture.model)
         let expected = SavedChannelSetup(setup: setup, ipHint: fixture.xInfo.ip)
@@ -31,7 +31,7 @@ private func confirmedSetup(_ fixture: ChannelSetupFixture, at date: Date = Date
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let store = ChannelSetupStore(defaults: defaults)
         let setup = try confirmedSetup(fixture)
-        store.save(setup, ipHint: "10.0.0.50")
+        try store.save(setup, ipHint: "10.0.0.50")
 
         let movedReply = OSCMessage("/xinfo", [.string("10.0.0.99"), .string(fixture.xInfo.name), .string(fixture.model), .string(fixture.xInfo.firmware)])
         let movedInfo = try #require(ConsoleXInfo(reply: movedReply))
@@ -44,7 +44,7 @@ private func confirmedSetup(_ fixture: ChannelSetupFixture, at date: Date = Date
         #expect(found.setup == setup)
         #expect(found.ipHint == "10.0.0.50")
 
-        store.save(setup, ipHint: "10.0.0.99")
+        try store.save(setup, ipHint: "10.0.0.99")
         guard case let .found(afterMove) = store.setup(for: identity) else {
             Issue.record("expected .found")
             return
@@ -59,8 +59,8 @@ private func confirmedSetup(_ fixture: ChannelSetupFixture, at date: Date = Date
         let spikeSetup = try confirmedSetup(.spike)
         let syntheticSetup = try confirmedSetup(.synthetic)
 
-        store.save(spikeSetup)
-        store.save(syntheticSetup)
+        try store.save(spikeSetup)
+        try store.save(syntheticSetup)
 
         let spikeIdentity = ConsoleIdentity(ChannelSetupFixture.spike.xInfo)
         let syntheticIdentity = ConsoleIdentity(ChannelSetupFixture.synthetic.xInfo)
@@ -86,8 +86,8 @@ private func confirmedSetup(_ fixture: ChannelSetupFixture, at date: Date = Date
         let firstSetup = try confirmedSetup(.spike, at: Date(timeIntervalSince1970: 1_700_000_000))
         let secondSetup = try confirmedSetup(.spike, at: Date(timeIntervalSince1970: 1_700_000_500))
 
-        store.save(firstSetup)
-        store.save(secondSetup)
+        try store.save(firstSetup)
+        try store.save(secondSetup)
 
         let identity = ConsoleIdentity(ChannelSetupFixture.spike.xInfo)
         guard case let .found(found) = store.setup(for: identity) else {
@@ -106,8 +106,8 @@ private func confirmedSetup(_ fixture: ChannelSetupFixture, at date: Date = Date
 
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let store = ChannelSetupStore(defaults: defaults)
-        store.save(try confirmedSetup(.spike))
-        store.save(try confirmedSetup(.synthetic))
+        try store.save(try confirmedSetup(.spike))
+        try store.save(try confirmedSetup(.synthetic))
         #expect(store.setup(for: unknown) == .notFound)
     }
 
@@ -117,7 +117,7 @@ private func confirmedSetup(_ fixture: ChannelSetupFixture, at date: Date = Date
         let setupA = try confirmedSetup(.spike)
         let identityB = ConsoleIdentity(ChannelSetupFixture.synthetic.xInfo)
 
-        store.save(setupA)
+        try store.save(setupA)
         let keyA = ChannelSetupStore.key(for: ConsoleIdentity(ChannelSetupFixture.spike.xInfo))
         let keyB = ChannelSetupStore.key(for: identityB)
         let raw = try #require(defaults.object(forKey: keyA) as? Data)
@@ -129,8 +129,8 @@ private func confirmedSetup(_ fixture: ChannelSetupFixture, at date: Date = Date
     @Test func forgetRemovesOnlyThatConsolesSetup() throws {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let store = ChannelSetupStore(defaults: defaults)
-        store.save(try confirmedSetup(.spike))
-        store.save(try confirmedSetup(.synthetic))
+        try store.save(try confirmedSetup(.spike))
+        try store.save(try confirmedSetup(.synthetic))
         let spikeIdentity = ConsoleIdentity(ChannelSetupFixture.spike.xInfo)
         let syntheticIdentity = ConsoleIdentity(ChannelSetupFixture.synthetic.xInfo)
 
@@ -148,7 +148,7 @@ private func confirmedSetup(_ fixture: ChannelSetupFixture, at date: Date = Date
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let store = ChannelSetupStore(defaults: defaults)
         let setup = try confirmedSetup(.spike)
-        store.save(setup)
+        try store.save(setup)
         let identity = ConsoleIdentity(ChannelSetupFixture.spike.xInfo)
         let key = ChannelSetupStore.key(for: identity)
 
@@ -163,7 +163,7 @@ private func confirmedSetup(_ fixture: ChannelSetupFixture, at date: Date = Date
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let store = ChannelSetupStore(defaults: defaults)
         let setup = try confirmedSetup(.spike)
-        store.save(setup)
+        try store.save(setup)
         let identity = ConsoleIdentity(ChannelSetupFixture.spike.xInfo)
         let key = ChannelSetupStore.key(for: identity)
 
@@ -204,7 +204,7 @@ private func confirmedSetup(_ fixture: ChannelSetupFixture, at date: Date = Date
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let store = ChannelSetupStore(defaults: defaults)
         let setup = try confirmedSetup(.spike)
-        store.save(setup)
+        try store.save(setup)
 
         let garbageIdentity = ConsoleIdentity(name: "Nobody", model: "XR18")
         defaults.set(Data([0xFF, 0x00, 0x13, 0x37]), forKey: ChannelSetupStore.key(for: garbageIdentity))

@@ -64,9 +64,9 @@ public final class ChannelSetupStore {
         return .found(SavedChannelSetup(setup: envelope.setup, ipHint: envelope.ipHint))
     }
 
-    public func save(_ setup: ConfirmedChannelSetup, ipHint: String? = nil) {
+    public func save(_ setup: ConfirmedChannelSetup, ipHint: String? = nil) throws {
         let envelope = Envelope(schemaVersion: Self.schemaVersion, ipHint: ipHint, setup: setup)
-        guard let data = try? JSONEncoder().encode(envelope) else { return }
+        let data = try JSONEncoder().encode(envelope)
         defaults.set(data, forKey: Self.key(for: setup.console))
     }
 
