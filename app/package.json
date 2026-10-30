@@ -27,7 +27,7 @@
     "@types/node": "^22",
     "@vitest/coverage-v8": "^4.1.11",
     "electron": "^44.2.0",
-    "electron-builder": "^26.0.0",
+    "electron-builder": "^26.18.0",
     "playwright": "^1.61.1",
     "typescript": "^5",
     "vitest": "^4.1.10",
