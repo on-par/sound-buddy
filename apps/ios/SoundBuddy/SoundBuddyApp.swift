@@ -16,6 +16,9 @@ struct SoundBuddyApp: App {
     /// Drives the manual-IP / last-known-console connect sheet (#1666).
     @State private var consoleStore: ConsoleStore
     @State private var consoleConnectOpen = false
+    /// Drives "Discover channel setup" (#1781).
+    @State private var channelSetupFlow: ChannelSetupFlow
+    @State private var channelSetupOpen = false
 
     init() {
         // #1772: Absolute became the default; reset build 14's stored
@@ -27,12 +30,14 @@ struct SoundBuddyApp: App {
         _micInputs = State(initialValue: inputs)
         let consent = ConsoleConsentStore()
         _consoleConsent = State(initialValue: consent)
-        _consoleStore = State(initialValue: ConsoleStore(
+        let store = ConsoleStore(
             transport: ConsoleNWTransport(),
             currentWiFi: WiFiInterfaceReader.current,
             isConsentGranted: { consent.isGranted },
             defaults: .standard
-        ))
+        )
+        _consoleStore = State(initialValue: store)
+        _channelSetupFlow = State(initialValue: ChannelSetupFlow(store: store, consent: consent))
         var target = IdealCurveLibrary.liveDefault()
         var targetIsAuto = true
         // Demo sources replace the mic entirely: MicCapture (and its
@@ -108,6 +113,10 @@ struct SoundBuddyApp: App {
                 },
                 onConsoleConnect: {
                     consoleConnectOpen = true
+                },
+                onDiscoverChannelSetup: {
+                    channelSetupFlow.restart()
+                    channelSetupOpen = true
                 }
             )
             .task {
@@ -116,6 +125,9 @@ struct SoundBuddyApp: App {
             }
             .sheet(isPresented: $consoleConnectOpen) {
                 ConsoleConnectView(store: consoleStore) { consoleConnectOpen = false }
+            }
+            .sheet(isPresented: $channelSetupOpen) {
+                ChannelSetupFlowView(flow: channelSetupFlow) { channelSetupOpen = false }
             }
         }
     }

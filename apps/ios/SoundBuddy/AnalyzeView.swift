@@ -73,6 +73,7 @@ struct AnalyzeView: View {
     let consoleConsent: ConsoleConsentStore
     var onConsoleConsentRevoked: () -> Void = {}
     var onConsoleConnect: () -> Void = {}
+    var onDiscoverChannelSetup: () -> Void = {}
     /// Injected until the #1667/#1674 adapter hands over a live armed
     /// writer; Release passes `nil`, so Apply always reads "Unlock to
     /// apply" there.
@@ -111,7 +112,8 @@ struct AnalyzeView: View {
                 showsConsoleSection: featureFlags.isEnabled(.console),
                 consent: consoleConsent,
                 onConnect: onConsoleConnect,
-                onRevoke: onConsoleConsentRevoked
+                onRevoke: onConsoleConsentRevoked,
+                onDiscoverChannelSetup: onDiscoverChannelSetup
             ) { id in
                 micInputs.select(id)
                 Task { await model.restartListening() }
@@ -480,6 +482,7 @@ private struct SettingsView: View {
     let consent: ConsoleConsentStore
     let onConnect: () -> Void
     let onRevoke: () -> Void
+    let onDiscoverChannelSetup: () -> Void
     let onSelectMic: (String?) -> Void
     @Environment(\.dismiss) private var dismiss
     /// RTA display choices (#1707), read directly by RTAView and AnalyzeView.
@@ -563,6 +566,10 @@ private struct SettingsView: View {
                             }
                             .accessibilityIdentifier("settings.console.connect")
                         }
+                        Button(ChannelSetupCopy.rowTitle) {
+                            onDiscoverChannelSetup()
+                        }
+                        .accessibilityIdentifier("settings.console.discoverChannelSetup")
                     } header: {
                         Text(ConsoleSettingsCopy.sectionTitle)
                     } footer: {

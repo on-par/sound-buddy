@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0CDC60465904A92EF0D2D810 /* AnalyzeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F16C27B342308E5868ED13A /* AnalyzeView.swift */; };
 		103C7871F627A5A38E5EE737 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 770C099101BBBDBF216FAB1C /* Assets.xcassets */; };
+		1C5FB7074EF7A338D4445847 /* ChannelSetupFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B3A06F042D250EFA8F6B42C /* ChannelSetupFlowView.swift */; };
 		29F10DF61584F0B16A2A178E /* EQCurveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A6AE62893D06035FDDB066F /* EQCurveView.swift */; };
 		3279118DA6CB9871F5E784AF /* SoundBuddyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D108D9CDAC13447AF712A950 /* SoundBuddyApp.swift */; };
 		3C444817253DA43B3DAC9D3A /* ConsoleChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C9DA9493BA5F5B759F9A49A /* ConsoleChip.swift */; };
@@ -35,6 +36,7 @@
 		6C9DA9493BA5F5B759F9A49A /* ConsoleChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleChip.swift; sourceTree = "<group>"; };
 		6F16C27B342308E5868ED13A /* AnalyzeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyzeView.swift; sourceTree = "<group>"; };
 		770C099101BBBDBF216FAB1C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		7B3A06F042D250EFA8F6B42C /* ChannelSetupFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelSetupFlowView.swift; sourceTree = "<group>"; };
 		7DF90837164C3F346F48B3B8 /* ConsoleNWTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleNWTransport.swift; sourceTree = "<group>"; };
 		D108D9CDAC13447AF712A950 /* SoundBuddyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoundBuddyApp.swift; sourceTree = "<group>"; };
 		DD263257E4F708EAFE55D813 /* SoundBuddyKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = SoundBuddyKit; path = SoundBuddyKit; sourceTree = SOURCE_ROOT; };
@@ -68,6 +70,7 @@
 			children = (
 				6F16C27B342308E5868ED13A /* AnalyzeView.swift */,
 				770C099101BBBDBF216FAB1C /* Assets.xcassets */,
+				7B3A06F042D250EFA8F6B42C /* ChannelSetupFlowView.swift */,
 				6C9DA9493BA5F5B759F9A49A /* ConsoleChip.swift */,
 				12277FA4F7945523590FB8BF /* ConsoleConnectView.swift */,
 				3F17929D7DFCF7623DF965CE /* ConsoleConsentView.swift */,
@@ -177,6 +180,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				0CDC60465904A92EF0D2D810 /* AnalyzeView.swift in Sources */,
+				1C5FB7074EF7A338D4445847 /* ChannelSetupFlowView.swift in Sources */,
 				3C444817253DA43B3DAC9D3A /* ConsoleChip.swift in Sources */,
 				C3BAC85D9E127E2B2518C263 /* ConsoleConnectView.swift in Sources */,
 				D3997E9745264F1A4A625BEA /* ConsoleConsentView.swift in Sources */,
