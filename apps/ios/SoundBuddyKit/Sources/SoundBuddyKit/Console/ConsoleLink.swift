@@ -18,11 +18,8 @@ public enum ConsoleTransportError: Error, Equatable, Sendable {
 
 /// One Wi-Fi-only UDP exchange: send `datagram` to `host:port`, return the
 /// first datagram received within `timeout`, or `nil` on timeout.
-/// Untyped `throws`, narrowed to `ConsoleTransportError` by convention (every
-/// call site casts) — Swift 6 typed throws on a protocol requirement plus
-/// `withCheckedThrowingContinuation` is more friction than this is worth.
 public protocol ConsoleTransport: Sendable {
-    func exchange(_ datagram: Data, with host: ConsoleIPv4, port: UInt16, timeout: TimeInterval) async throws -> Data?
+    func exchange(_ datagram: Data, with host: ConsoleIPv4, port: UInt16, timeout: TimeInterval) async throws(ConsoleTransportError) -> Data?
     func cancel()
 }
 
@@ -59,14 +56,12 @@ public enum ConsoleLink {
                     continue
                 }
                 return .found(info)
-            } catch let error as ConsoleTransportError {
+            } catch {
                 switch error {
                 case .localNetworkDenied: return .localNetworkDenied
                 case .noWiFi: return .noWiFi
                 case let .failed(message): return .failed(message)
                 }
-            } catch {
-                return .failed("\(error)")
             }
         }
         return .noReply

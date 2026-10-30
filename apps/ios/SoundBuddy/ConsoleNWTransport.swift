@@ -10,9 +10,9 @@ import SoundBuddyKit
 final class ConsoleNWTransport: ConsoleTransport, @unchecked Sendable {
     private final class ExchangeState: @unchecked Sendable {
         private var resumed = false
-        private let continuation: CheckedContinuation<Data?, Error>
+        private let continuation: CheckedContinuation<Result<Data?, ConsoleTransportError>, Never>
 
-        init(continuation: CheckedContinuation<Data?, Error>) {
+        init(continuation: CheckedContinuation<Result<Data?, ConsoleTransportError>, Never>) {
             self.continuation = continuation
         }
 
@@ -21,10 +21,7 @@ final class ConsoleNWTransport: ConsoleTransport, @unchecked Sendable {
         func resume(_ result: Result<Data?, ConsoleTransportError>) {
             guard !resumed else { return }
             resumed = true
-            switch result {
-            case let .success(data): continuation.resume(returning: data)
-            case let .failure(error): continuation.resume(throwing: error)
-            }
+            continuation.resume(returning: result)
         }
     }
 
@@ -33,12 +30,13 @@ final class ConsoleNWTransport: ConsoleTransport, @unchecked Sendable {
     private var connectedHost: ConsoleIPv4?
     private var connectedPort: UInt16?
 
-    func exchange(_ datagram: Data, with host: ConsoleIPv4, port: UInt16, timeout: TimeInterval) async throws -> Data? {
-        try await withCheckedThrowingContinuation { continuation in
+    func exchange(_ datagram: Data, with host: ConsoleIPv4, port: UInt16, timeout: TimeInterval) async throws(ConsoleTransportError) -> Data? {
+        let result = await withCheckedContinuation { continuation in
             queue.async {
                 self.exchangeOnQueue(datagram, host: host, port: port, timeout: timeout, continuation: continuation)
             }
         }
+        return try result.get()
     }
 
     private func exchangeOnQueue(
@@ -46,16 +44,22 @@ final class ConsoleNWTransport: ConsoleTransport, @unchecked Sendable {
         host: ConsoleIPv4,
         port: UInt16,
         timeout: TimeInterval,
-        continuation: CheckedContinuation<Data?, Error>
+        continuation: CheckedContinuation<Result<Data?, ConsoleTransportError>, Never>
     ) {
         let connection = connectionFor(host: host, port: port)
         let state = ExchangeState(continuation: continuation)
 
-        let sendAndReceive: @Sendable () -> Void = {
-            connection.send(content: datagram, completion: .contentProcessed { _ in })
-            connection.receiveMessage { data, _, _, _ in
-                state.resume(.success(data))
-            }
+        let sendAndReceive: @Sendable () -> Void = { [weak self] in
+            connection.send(content: datagram, completion: .contentProcessed { error in
+                guard let self else { return }
+                if let error {
+                    state.resume(.failure(self.transportError(for: connection, error: error)))
+                    return
+                }
+                connection.receiveMessage { data, _, _, _ in
+                    state.resume(.success(data))
+                }
+            })
         }
 
         connection.stateUpdateHandler = { [weak self] newState in

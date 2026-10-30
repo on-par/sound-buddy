@@ -28,7 +28,7 @@ private final class FakeTransport: ConsoleTransport, @unchecked Sendable {
         self.script = script
     }
 
-    func exchange(_ datagram: Data, with host: ConsoleIPv4, port: UInt16, timeout: TimeInterval) async throws -> Data? {
+    func exchange(_ datagram: Data, with host: ConsoleIPv4, port: UInt16, timeout: TimeInterval) async throws(ConsoleTransportError) -> Data? {
         calls.append(Call(datagram: datagram, host: host, port: port, timeout: timeout))
         guard !script.isEmpty else { return nil }
         switch script.removeFirst() {
