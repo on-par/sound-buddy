@@ -63,7 +63,9 @@ describe("GET /activate (#112)", () => {
     const sessionId = "cs_test_with+special/characters";
     const body = await handleActivate(request(`?session_id=${encodeURIComponent(sessionId)}`), env, ctx).text();
     expect(body).toContain(`data-session-id="${sessionId}"`);
-    const script = body.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+    const start = body.indexOf("<script>");
+    const end = body.indexOf("</script>", start);
+    const script = start >= 0 && end > start ? body.slice(start + "<script>".length, end) : undefined;
     expect(script).toBeDefined();
     const fetch = vi.fn(() => new Promise(() => {}));
     runInNewContext(script!, {
