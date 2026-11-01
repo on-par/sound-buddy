@@ -19,7 +19,7 @@ export const PRO_TIER_FEATURES: readonly string[] = [
   'Live listening on your Mac, right at the desk',
   'Customizable EQ curves',
   'Channel select — listen to any input',
-  'Record up to 32 channels',
+  'Analyze live input and files in one tab',
   'Unlimited recordings. Stored on your machine.', // locked phrase, check-positioning.mjs
   'Priority email support',
 ];

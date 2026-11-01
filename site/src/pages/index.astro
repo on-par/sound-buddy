@@ -6,9 +6,9 @@ import BrowserLitePreview from '../components/BrowserLitePreview.astro';
 import WaitlistHome from '../components/WaitlistHome.astro';
 import liveCaptureScreenshot from '../assets/screenshots/live-capture.png';
 import reportCardShot from '../assets/screenshots/report-card.png';
-import momentumShot from '../assets/screenshots/momentum.png';
 import { GUARANTEE_BADGE, REFUND_PATH } from '../lib/guarantee';
 import { FOUNDING_CAP, foundingCheckoutUrl, foundingUrgency, isCheckoutLive } from '../lib/founding-urgency';
+import { monthlyCheckoutUrl, annualCheckoutUrl } from '../lib/pro-checkout';
 import { FAQ_ENTRIES } from '../lib/faq';
 import { resolveSiteMode } from '../lib/site-mode';
 import { FREE_MONTHLY_UPLOADS, FREE_TIER_FEATURES, PRO_TIER_FEATURES } from '../lib/packaging-copy';
@@ -17,6 +17,8 @@ const DOWNLOAD_URL = '/download';
 const REPO_URL = 'https://github.com/on-par/sound-buddy';
 const BROWSER_URL = '/browser';
 const FOUNDING_URL = foundingCheckoutUrl(process.env);
+const MONTHLY_URL = monthlyCheckoutUrl(process.env);
+const ANNUAL_URL = annualCheckoutUrl(process.env);
 const SITE_MODE = resolveSiteMode(process.env);
 
 // Single source of truth for the macOS/Apple-Silicon floor, restated at every
@@ -49,10 +51,10 @@ type ProofCard =
 const proofCards: ProofCard[] = [
   {
     kind: 'image',
-    title: 'Multitrack capture when you need it',
-    body: 'Record 8 to 32 channels straight from your interface, stems saved per strip — the real FOH workflow behind the report card.',
-    image: liveCaptureScreenshot,
-    alt: 'Sound Buddy live capture interface showing armed audio channels',
+    title: 'Analyze on your Mac',
+    body: 'Listen to live input or analyze a file in the Analyze tab.',
+    image: reportCardShot,
+    alt: 'Sound Buddy report card showing a mix grade',
   },
   {
     kind: 'preview',
@@ -61,17 +63,17 @@ const proofCards: ProofCard[] = [
   },
   {
     kind: 'image',
-    title: 'Virtual soundcheck, the follow-up',
-    body: 'Once you know what broke, bring the stems back through the desk and rehearse the fix before next Sunday.',
-    image: momentumShot,
-    alt: 'Sound Buddy app chrome showing capture, live, soundcheck, and report card tabs',
+    title: 'Shape your target',
+    body: 'Customize EQ curves and select a channel to listen to on your Mac.',
+    image: reportCardShot,
+    alt: 'Sound Buddy report card showing analysis results',
   },
 ];
 
 const steps: { n: string; title: string; body: string; link?: { href: string; label: string } }[] = [
   { n: '1', title: 'Bring in last Sunday', body: 'Use the stream recording you already have, a USB export from the console, or a quick laptop capture.', link: { href: '/record-your-service', label: 'How to record your service →' } },
   { n: '2', title: 'See what actually happened', body: 'Sound Buddy grades loudness, dynamics, spectral balance, and speech vs. music, instead of leaving you with "felt muddy."' },
-  { n: '3', title: 'Rehearse the fix', body: 'Turn the report card into practical next moves, then use virtual soundcheck to replay the room as separate tracks before next Sunday.' },
+  { n: '3', title: 'Make the next move', body: 'Use the report card and customizable EQ curves to guide your next mix.' },
 ];
 
 const tiers = [
@@ -91,8 +93,8 @@ const tiers = [
     price: '$9',
     cadence: '/ month',
     blurb: 'For the engineer who wants every channel, every week.',
-    cta: 'Start your 14-day Pro trial',
-    ctaHref: DOWNLOAD_URL,
+    cta: 'Buy Pro Monthly',
+    ctaHref: MONTHLY_URL,
     ctaVariant: 'primary',
     features: [...PRO_TIER_FEATURES],
   },
@@ -101,8 +103,8 @@ const tiers = [
     price: '$79',
     cadence: '/ year',
     blurb: 'Two months free. Built for the church budget cycle.',
-    cta: 'Start your 14-day Pro trial',
-    ctaHref: DOWNLOAD_URL,
+    cta: 'Buy Pro Annual',
+    ctaHref: ANNUAL_URL,
     ctaVariant: 'ghost',
     features: ['Everything in Pro Monthly', 'Save ~$29 vs. monthly', 'Single PO / receipt for finance', 'All future Pro features included'],
   },
@@ -169,12 +171,12 @@ const tiers = [
       <div class="hero-visual hero-collage">
         <figure class="hero-tile hero-tile-live card">
           <img
-            src={liveCaptureScreenshot.src}
-            alt="Sound Buddy live capture screen showing armed audio channels and analysis controls"
+            src={reportCardShot.src}
+            alt="Sound Buddy report card showing a mix grade"
             loading="eager"
             decoding="async"
           />
-          <figcaption><span class="mono">Live Capture</span></figcaption>
+          <figcaption><span class="mono">Report Card</span></figcaption>
         </figure>
         <a class="hero-tile hero-tile-browser card" href={BROWSER_URL}>
           <div class="hero-tile-browser-inner">
@@ -228,8 +230,7 @@ const tiers = [
       <span class="eyebrow">Real app proof</span>
       <h2 class="h2">This is a real workflow, not a single-card demo.</h2>
       <p class="lede">
-        The report card is the front door. Behind it is multitrack capture, a browser-based quick
-        check, and a rehearsal loop that turns the diagnosis into a fix.
+        Analyze a recording in your browser, or use the Mac app for live input, files, and EQ curves.
       </p>
       <div class="proof-grid">
         {proofCards.map((c) => (
@@ -281,14 +282,13 @@ const tiers = [
           Sound Buddy names it, so you can fix it.
         </p>
         <p class="lede">
-          This is the front door — proof the diagnosis is real — not the whole product. Capture,
-          Browser Lite, and virtual soundcheck are the workflow behind it.
+          Use the results to guide your next mix.
         </p>
         <ul class="rc-bullets">
           <li>Loudness, true peak &amp; dynamic range against real targets</li>
           <li>Spectral balance across seven bands</li>
           <li>Speech-intelligibility estimate for the spoken word</li>
-          <li>Virtual soundcheck — replay the room as separate stems</li>
+          <li>Analyze live input or a file in the Mac app</li>
         </ul>
       </div>
       <div class="rc-showcase-visual">
@@ -304,8 +304,7 @@ const tiers = [
       <h2 class="h2">A browser tool worth opening.</h2>
       <p class="lede">
         Browser Lite is the fastest way to taste the core promise — drop in a stereo file or tap a
-        live input, get a quick grade right in the tab. The desktop app is where the deeper
-        rehearsal workflow lives.
+        live input, get a quick grade right in the tab. The Mac app adds live listening and customizable EQ curves.
       </p>
       <div class="compare-grid">
         <div class="compare-card card">
@@ -322,11 +321,11 @@ const tiers = [
         <div class="compare-card card">
           <span class="wa-icon" aria-hidden="true">🎚</span>
           <span class="eyebrow">Desktop</span>
-          <h3>Deep rehearsal workflow</h3>
+          <h3>Analysis on your Mac</h3>
           <ul class="rc-bullets wa-list">
             <li>Pro on your Mac: live listening right at the desk</li>
             <li>Customizable EQ curves and channel select</li>
-            <li>Record 8 to 32 channels straight from your interface</li>
+            <li>Analyze live input and files in one tab</li>
           </ul>
           <a class="btn btn-ghost" href={DOWNLOAD_URL} rel="noopener">Get the Mac app</a>
           <p class="req-fine mono">{REQUIREMENT_LINE}</p>
@@ -419,7 +418,7 @@ const tiers = [
         <ul class="sysreq-list">
           <li><strong>Mac</strong> — Apple Silicon (M1 or newer)</li>
           <li><strong>macOS</strong> — 26 (Tahoe) or newer</li>
-          <li><strong>Audio interface</strong> — any Core Audio device, up to 32 inputs</li>
+          <li><strong>Audio interface</strong> — Core Audio device for live input</li>
           <li><strong>Disk</strong> — ~5 GB for the app + room for recordings</li>
         </ul>
       </div>

@@ -16,8 +16,8 @@ if (reportCardCount !== 1) {
   problems.push(`Expected exactly one sample report card, found ${reportCardCount}.`);
 }
 
-if (!html.includes('Sound Buddy live capture screen')) {
-  problems.push('Hero live-capture screenshot alt text is missing.');
+if (!html.includes('Sound Buddy report card showing a mix grade')) {
+  problems.push('Hero report-card screenshot alt text is missing.');
 }
 
 if (html.includes('Record the room, then review the single report card below.')) {
@@ -61,12 +61,10 @@ if (proofIdx !== -1 && pricingIdx !== -1 && !(proofIdx < pricingIdx)) {
   problems.push('#proof must render before #pricing (buyer story before purchase).');
 }
 
-// Virtual-soundcheck / follow-up-workflow evidence must live in the proof
-// section, not just be implied elsewhere on the page.
 if (proofIdx !== -1 && pricingIdx !== -1) {
   const proofSection = html.slice(proofIdx, pricingIdx === -1 ? undefined : pricingIdx);
-  if (!/momentum|virtual soundcheck/i.test(proofSection)) {
-    problems.push('#proof section must include momentum/virtual-soundcheck evidence.');
+  if (!/Shape your target/i.test(proofSection)) {
+    problems.push('#proof section must include the EQ target feature.');
   }
 }
 

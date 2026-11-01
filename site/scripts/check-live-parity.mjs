@@ -28,7 +28,7 @@ const shouldUpdate = process.argv.includes('--update');
 // with (e.g.) a real PUBLIC_FOUNDING_CHECKOUT_URL. Vite's loadEnv resolves
 // process.env last, so explicitly setting each var below (rather than
 // deleting it) wins over whatever `.env.local` defines (#602).
-const KNOWN_PUBLIC_ENV_VARS = ['PUBLIC_FOUNDING_CHECKOUT_URL', 'PUBLIC_DEMO_VIDEO_URL'];
+const KNOWN_PUBLIC_ENV_VARS = ['PUBLIC_FOUNDING_CHECKOUT_URL', 'PUBLIC_PRO_MONTHLY_CHECKOUT_URL', 'PUBLIC_PRO_ANNUAL_CHECKOUT_URL', 'PUBLIC_DEMO_VIDEO_URL'];
 
 function sanitizedLiveEnv() {
   const env = { ...process.env };

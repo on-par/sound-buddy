@@ -9,13 +9,6 @@ export const FOUNDING_CHECKOUT_ENV_VAR = 'PUBLIC_FOUNDING_CHECKOUT_URL';
 const STRIPE_PAYMENT_LINK_HOST = 'buy.stripe.com';
 const RUNBOOK = 'worker/docs/live-provisioning.md §8';
 
-function remediation(reason) {
-  return (
-    `${reason} Paste the Founding Stripe Payment Link (https://${STRIPE_PAYMENT_LINK_HOST}/…) into the site ` +
-    `build env (Cloudflare Workers Builds → Variables) and redeploy — see ${RUNBOOK}.`
-  );
-}
-
 /**
  * Preflight the live-mode Founding checkout config. Live-mode `npm run
  * build` refuses to ship a $199 "Become a Founding Member" CTA that points
@@ -30,38 +23,18 @@ export function checkFoundingCheckoutConfig(env) {
   // scripts can't import the .ts lib, so this mirrors it by value.
   if (env.PUBLIC_SITE_MODE?.trim() !== 'live') return [];
 
-  const value = env[FOUNDING_CHECKOUT_ENV_VAR]?.trim() ?? '';
-
-  if (!value) {
-    return [
-      remediation(
-        `${FOUNDING_CHECKOUT_ENV_VAR} is not set, but PUBLIC_SITE_MODE=live would publish the $199 Founding "Become a Founding Member" button.`,
-      ),
-    ];
+  const problems = [];
+  for (const [name, placeholder] of [
+    [FOUNDING_CHECKOUT_ENV_VAR, PLACEHOLDER_FOUNDING_URL],
+    ['PUBLIC_PRO_MONTHLY_CHECKOUT_URL', 'https://buy.stripe.com/sound-buddy-pro-monthly'],
+    ['PUBLIC_PRO_ANNUAL_CHECKOUT_URL', 'https://buy.stripe.com/sound-buddy-pro-annual'],
+  ]) {
+    const value = env[name]?.trim() ?? '';
+    let url;
+    try { url = new URL(value); } catch {}
+    if (!value || value === placeholder || !url || url.protocol !== 'https:' || url.host !== STRIPE_PAYMENT_LINK_HOST || url.username || url.password || url.pathname === '/') {
+      problems.push(`${name} is missing, a placeholder, or invalid. Set ${name} to its real https://buy.stripe.com Payment Link in the site build environment; see ${RUNBOOK}.`);
+    }
   }
-
-  if (value === PLACEHOLDER_FOUNDING_URL) {
-    return [
-      remediation(
-        `${FOUNDING_CHECKOUT_ENV_VAR} is still the placeholder link ("${value}") and must be replaced by the real Founding Stripe Payment Link.`,
-      ),
-    ];
-  }
-
-  let url;
-  try {
-    url = new URL(value);
-  } catch {
-    return [remediation(`${FOUNDING_CHECKOUT_ENV_VAR} ("${value}") is not a valid URL.`)];
-  }
-
-  if (url.protocol !== 'https:' || url.host !== STRIPE_PAYMENT_LINK_HOST || url.username || url.password) {
-    return [
-      remediation(
-        `${FOUNDING_CHECKOUT_ENV_VAR} ("${value}") must be an https://${STRIPE_PAYMENT_LINK_HOST}/… Stripe Payment Link.`,
-      ),
-    ];
-  }
-
-  return [];
+  return problems;
 }

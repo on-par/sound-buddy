@@ -16,7 +16,7 @@ Complete the one-time setup in [`sandbox-e2e.md`](./sandbox-e2e.md) first:
   `SANDBOX_SEED_FOUNDING_SESSION_ID` seeds.
 - A running Worker: `cd worker && npm run dev`.
 - The sandbox artifacts provisioned: the `sound_buddy_pro_monthly` price and
-  the `sound_buddy_founding_lifetime` Payment Link (capped at 300 completed
+  the `sound_buddy_founding_lifetime` Payment Link (capped at 10 completed
   sessions).
 
 **Security:** never paste `.env.local` values, raw webhook bodies, email
@@ -89,7 +89,7 @@ addresses, or minted `SB1.` keys into a PR, chat, or log (see
 5. `/activate` renders the key. *(Manual browser.)*
 6. Paste into app; unlocks Pro **lifetime**. *(Manual. Automated proxy:
    `verifyKey` asserts `tier=pro`, `kind=lifetime`, `expiresAt` undefined.)*
-7. Founding cap sanity: the Payment Link's `completed_sessions.limit` is 300.
+7. Founding cap sanity: the Payment Link's `completed_sessions.limit` is 10.
    *(Automated: "the founding Payment Link's completed_sessions cap matches
    FOUNDING_CAP".)*
 
@@ -114,7 +114,7 @@ addresses, or minted `SB1.` keys into a PR, chat, or log (see
 | 4 | License email delivered | Automated (best-effort) via `findLicenseEmail`; `GET /api/license` is authoritative | Email received or SKIP logged | PENDING | |
 | 5 | `/activate` shows the key | Manual browser check | Key rendered on page | PENDING | |
 | 6 | App unlocks Pro lifetime | Manual app check; automated proxy `verifyKey` | `tier=pro`, `kind=lifetime`, `expiresAt` undefined | PENDING | |
-| 7 | Founding cap sanity | Automated: "the founding Payment Link's completed_sessions cap matches FOUNDING_CAP" | `completed_sessions.limit === 300` | PENDING | |
+| 7 | Founding cap sanity | Automated: "the founding Payment Link's completed_sessions cap matches FOUNDING_CAP" | `completed_sessions.limit === 10` | PENDING | |
 
 **Legend:** `PASS` / `FAIL` / `SKIP (seed not provided / send-only Resend key)`.
 Replace `PENDING` with the observed outcome during a real run. A `FAIL` is

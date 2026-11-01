@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { checkFoundingCheckoutConfig, FOUNDING_CHECKOUT_ENV_VAR } from './founding-checkout-config.mjs';
+import { checkFoundingCheckoutConfig as checkConfig, FOUNDING_CHECKOUT_ENV_VAR } from './founding-checkout-config.mjs';
 import { PLACEHOLDER_FOUNDING_URL } from './live-parity.mjs';
+
+const checkFoundingCheckoutConfig = (env) => checkConfig({ PUBLIC_PRO_MONTHLY_CHECKOUT_URL: 'https://buy.stripe.com/test_monthly', PUBLIC_PRO_ANNUAL_CHECKOUT_URL: 'https://buy.stripe.com/test_annual', ...env });
 
 describe('checkFoundingCheckoutConfig', () => {
   it('passes in waitlist mode (unset) regardless of the URL', () => {
@@ -47,28 +49,28 @@ describe('checkFoundingCheckoutConfig', () => {
     const value = 'http://buy.stripe.com/abc';
     const problems = checkFoundingCheckoutConfig({ PUBLIC_SITE_MODE: 'live', PUBLIC_FOUNDING_CHECKOUT_URL: value });
     expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain(value);
+    expect(problems[0]).toContain(FOUNDING_CHECKOUT_ENV_VAR);
   });
 
   it('flags a non-Stripe host', () => {
     const value = 'https://example.com/pay';
     const problems = checkFoundingCheckoutConfig({ PUBLIC_SITE_MODE: 'live', PUBLIC_FOUNDING_CHECKOUT_URL: value });
     expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain(value);
+    expect(problems[0]).toContain(FOUNDING_CHECKOUT_ENV_VAR);
   });
 
   it('flags a URL carrying credentials', () => {
     const value = 'https://user:pw@buy.stripe.com/abc';
     const problems = checkFoundingCheckoutConfig({ PUBLIC_SITE_MODE: 'live', PUBLIC_FOUNDING_CHECKOUT_URL: value });
     expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain(value);
+    expect(problems[0]).toContain(FOUNDING_CHECKOUT_ENV_VAR);
   });
 
   it('flags an unparseable URL', () => {
     const value = 'not a url';
     const problems = checkFoundingCheckoutConfig({ PUBLIC_SITE_MODE: 'live', PUBLIC_FOUNDING_CHECKOUT_URL: value });
     expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain(value);
+    expect(problems[0]).toContain(FOUNDING_CHECKOUT_ENV_VAR);
   });
 
   it('passes for a trimmed real https buy.stripe.com link', () => {
@@ -91,4 +93,15 @@ describe('checkFoundingCheckoutConfig', () => {
     const problems = checkFoundingCheckoutConfig({ PUBLIC_SITE_MODE: ' live ' });
     expect(problems).toHaveLength(1);
   });
+});
+describe('Pro checkout preflight', () => {
+  const valid = { PUBLIC_SITE_MODE: 'live', PUBLIC_FOUNDING_CHECKOUT_URL: 'https://buy.stripe.com/test_founding', PUBLIC_PRO_MONTHLY_CHECKOUT_URL: 'https://buy.stripe.com/test_monthly', PUBLIC_PRO_ANNUAL_CHECKOUT_URL: 'https://buy.stripe.com/test_annual' };
+  for (const [key, placeholder] of [['PUBLIC_PRO_MONTHLY_CHECKOUT_URL', 'https://buy.stripe.com/sound-buddy-pro-monthly'], ['PUBLIC_PRO_ANNUAL_CHECKOUT_URL', 'https://buy.stripe.com/sound-buddy-pro-annual']]) {
+    for (const value of [undefined, placeholder, 'https://example.com/pay']) {
+      it(`rejects ${key} = ${value}`, () => {
+        expect(checkFoundingCheckoutConfig({ ...valid, [key]: value }).join(' ')).toContain(key);
+      });
+    }
+  }
+  it('accepts test links', () => expect(checkFoundingCheckoutConfig(valid)).toEqual([]));
 });

@@ -193,18 +193,12 @@ Rules (normative):
 
 ## 8. Wire the live URLs (site + app build env)
 
-The real Payment-Link URLs from section 2 are wired via **build env**, not
-committed defaults — do **not** bake them into `app/electron/checkout.ts` or
-`site/src/lib/founding-urgency.ts` `PLACEHOLDER_FOUNDING_URL`.
-Replacing the site's placeholder would regress the site's `isCheckoutLive()`
-gate (#560), which keys off `override !== placeholder`; `checkout.ts` has no
-placeholder to replace — it throws when its env var is unset.
+All three live site links are committed in `site/.env.production`. Keep
+`PLACEHOLDER_FOUNDING_URL` in `site/src/lib/founding-urgency.ts`: the
+`isCheckoutLive()` gate (#560) compares the configured URL against it.
+`app/electron/checkout.ts` reads its URLs from the app build environment.
 
-- **Site build env:** `PUBLIC_FOUNDING_CHECKOUT_URL` = the Founding Payment Link
-  from section 2 (+ `PUBLIC_SITE_MODE=live` is already set in CI). This kills the
-  HTTP-403 founding link live. Live-mode `npm run build` fails closed (prebuild
-  `scripts/check-founding-checkout.mjs`) when `PUBLIC_FOUNDING_CHECKOUT_URL` is
-  missing, the placeholder, or not an `https://buy.stripe.com/…` link (#1528).
+- **Site build env:** The committed production env supplies `PUBLIC_SITE_MODE=live` and all three Payment Links; process environment values override them. Live builds fail closed if any of the three links is missing, a placeholder, or not an `https://buy.stripe.com/…` link.
 - **App release build env:** `SOUND_BUDDY_CHECKOUT_MONTHLY_URL` /
   `SOUND_BUDDY_CHECKOUT_ANNUAL_URL` / `SOUND_BUDDY_CHECKOUT_FOUNDING_URL` = the
   three Payment Links from section 2. Set these as GitHub repository variables;
@@ -327,7 +321,7 @@ to do it.
 - [ ] Resend live key; `hello@` and `support@soundbuddy.online` domains verified (§7)
 - [ ] `PUBLIC_FOUNDING_CHECKOUT_URL` = live Founding link; `PUBLIC_SITE_MODE=live` (§8)
 - [ ] `SOUND_BUDDY_CHECKOUT_MONTHLY_URL` / `SOUND_BUDDY_CHECKOUT_ANNUAL_URL` / `SOUND_BUDDY_CHECKOUT_FOUNDING_URL` = live Payment Links in the app release build (§8)
-- [ ] URLs stay env-driven — no Payment-Link URLs baked into `checkout.ts` or `founding-urgency.ts` (§8)
+- [ ] Site Payment Links are set in the production env; app Payment-Link URLs remain env-driven (§8)
 - [ ] Founding Payment Link created ($199, cap 10), wired, and verified end-to-end (purchase → webhook → email → app unlock) (§8a)
 - [ ] `.env.local` + `worker/.dev.vars` carry the production key + `sk_test` secrets; sandbox e2e passes (§9)
 - [ ] App purchase-path gate passes against a real test-minted key (§9)
@@ -337,3 +331,5 @@ to do it.
 - [ ] Live Founding purchase delivers a key that activates the app (§10)
 - [ ] One small/refunded live purchase proves the live webhook → mint → email path (§10)
 - [ ] Stray live product `prod_UuqnncAFQmPFOC` deleted (§11)
+
+For the live $199 purchase and refund procedure, see the [Founding test purchase runbook](live-founding-test-purchase-runbook.md).

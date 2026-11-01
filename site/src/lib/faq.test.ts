@@ -126,22 +126,8 @@ describe('WAITLIST_FAQ_ENTRIES', () => {
     }
   });
 
-  it('the cost entry never quotes a price, tier cost, or seat cap (pricing-hold, 2026-07-20)', () => {
-    const entry = WAITLIST_FAQ_ENTRIES.find((e) => e.id === 'cost');
-    expect(entry).toBeDefined();
-    const text = entry!.answer.join(' ');
-    expect(text).not.toMatch(/\$\d/);
-    expect(text).not.toContain('$199');
-    expect(text).not.toContain('$9');
-    expect(text).not.toContain('$79');
-  });
-
-  it('the cost and launch-timing entries never reference download/trial/free-tier/unsigned-install copy', () => {
-    for (const id of ['cost', 'launch-timing']) {
-      const entry = WAITLIST_FAQ_ENTRIES.find((e) => e.id === id);
-      expect(entry).toBeDefined();
-      const text = entry!.answer.join(' ');
-      expect(text).not.toMatch(/download|trial|free tier|Gatekeeper|Open Anyway/i);
-    }
+  it('states the current prices and trial', () => {
+    const text = WAITLIST_FAQ_ENTRIES.find((e) => e.id === 'cost')!.answer.join(' ');
+    for (const phrase of ['$199', '10 churches', '$9/month', '$79/year', '14-day', 'Free']) expect(text).toContain(phrase);
   });
 });
