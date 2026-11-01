@@ -10,7 +10,7 @@ design rationale — this doc is just the reproduction steps.
 2. Confirm the sandbox exists in test mode: `dashboard.stripe.com/test/products`
    should show `sound_buddy_pro_monthly`, `sound_buddy_pro_annual`,
    `sound_buddy_founding_lifetime`, and three Payment Links (Founding capped at
-   300 completed sessions). If not, the epic's "Sandbox artifacts" section has
+   10 completed sessions). If not, the epic's "Sandbox artifacts" section has
    the provisioning steps. If the `price_...`/`plink_...` ids differ from the
    defaults in `worker/src/e2e/env.ts` (provisioned 2026-07-08), set the
    `SANDBOX_MONTHLY_PRICE_ID`, `SANDBOX_ANNUAL_PRICE_ID`,
@@ -68,7 +68,7 @@ npm run test:e2e:sandbox
 | Renewal via test clock | Real test clock advanced +1 month on a fresh customer/subscription; renewed `invoice.paid` delivered via signed webhook; period end asserted to have advanced. |
 | Seamless refresh end-to-end | (Seeded) refresh rotates the seed key, the superseded key is refused `403`, and a canceled subscription's key is refused `403`. |
 | Cancellation | Same seeded scenario: `subscriptions.cancel` + a real `customer.subscription.deleted` webhook; the already-issued key still verifies pro afterward (no revocation). |
-| Founding purchase and cap | Payment Link `restrictions.completed_sessions.limit` asserted against `FOUNDING_CAP` (no 300 real purchases). A constructed `checkout.session.completed` event proves the mint handler. Seeded: `GET /api/license` returns a lifetime key. |
+| Founding purchase and cap | Payment Link `restrictions.completed_sessions.limit` asserted against `FOUNDING_CAP` (no 10 real purchases). A constructed `checkout.session.completed` event proves the mint handler. Seeded: `GET /api/license` returns a lifetime key. |
 | Refund | Real PaymentIntent + charge, refunded via the API, `charge.refunded` delivered via signed webhook; existing entitlement unaffected. |
 | Webhook hardening | Bad signature → `400`. A replayed real event id → `200` both times, `duplicate: true` on the second. |
 | Card decline / 3DS / renewal-fail | `4000...9995` never activates a subscription; `4000...3155` leaves it `incomplete`; `4000...0341`'s renewal failure is exercised via a constructed `invoice.payment_failed` event (dunning email, no mint). |

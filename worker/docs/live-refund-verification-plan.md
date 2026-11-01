@@ -50,7 +50,7 @@ Grounded in `worker/src/handlers/charge-refunded.ts`:
   (follow-up)`.
 - It takes **no entitlement action**: no key is minted, mutated, or revoked.
   Offline lifetime keys cannot be revoked after refund (Decision 3 gap),
-  bounded by the 300 founding cap. Therefore the previously activated license
+  bounded by the 10 founding cap. Therefore the previously activated license
   is **expected to stay valid and Pro-unlocked** — that is the expected
   behavior this runbook's acceptance criteria refer to.
 

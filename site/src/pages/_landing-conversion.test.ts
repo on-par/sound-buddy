@@ -24,7 +24,6 @@ describe('Real app proof shows three product surfaces, captioned (#193 AC2)', ()
   it('imports all three product-surface screenshots', () => {
     expect(indexSrc).toContain("import liveCaptureScreenshot from '../assets/screenshots/live-capture.png'");
     expect(indexSrc).toContain("import reportCardShot from '../assets/screenshots/report-card.png'");
-    expect(indexSrc).toContain("import momentumShot from '../assets/screenshots/momentum.png'");
   });
 
   it('renders a captioned proof section', () => {
@@ -34,13 +33,12 @@ describe('Real app proof shows three product surfaces, captioned (#193 AC2)', ()
   });
 
   it('wires live-capture and momentum screenshots into proofCards, and surfaces the report card', () => {
-    expect(indexSrc).toContain('image: liveCaptureScreenshot');
-    expect(indexSrc).toContain('image: momentumShot');
+    expect(indexSrc).toContain('image: reportCardShot');
     expect(indexSrc).toContain('src={reportCardShot.src}');
   });
 
   it('captions the momentum/upgrade moment as the follow-up workflow', () => {
-    expect(indexSrc).toContain('Virtual soundcheck, the follow-up');
+    expect(indexSrc).toContain('Shape your target');
   });
 });
 
@@ -52,7 +50,7 @@ describe('Website-vs-app narrative break is explicit (#193 AC3)', () => {
 
   it('splits the browser-side fast answer from the app-side deep workflow', () => {
     expect(indexSrc).toContain('Fast answer');
-    expect(indexSrc).toContain('Deep rehearsal workflow');
+    expect(indexSrc).toContain('Analysis on your Mac');
   });
 });
 

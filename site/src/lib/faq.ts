@@ -61,7 +61,7 @@ export const FAQ_ENTRIES: FaqEntry[] = [
     question: 'What do I need to run it?',
     answer: [
       'An Apple Silicon Mac (M1 or newer) on macOS 26 (Tahoe) or newer, and roughly 5 GB of disk for the app plus room for your recordings.',
-      "For multitrack capture, any Core Audio interface up to 32 inputs works. For a first look you don't need an interface at all — a stream recording or a USB export from the console is enough.",
+      "For live input, use a Core Audio interface. You can also analyze a recording without an interface.",
     ],
   },
   {
@@ -76,7 +76,7 @@ export const FAQ_ENTRIES: FaqEntry[] = [
     question: 'What does the free tier actually include?',
     answer: [
       `Free runs in your browser. Create a free account with your email, then upload up to ${FREE_MONTHLY_UPLOADS} recordings a month for a full report card and letter grade — nothing to install.`,
-      'Pro is the Mac app: live listening right at the desk, customizable EQ curves, channel select, 32-channel capture with per-strip stems, the AI analyst, and priority support.',
+      'Pro is the Mac app: live and file input in the Analyze tab, customizable EQ curves, channel listening, and priority support.',
     ],
   },
   {
@@ -101,8 +101,8 @@ const WAITLIST_ONLY_FAQ_ENTRIES: FaqEntry[] = [
     id: 'cost',
     question: 'What will it cost?',
     answer: [
-      "We're still working out pricing, so there's nothing to quote yet. Sound Buddy will have a paid tier when it launches, and we'd rather tell you the real number once than guess at it now.",
-      'Joining the waitlist costs nothing and commits you to nothing. When pricing is set, the list hears it first.',
+      "Founding Lifetime is $199 for the first 10 churches. Pro is $9/month or $79/year, with a 14-day Pro trial. Free runs in the browser.",
+      'Start free in the browser or download the Mac app.',
     ],
   },
   {

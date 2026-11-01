@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { runInNewContext } from "node:vm";
+import { describe, expect, it, vi } from "vitest";
 import { handleActivate } from "./activate";
 import type { Env } from "../index";
 
@@ -56,6 +57,27 @@ describe("GET /activate (#112)", () => {
     const body = await res.text();
     assertNoExternalAssets(body);
     expect(body).toContain("cs_test_123");
+  });
+
+  it("passes the checkout session ID to the license endpoint", async () => {
+    const sessionId = "cs_test_with+special/characters";
+    const body = await handleActivate(request(`?session_id=${encodeURIComponent(sessionId)}`), env, ctx).text();
+    expect(body).toContain(`data-session-id="${sessionId}"`);
+    const start = body.indexOf("<script>");
+    const end = body.indexOf("</script>", start);
+    const script = start >= 0 && end > start ? body.slice(start + "<script>".length, end) : undefined;
+    expect(script).toBeDefined();
+    const fetch = vi.fn(() => new Promise(() => {}));
+    runInNewContext(script!, {
+      document: {
+        body: { getAttribute: () => sessionId },
+        getElementById: () => ({ addEventListener: () => {} }),
+      },
+      fetch,
+      encodeURIComponent,
+      Date,
+    });
+    expect(fetch).toHaveBeenCalledWith(`/api/license?session_id=${encodeURIComponent(sessionId)}`);
   });
 
   it("Scenario: a failed/exhausted poll surfaces an error state, not an infinite spinner (#140)", async () => {

@@ -24,7 +24,7 @@ account `acct_1Tv0wcF8DNgPKMma`, plus the deployed live Worker secrets
 - The dashboard "Test mode" toggle is **off**, and the three Products/Prices
   (`sound_buddy_pro_monthly`, `sound_buddy_pro_annual`,
   `sound_buddy_founding_lifetime`) and three Payment Links exist in Live, with
-  the Founding link capped at 300 completed sessions (matching
+  the Founding link capped at 10 completed sessions (matching
   `FOUNDING_CAP` in `worker/wrangler.jsonc`) — live-provisioning.md §10 steps
   2–3.
 - The live webhook is registered at
