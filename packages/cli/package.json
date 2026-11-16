@@ -17,12 +17,12 @@
     "@sound-buddy/audio-engine": "*",
     "@sound-buddy/scene-inspector": "*",
     "@sound-buddy/shared": "*",
-    "commander": "^15"
+    "commander": "^15.1.0"
   },
   "devDependencies": {
-    "@types/node": "^26.4.0",
-    "tsx": "^4.23.12",
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
     "typescript": "^5",
-    "vitest": "^4.1.10"
+    "vitest": "^5.1.0"
   }
 }
