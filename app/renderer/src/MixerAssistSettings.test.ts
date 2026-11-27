@@ -36,7 +36,7 @@ afterEach(() => {
   useMixerAssistStore.setState({ status: null, tokenMessage: null });
 });
 
-const decode = (html: string) => html.replaceAll('&#x27;', "'").replaceAll('&amp;', '&').replaceAll('&quot;', '"');
+const decode = (html: string) => html.replaceAll('&#x27;', "'").replaceAll('&quot;', '"').replaceAll('&amp;', '&');
 
 describe('MixerAssistSettings', () => {
   it('is hidden unless the mixer flag (and its console prerequisite) is on', () => {
