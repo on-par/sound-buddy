@@ -78,7 +78,7 @@ describe('MixerPanel assist rail', () => {
 
   it('feeds the rail from the assist store: rules-only when off, answers labelled with their source when healthy', () => {
     useConsoleStore.setState({ selectedIp: '10.0.0.5' });
-    expect(render()).toContain('Rules only. Turn on an assist in Settings to ask questions.');
+    expect(render()).toContain('placeholder="Rules only. Turn on an assist in Settings"');
     useSettingsStore.setState({ settings: { mixerLocalAssistModel: 'qwen2.5' } as AppSettings });
     useMixerAssistStore.setState({
       status: {

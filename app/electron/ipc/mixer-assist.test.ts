@@ -30,7 +30,7 @@ vi.mock('electron', () => ({
 }));
 
 import { createSecretStore, type SafeStorageLike } from '../mixer-assist/secret-store';
-import { CLAUDE_TIMEOUT_MS, type ChildLike, type SpawnLike } from '../mixer-assist/claude-cli';
+import { CLAUDE_KILL_GRACE_MS, CLAUDE_KILL_SETTLE_MS, CLAUDE_TIMEOUT_MS, MAX_STDERR_CHARS, type ChildLike, type SpawnLike } from '../mixer-assist/claude-cli';
 import type { FetchLike } from '../mixer-assist/local-endpoint';
 import { ANOMALY_COOLDOWN_MS } from '../mixer-assist/budget';
 import type { MixerAssistRequest } from './api';
@@ -77,9 +77,10 @@ class FakeChild extends EventEmitter implements ChildLike {
   stdout = new FakeStream();
   stderr = new FakeStream();
   signals: string[] = [];
+  hangs = false;
   kill(signal: NodeJS.Signals): boolean {
     this.signals.push(signal);
-    queueMicrotask(() => this.emit('close', null));
+    if (!this.hangs) queueMicrotask(() => this.emit('close', null));
     return true;
   }
   answer(text: string): void {
@@ -174,6 +175,31 @@ function anomalyRequest(channel: number, over: Partial<Extract<MixerAssistReques
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
+const UNSETTLED = 'unsettled';
+const settledOrNot = <T>(p: Promise<T>) => Promise.race([p, flush().then(() => UNSETTLED)]);
+const MIN_FRAGMENT = 8;
+
+function leakedFragments(text: string, token: string): string[] {
+  const found: string[] = [];
+  for (let i = 0; i + MIN_FRAGMENT <= token.length; i += 1) {
+    const fragment = token.slice(i, i + MIN_FRAGMENT);
+    if (text.includes(fragment)) found.push(fragment);
+  }
+  return found;
+}
+
+function recordingTimers() {
+  const pending: Array<{ fn: () => void; ms: number }> = [];
+  return {
+    pending,
+    timers: { setTimeout: (fn: () => void, ms: number) => pending.push({ fn, ms }), clearTimeout: () => undefined },
+    fire(ms: number) {
+      const due = pending.filter((p) => p.ms === ms);
+      pending.splice(0, pending.length, ...pending.filter((p) => p.ms !== ms));
+      for (const t of due) t.fn();
+    },
+  };
+}
 
 beforeEach(() => {
   electronState.userData = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-mixer-assist-ipc-'));
@@ -516,6 +542,56 @@ describe('ask-mixer-assist wiring', () => {
     void s.ask(anomalyRequest(3));
     await flush();
     expect(h.spawns).toHaveLength(2);
+  });
+
+  it('a token straddling the stderr cut at any offset reaches neither the answer nor the log', async () => {
+    const h = harness();
+    cloudReady(h);
+    const s = service(h);
+    const answers: unknown[] = [];
+    for (let offset = 1; offset < FAKE_TOKEN.length; offset += 1) {
+      for (const stderr of [
+        'e'.repeat(MAX_STDERR_CHARS - offset) + FAKE_TOKEN + 'e'.repeat(MAX_STDERR_CHARS),
+        'e'.repeat(MAX_STDERR_CHARS) + FAKE_TOKEN + 'e'.repeat(MAX_STDERR_CHARS - (FAKE_TOKEN.length - offset)),
+      ]) {
+        const pending = s.ask(QUESTION);
+        await flush();
+        h.spawns[h.spawns.length - 1].child.fail(1, stderr);
+        answers.push(await pending);
+      }
+    }
+    expect(answers).toHaveLength(2 * (FAKE_TOKEN.length - 1));
+    expect(h.logs).toHaveLength(answers.length);
+    expect(leakedFragments(JSON.stringify(answers), FAKE_TOKEN)).toEqual([]);
+    expect(leakedFragments(h.logs.join('\n'), FAKE_TOKEN)).toEqual([]);
+    expect(h.logs.every((line) => line.startsWith('mixer assist: cloud unavailable (exit) e'))).toBe(true);
+  });
+
+  it.each([
+    ['timeout', (_s: ReturnType<typeof service>, t: ReturnType<typeof recordingTimers>) => t.fire(CLAUDE_TIMEOUT_MS)],
+    ['cancelled', (s: ReturnType<typeof service>) => s.cancel()],
+  ] as const)('a question whose child never closes after the kill settles as %s, frees the slot and removes its temp dir', async (reason, trigger) => {
+    const t = recordingTimers();
+    const removed: string[] = [];
+    const h = harness({ timers: t.timers, removeDir: (dir) => removed.push(dir) });
+    cloudReady(h);
+    const s = service(h);
+    const hung = s.ask(QUESTION);
+    await flush();
+    h.spawns[0].child.hangs = true;
+    trigger(s, t);
+    t.fire(CLAUDE_KILL_GRACE_MS);
+    expect(h.spawns[0].child.signals).toEqual(['SIGTERM', 'SIGKILL']);
+    expect(await settledOrNot(hung)).toBe(UNSETTLED);
+    t.fire(CLAUDE_KILL_SETTLE_MS);
+    expect(await settledOrNot(hung)).toMatchObject({ ok: false, reason, attempts: [{ source: 'cloud', reason }] });
+    expect(s.status().inFlight).toBe(false);
+    expect(removed).toEqual(['/tmp/sb-assist-test']);
+    const next = s.ask({ ...QUESTION, question: 'Next one?' });
+    await flush();
+    expect(h.spawns).toHaveLength(2);
+    h.spawns[1].child.answer('Here is the next answer.');
+    expect(await next).toMatchObject({ ok: true, text: 'Here is the next answer.' });
   });
 
   it('times out through the injected timers', async () => {
