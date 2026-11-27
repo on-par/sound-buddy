@@ -9,6 +9,7 @@ import { useConsoleStore } from './stores/consoleStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useMixerStore, INITIAL_MIXER_STATE } from './stores/mixerStore';
 import { useSettingsStore } from './stores/settingsStore';
+import { useMixerAssistStore } from './stores/mixerAssistStore';
 import { issueKey, type MixerIssue } from './mixer/attention';
 import type { AppSettings, ConsoleChannelStateDto } from '../../electron/ipc/api';
 
@@ -67,6 +68,30 @@ describe('MixerPanel shell', () => {
     expect(html).toContain('id="mixer-root"');
     expect(html).not.toContain('console-scan');
     expect(html).not.toContain('console-manual-ip');
+  });
+});
+
+describe('MixerPanel assist rail', () => {
+  afterEach(() => {
+    useMixerAssistStore.setState({ status: null, answers: [], pending: null, lastFailure: null });
+  });
+
+  it('feeds the rail from the assist store: rules-only when off, answers labelled with their source when healthy', () => {
+    useConsoleStore.setState({ selectedIp: '10.0.0.5' });
+    expect(render()).toContain('Rules only. Turn on an assist in Settings to ask questions.');
+    useSettingsStore.setState({ settings: { mixerLocalAssistModel: 'qwen2.5' } as AppSettings });
+    useMixerAssistStore.setState({
+      status: {
+        cloud: { enabled: false, binaryFound: false, tokenSaved: false, encryptionAvailable: true, lastFailure: null },
+        local: { enabled: true, endpoint: 'ok', modelSet: true, lastFailure: null },
+        inFlight: false,
+      },
+      answers: [{ id: 1, source: 'local', text: 'Pull the trim down on 02.', about: 'What next?' }],
+    });
+    const html = render();
+    expect(html).toContain('Local · qwen2.5');
+    expect(html).toContain('Pull the trim down on 02.');
+    expect(html).toContain('placeholder="Ask about the mix…"');
   });
 });
 

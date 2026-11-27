@@ -35,7 +35,7 @@ const LOADED_SETTINGS: AppSettings = {
   gradingProfile: 'casual', gradingRubric: {},
   consoleNetworkConsentGranted: false,
   soundcheckBuses: [],
-  splCalibrationOffsetDb: null, mixerAttentionCap: 3, lastAppMode: '',
+  splCalibrationOffsetDb: null, mixerAttentionCap: 3, mixerCloudAssistEnabled: false, mixerLocalAssistEnabled: false, mixerCloudAssistBinaryPath: '', mixerLocalAssistEndpoint: '', mixerLocalAssistModel: '', lastAppMode: '',
 };
 
 describe('storageFolderDisplay', () => {

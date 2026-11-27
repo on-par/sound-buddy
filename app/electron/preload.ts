@@ -23,6 +23,7 @@ import type {
   ConsoleLiveStateEvent,
   ConsoleSceneCaptureProgressDto,
   CustomIdealProfile,
+  MixerAssistRequest,
 } from './ipc/api';
 
 // The slice of Electron's IpcRenderer the bridge actually uses. Injected so
@@ -164,6 +165,12 @@ export function createBridge(ipc: IpcRendererLike, fileUtils: FilePathResolver) 
     cancelConsoleSceneCapture: () => ipc.invoke('cancel-console-scene-capture'),
     onConsoleSceneCaptureProgress: (cb: (data: ConsoleSceneCaptureProgressDto) => void) =>
       ipc.on('console-scene-capture-progress', (_event, d) => cb(d)),
+
+    getMixerAssistStatus: (recheck?: boolean) => ipc.invoke('get-mixer-assist-status', recheck === true),
+    setMixerAssistToken: (token: string) => ipc.invoke('set-mixer-assist-token', token),
+    clearMixerAssistToken: () => ipc.invoke('clear-mixer-assist-token'),
+    askMixerAssist: (request: MixerAssistRequest) => ipc.invoke('ask-mixer-assist', request),
+    cancelMixerAssist: () => ipc.invoke('cancel-mixer-assist'),
 
     // Dev/e2e switch (SOUND_BUDDY_DISABLE_ONBOARDING) for the first-run overlay (#69).
     isOnboardingDisabled: () => ipc.invoke('onboarding-disabled'),

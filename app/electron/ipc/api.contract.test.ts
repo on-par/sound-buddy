@@ -21,6 +21,7 @@ import type {
   AnalysisApi,
   LiveApi,
   ConsoleApi,
+  MixerAssistApi,
   PlaybackApi,
   DialogApi,
   UpdateApi,
@@ -41,8 +42,11 @@ import type {
   ConsoleIdentityDto,
   ConsoleChannelStateDto,
   ConsoleMeterFrameDto,
+  MixerAssistStatusDto,
+  SetMixerAssistTokenResult,
+  MixerAssistAnswer,
 } from './api';
-import { createMockSoundBuddy } from '../../renderer/src/mock-sound-buddy';
+import { createMockSoundBuddy, DEFAULT_MIXER_ASSIST_STATUS } from '../../renderer/src/mock-sound-buddy';
 
 // Type-only imports of the actual producing functions. `import type` is
 // erased at build time, so these never pull electron/fs/node modules into
@@ -54,6 +58,7 @@ import type { revealDiagnosticLog, submitFeedback } from '../feedback';
 import type { ConsoleIdentity } from './console-discovery';
 import type { ConsoleChannelState } from './console-channel-state';
 import type { Meters1Snapshot } from '@sound-buddy/console/dist-cjs/index.js';
+import type { MixerAssistService } from './mixer-assist';
 
 // ─── Composition coverage ────────────────────────────────────────────────────
 // The intersection of every domain sub-interface must describe exactly the
@@ -69,6 +74,7 @@ type SubInterfaceIntersection = AppInfoApi &
   AnalysisApi &
   LiveApi &
   ConsoleApi &
+  MixerAssistApi &
   PlaybackApi &
   DialogApi &
   UpdateApi &
@@ -204,6 +210,18 @@ const analyzeFileOkDrift: AnalyzeFileResult = {
     loudness: { integratedLufs: -20, loudnessRange: 5, truePeakDbtp: -1 },
   },
 };
+type _AssistStatusMatches = ReturnType<MixerAssistService['status']> extends MixerAssistStatusDto ? true : never;
+type _AssistTokenMatches = ReturnType<MixerAssistService['saveToken']> extends SetMixerAssistTokenResult ? true : never;
+type _AssistAnswerMatches = Awaited<ReturnType<MixerAssistService['ask']>> extends MixerAssistAnswer ? true : never;
+const assistStatusDrift: _AssistStatusMatches = true;
+const assistTokenDrift: _AssistTokenMatches = true;
+const assistAnswerDrift: _AssistAnswerMatches = true;
+
+function keyPaths(value: unknown, prefix = ''): string[] {
+  if (typeof value !== 'object' || value === null) return [];
+  return Object.entries(value).flatMap(([k, v]) => [`${prefix}${k}`, ...keyPaths(v, `${prefix}${k}.`)]);
+}
+
 const analyzeFileCancelledDrift: AnalyzeFileResult = { success: false, cancelled: true };
 const analyzeFileErrDrift: AnalyzeFileResult = { success: false, error: 'failed' };
 
@@ -229,6 +247,7 @@ describe('SoundBuddyApi composition (TD-011, #405)', () => {
     const analysisSlice: AnalysisApi = api;
     const liveSlice: LiveApi = api;
     const consoleSlice: ConsoleApi = api;
+    const mixerAssistSlice: MixerAssistApi = api;
     const playbackSlice: PlaybackApi = api;
     const dialogSlice: DialogApi = api;
     const updateSlice: UpdateApi = api;
@@ -245,6 +264,7 @@ describe('SoundBuddyApi composition (TD-011, #405)', () => {
       analysisSlice,
       liveSlice,
       consoleSlice,
+      mixerAssistSlice,
       playbackSlice,
       dialogSlice,
       updateSlice,
@@ -253,7 +273,7 @@ describe('SoundBuddyApi composition (TD-011, #405)', () => {
       listenerSlice,
     ];
 
-    expect(slices).toHaveLength(14);
+    expect(slices).toHaveLength(15);
     for (const slice of slices) expect(slice).toBeTruthy();
   });
 
@@ -284,5 +304,19 @@ describe('SoundBuddyApi composition (TD-011, #405)', () => {
     expect(listSummariesDrift.summaries).toEqual([]);
     expect(listFolderAudioDrift.files).toEqual([]);
     expect(cancelAnalysisDrift.success).toBe(true);
+  });
+});
+
+describe('MixerAssistApi contract', () => {
+  it('the status, token-save and answer shapes match what the main-process service returns', () => {
+    expect([assistStatusDrift, assistTokenDrift, assistAnswerDrift]).toEqual([true, true, true]);
+  });
+
+  it('the only token-shaped field the renderer ever sees is the boolean tokenSaved', async () => {
+    const { api } = createMockSoundBuddy();
+    const shapes = [DEFAULT_MIXER_ASSIST_STATUS, await api.setMixerAssistToken('fake'), await api.clearMixerAssistToken()];
+    const tokenKeys = shapes.flatMap((s) => keyPaths(s)).filter((k) => /token|cipher|secret/i.test(k));
+    expect([...new Set(tokenKeys)]).toEqual(['cloud.tokenSaved', 'status.cloud.tokenSaved']);
+    expect(typeof DEFAULT_MIXER_ASSIST_STATUS.cloud.tokenSaved).toBe('boolean');
   });
 });

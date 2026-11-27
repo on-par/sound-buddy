@@ -664,6 +664,11 @@ describe('update-settings whitelist exactness (#747)', () => {
       consoleNetworkConsentGranted: false,
       lastAppMode: 'live',
       mixerAttentionCap: 2,
+      mixerCloudAssistEnabled: true,
+      mixerLocalAssistEnabled: true,
+      mixerCloudAssistBinaryPath: '/opt/homebrew/bin/claude',
+      mixerLocalAssistEndpoint: 'http://127.0.0.1:8080/v1',
+      mixerLocalAssistModel: 'qwen2.5',
     };
 
     await handler!(null, patch);

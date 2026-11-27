@@ -24,6 +24,7 @@ const LOCKED = [
       // entirely (#657) — the renderer no longer advertises AI configuration
       // that can't run in a packaged build. Restore this surface once #658/#659
       // bring a working AI settings UI back.
+      'app/renderer/src/MixerAssistSettings.tsx', // app — Settings ▸ Console ▸ Mixer assist (shown only with the mixer flag)
     ],
     forbidden: [
       { text: 'Works with your existing AI', in: ['site/src/pages/index.astro'] },

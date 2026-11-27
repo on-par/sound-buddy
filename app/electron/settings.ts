@@ -24,6 +24,7 @@ import type {
   GradingRubricOverrides,
 } from './ipc/api';
 import { GRADING_RUBRIC_KEYS, GRADING_RUBRIC_BOUNDS, MIXER_ATTENTION_CAPS, DEFAULT_MIXER_ATTENTION_CAP, type MixerAttentionCap } from './ipc/api';
+import { MIXER_ASSIST_BINARY_PATH_MAX_LEN, MIXER_ASSIST_ENDPOINT_MAX_LEN, MIXER_ASSIST_MODEL_MAX_LEN } from './ipc/api';
 
 // These DTOs are homed in ipc/api.ts (TD-011, #405) — the renderer-safe
 // boundary type both tsc programs share — and re-exported here so existing
@@ -436,7 +437,43 @@ export const SETTING_SPECS: { [K in keyof AppSettings]: SettingSpec<AppSettings[
     sanitizeFile: (v) => (isMixerAttentionCap(v) ? v : SETTING_SPECS.mixerAttentionCap.default),
     sanitizePatch: (v) => (isMixerAttentionCap(v) ? v : undefined),
   },
+  mixerCloudAssistEnabled: {
+    default: false,
+    sanitizeFile: (v) => (typeof v === 'boolean' ? v : SETTING_SPECS.mixerCloudAssistEnabled.default),
+    sanitizePatch: (v) => (typeof v === 'boolean' ? v : undefined),
+  },
+  mixerLocalAssistEnabled: {
+    default: false,
+    sanitizeFile: (v) => (typeof v === 'boolean' ? v : SETTING_SPECS.mixerLocalAssistEnabled.default),
+    sanitizePatch: (v) => (typeof v === 'boolean' ? v : undefined),
+  },
+  mixerCloudAssistBinaryPath: {
+    default: '',
+    sanitizeFile: (v) => sanitizeAssistBinaryPath(v) ?? SETTING_SPECS.mixerCloudAssistBinaryPath.default,
+    sanitizePatch: (v) => sanitizeAssistBinaryPath(v),
+  },
+  mixerLocalAssistEndpoint: {
+    default: '',
+    sanitizeFile: (v) => sanitizeAssistText(v, MIXER_ASSIST_ENDPOINT_MAX_LEN) ?? SETTING_SPECS.mixerLocalAssistEndpoint.default,
+    sanitizePatch: (v) => sanitizeAssistText(v, MIXER_ASSIST_ENDPOINT_MAX_LEN),
+  },
+  mixerLocalAssistModel: {
+    default: '',
+    sanitizeFile: (v) => sanitizeAssistText(v, MIXER_ASSIST_MODEL_MAX_LEN) ?? SETTING_SPECS.mixerLocalAssistModel.default,
+    sanitizePatch: (v) => sanitizeAssistText(v, MIXER_ASSIST_MODEL_MAX_LEN),
+  },
 };
+
+function sanitizeAssistText(v: unknown, maxLen: number): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const trimmed = v.trim();
+  return trimmed.length <= maxLen && !trimmed.includes('\0') ? trimmed : undefined;
+}
+
+function sanitizeAssistBinaryPath(v: unknown): string | undefined {
+  const trimmed = sanitizeAssistText(v, MIXER_ASSIST_BINARY_PATH_MAX_LEN);
+  return trimmed === '' || trimmed?.startsWith('/') ? trimmed : undefined;
+}
 
 export function isMixerAttentionCap(v: unknown): v is MixerAttentionCap {
   return (MIXER_ATTENTION_CAPS as readonly unknown[]).includes(v);

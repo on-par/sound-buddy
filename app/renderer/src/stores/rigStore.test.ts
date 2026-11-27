@@ -66,7 +66,7 @@ function fakeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
     measurementDeviceName: '', gradingProfile: 'casual', gradingRubric: {}, consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
-    splCalibrationOffsetDb: null, mixerAttentionCap: 3, lastAppMode: '',
+    splCalibrationOffsetDb: null, mixerAttentionCap: 3, mixerCloudAssistEnabled: false, mixerLocalAssistEnabled: false, mixerCloudAssistBinaryPath: '', mixerLocalAssistEndpoint: '', mixerLocalAssistModel: '', lastAppMode: '',
     ...overrides,
   };
 }

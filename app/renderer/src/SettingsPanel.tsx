@@ -82,6 +82,7 @@ import CaptureCadenceControls from './CaptureCadenceControls';
 import SplCalibrationPanel from './SplCalibrationPanel';
 import PreflightSettings from './PreflightSettings';
 import SettingsPlanStatus from './SettingsPlanStatus';
+import MixerAssistSettings from './MixerAssistSettings';
 import { SETTINGS_HELP_ENTRIES, resolveSettingsHelp, settingsHelpHandlers, settingsHelpNoteId } from './settings-help';
 
 export type SettingsSection = 'general' | 'audio' | 'console' | 'storage' | 'privacy' | 'labs' | 'about';
@@ -643,6 +644,7 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
             </div>
             <SettingsNote control="consoleNetworkConsent" />
           </SettingsGroup>
+          <MixerAssistSettings />
         </div>
         <div className="settings-pane" id="settings-pane-about" style={{ display: section === 'about' ? 'flex' : 'none' }}>
           <SettingsGroup title="Application">

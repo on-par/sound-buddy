@@ -133,3 +133,67 @@ describe('AI carve-out gate (#659)', () => {
     expect(fs.existsSync(path.join(electronRoot, name))).toBe(false);
   });
 });
+
+const ASSIST_CONFINED_TOKENS = ['CLAUDE_CODE_' + 'OAUTH_TOKEN', 'safe' + 'Storage'];
+const SKIP_PERMISSIONS_TOKEN = 'dangerously-' + 'skip-permissions';
+const BANNED_DEPENDENCY_FRAGMENTS = ['anth' + 'ropic', 'open' + 'ai', 'cla' + 'ude'];
+const ASSIST_DIR = 'mixer-' + 'assist';
+const ASSIST_IPC_FILE = path.join('ipc', 'mixer-' + 'assist.ts');
+const repoRoot = path.resolve(electronRoot, '..', '..');
+
+function collectEveryFile(dir: string): string[] {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name);
+    return entry.isDirectory() ? collectEveryFile(full) : [full];
+  });
+}
+
+function workspacePackageJsons(): string[] {
+  const packagesDir = path.join(repoRoot, 'packages');
+  return [
+    path.join(repoRoot, 'package.json'),
+    path.join(repoRoot, 'app', 'package.json'),
+    path.join(repoRoot, 'app', 'renderer', 'package.json'),
+    ...fs
+      .readdirSync(packagesDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && fs.existsSync(path.join(packagesDir, e.name, 'package.json')))
+      .map((e) => path.join(packagesDir, e.name, 'package.json')),
+  ];
+}
+
+describe('Mixer assist confinement (Cloud and Local assist)', () => {
+  const nonTestOutsideAssist = collectAllTsFiles(electronRoot).filter((file) => {
+    const relative = path.relative(electronRoot, file);
+    return !relative.endsWith('.test.ts') && relative.split(path.sep)[0] !== ASSIST_DIR && relative !== ASSIST_IPC_FILE;
+  });
+
+  it('scans the whole electron tree except the assist module and its IPC file', () => {
+    const relatives = nonTestOutsideAssist.map((f) => path.relative(electronRoot, f));
+    expect(relatives).toEqual(expect.arrayContaining(['main.ts', 'preload.ts', path.join('ipc', 'console.ts'), path.join('ipc', 'api.ts')]));
+    expect(relatives.some((r) => r.startsWith(ASSIST_DIR) || r === ASSIST_IPC_FILE)).toBe(false);
+  });
+
+  it.each(nonTestOutsideAssist.map((f) => [path.relative(electronRoot, f), f] as const))(
+    '%s holds no oauth-token or safe-storage token outside the assist module',
+    (_relative, file) => {
+      const text = fs.readFileSync(file, 'utf8');
+      for (const token of ASSIST_CONFINED_TOKENS) expect(text).not.toContain(token);
+    },
+  );
+
+  it('no file under app/electron contains the permission-bypass flag', () => {
+    const offenders = collectEveryFile(electronRoot).filter((file) => fs.readFileSync(file, 'utf8').includes(SKIP_PERMISSIONS_TOKEN));
+    expect(offenders).toEqual([]);
+  });
+
+  it('no workspace package.json declares a dependency named for an AI vendor SDK', () => {
+    const files = workspacePackageJsons();
+    expect(files.length).toBeGreaterThan(3);
+    for (const file of files) {
+      const pkg = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, Record<string, string> | undefined>;
+      const names = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'].flatMap((block) => Object.keys(pkg[block] ?? {}));
+      const banned = names.filter((name) => BANNED_DEPENDENCY_FRAGMENTS.some((fragment) => name.toLowerCase().includes(fragment)));
+      expect(banned, file).toEqual([]);
+    }
+  });
+});

@@ -7,6 +7,8 @@ import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useConsoleStore } from './stores/consoleStore';
 import { useMixerStore } from './stores/mixerStore';
 import { useSettingsStore } from './stores/settingsStore';
+import { useMixerAssistStore } from './stores/mixerAssistStore';
+import { railAssistView } from './mixer/assist-view';
 import { switchMode } from './mode-switch';
 import { selectAttention, attentionForLink } from './mixer/attention';
 import {
@@ -84,6 +86,8 @@ export default function MixerPanel({ now: nowProp }: { now?: number }): JSX.Elem
     ring: s.ring,
   }));
   const cap = useStoreShallow(useSettingsStore, (s) => s.settings?.mixerAttentionCap ?? DEFAULT_MIXER_ATTENTION_CAP);
+  const localModel = useStoreShallow(useSettingsStore, (s) => s.settings?.mixerLocalAssistModel ?? '');
+  const assistState = useStoreShallow(useMixerAssistStore, (s) => ({ status: s.status, pending: s.pending, answers: s.answers, lastFailure: s.lastFailure }));
 
   if (appMode !== 'mixer') return null;
   if (!con.selectedIp) return <MixerEmptyState />;
@@ -242,7 +246,7 @@ export default function MixerPanel({ now: nowProp }: { now?: number }): JSX.Elem
         )}
         {mx.view === 'buses' && <MixerBuses routing={routing} />}
       </div>
-      <MixerRail rail={rail} />
+      <MixerRail rail={rail} assist={railAssistView({ ...assistState, localModel })} />
     </div>
   );
 }

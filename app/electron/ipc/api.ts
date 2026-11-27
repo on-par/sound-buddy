@@ -52,7 +52,16 @@ export interface UpdateSettingsPatch {
   soundcheckBuses?: SoundcheckBus[];
   splCalibrationOffsetDb?: number | null;
   mixerAttentionCap?: MixerAttentionCap;
+  mixerCloudAssistEnabled?: boolean;
+  mixerLocalAssistEnabled?: boolean;
+  mixerCloudAssistBinaryPath?: string;
+  mixerLocalAssistEndpoint?: string;
+  mixerLocalAssistModel?: string;
 }
+
+export const MIXER_ASSIST_BINARY_PATH_MAX_LEN = 1024;
+export const MIXER_ASSIST_ENDPOINT_MAX_LEN = 512;
+export const MIXER_ASSIST_MODEL_MAX_LEN = 128;
 
 export const MIXER_ATTENTION_CAPS = [2, 3] as const;
 export type MixerAttentionCap = (typeof MIXER_ATTENTION_CAPS)[number];
@@ -515,6 +524,11 @@ export interface AppSettings {
    */
   splCalibrationOffsetDb: number | null;
   mixerAttentionCap: MixerAttentionCap;
+  mixerCloudAssistEnabled: boolean;
+  mixerLocalAssistEnabled: boolean;
+  mixerCloudAssistBinaryPath: string;
+  mixerLocalAssistEndpoint: string;
+  mixerLocalAssistModel: string;
 }
 
 // ─── Analysis / storage DTOs (AnalysisSummary moved from electron/storage.ts) ─
@@ -950,6 +964,101 @@ export interface ConsoleApi {
   onConsoleSceneCaptureProgress(cb: (data: ConsoleSceneCaptureProgressDto) => void): void;
 }
 
+export type MixerAssistSource = 'cloud' | 'local';
+
+export type MixerAssistTrigger = 'question' | 'anomaly';
+
+export type MixerAssistReason =
+  | 'disabled'
+  | 'invalid-request'
+  | 'busy'
+  | 'cooldown'
+  | 'hourly-cap'
+  | 'not-issue'
+  | 'sermon-quiet'
+  | 'cancelled'
+  | 'no-binary'
+  | 'no-token'
+  | 'no-encryption'
+  | 'exit'
+  | 'timeout'
+  | 'overflow'
+  | 'spawn-error'
+  | 'no-endpoint'
+  | 'bad-endpoint'
+  | 'no-model'
+  | 'endpoint-down'
+  | 'endpoint-status'
+  | 'bad-response';
+
+export type MixerAssistEndpointState = 'unset' | 'invalid' | 'ok';
+
+export interface MixerAssistStatusDto {
+  cloud: {
+    enabled: boolean;
+    binaryFound: boolean;
+    tokenSaved: boolean;
+    encryptionAvailable: boolean | null;
+    lastFailure: MixerAssistReason | null;
+  };
+  local: {
+    enabled: boolean;
+    endpoint: MixerAssistEndpointState;
+    modelSet: boolean;
+    lastFailure: MixerAssistReason | null;
+  };
+  inFlight: boolean;
+}
+
+export type SetMixerAssistTokenResult =
+  | { ok: true; status: MixerAssistStatusDto }
+  | { ok: false; reason: 'empty' | 'too-long' | 'no-encryption' | 'write-failed'; message: string; status: MixerAssistStatusDto };
+
+export interface MixerAssistDynamicsContext {
+  on: boolean;
+  thresholdDb: number;
+  ratio: number;
+}
+
+export interface MixerAssistChannelContext {
+  channel: number;
+  name: string;
+  faderDb: number | null;
+  levelDbfs: number | null;
+  gainReductionDb: number | null;
+  dynamics: MixerAssistDynamicsContext | null;
+  diagnosis: string | null;
+}
+
+export interface MixerAssistIssueContext {
+  key: string;
+  kind: 'clipping' | 'over-compression' | 'feedback-risk';
+  severity: 'issue' | 'check' | 'info';
+  channel: number | null;
+  diagnosis: string;
+}
+
+export type MixerAssistRequest =
+  | { trigger: 'question'; question: string; channels: MixerAssistChannelContext[] }
+  | { trigger: 'anomaly'; issue: MixerAssistIssueContext; sermonQuiet: boolean; channels: MixerAssistChannelContext[] };
+
+export interface MixerAssistAttempt {
+  source: MixerAssistSource;
+  reason: MixerAssistReason;
+}
+
+export type MixerAssistAnswer =
+  | { ok: true; trigger: MixerAssistTrigger; issueKey: string | null; source: MixerAssistSource; text: string; attempts: MixerAssistAttempt[] }
+  | { ok: false; trigger: MixerAssistTrigger; issueKey: string | null; reason: MixerAssistReason; attempts: MixerAssistAttempt[] };
+
+export interface MixerAssistApi {
+  getMixerAssistStatus(recheck?: boolean): Promise<MixerAssistStatusDto>;
+  setMixerAssistToken(token: string): Promise<SetMixerAssistTokenResult>;
+  clearMixerAssistToken(): Promise<MixerAssistStatusDto>;
+  askMixerAssist(request: MixerAssistRequest): Promise<MixerAssistAnswer>;
+  cancelMixerAssist(): Promise<OperationResult>;
+}
+
 // ─── Domain sub-interfaces ───────────────────────────────────────────────────
 // SoundBuddyApi is composed from these so a client can depend on a narrow
 // slice (e.g. `AnalysisApi`) instead of the full bridge. The runtime bridge
@@ -1153,6 +1262,7 @@ export interface SoundBuddyApi
     AnalysisApi,
     LiveApi,
     ConsoleApi,
+    MixerAssistApi,
     PlaybackApi,
     DialogApi,
     UpdateApi,

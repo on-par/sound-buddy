@@ -172,6 +172,11 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
     args: [{ message: 'boom', stack: 'Error: boom' }],
   },
   { method: 'recordAppEvent', channel: 'record-app-event', args: ['screen.live'] },
+  { method: 'getMixerAssistStatus', channel: 'get-mixer-assist-status', args: [true] },
+  { method: 'setMixerAssistToken', channel: 'set-mixer-assist-token', args: ['fake-token-for-preload-table'] },
+  { method: 'clearMixerAssistToken', channel: 'clear-mixer-assist-token', args: [] },
+  { method: 'askMixerAssist', channel: 'ask-mixer-assist', args: [{ trigger: 'question', question: 'Why is 02 flagged?', channels: [] }] },
+  { method: 'cancelMixerAssist', channel: 'cancel-mixer-assist', args: [] },
 ];
 
 // Methods backed by `ipc.on` rather than `ipc.invoke` — excluded from the
