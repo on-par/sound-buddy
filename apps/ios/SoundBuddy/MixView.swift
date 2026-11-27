@@ -38,8 +38,8 @@ struct MixView<Rail: View>: View {
         .animation(.snappy, value: railOpen)
     }
 
-    private var channelRows: [ConsoleTargetLabel] {
-        console.map { MixChannelList.rows(from: $0.catalog) } ?? []
+    private var channelsState: MixChannelsState {
+        MixChannelsState(catalog: console?.catalog)
     }
 
     private var header: some View {
@@ -112,7 +112,7 @@ struct MixView<Rail: View>: View {
             title: { option in
                 switch option {
                 case .attention: MixCopy.attentionSegment(count: triage.badgeCount)
-                case .channels: MixCopy.channelsSegment(count: channelRows.count)
+                case .channels: MixCopy.channelsSegment(count: channelsState.rows.count)
                 }
             },
             identifier: { "mix.segment.\($0.rawValue)" }
@@ -172,10 +172,11 @@ struct MixView<Rail: View>: View {
 
     @ViewBuilder
     private var channels: some View {
-        let rows = channelRows
-        if rows.isEmpty {
-            MixEmptyCard(text: MixCopy.noChannels, isCalm: false)
-                .accessibilityIdentifier("mix.channels.empty")
+        let state = channelsState
+        let rows = state.rows
+        if let message = state.emptyMessage {
+            MixEmptyCard(text: message, isCalm: false)
+                .accessibilityIdentifier(state == .unavailable ? "mix.channels.unavailable" : "mix.channels.empty")
         } else {
             VStack(spacing: 0) {
                 ForEach(rows, id: \.target) { label in

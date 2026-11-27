@@ -74,32 +74,23 @@ enum ThemeMetrics {
 }
 
 enum StatusTone {
-    case good
     case check
     case issue
-    case info
     case gold
-    case neutral
 
     var color: Color {
         switch self {
-        case .good: Palette.good
         case .check: Palette.check
         case .issue: Palette.issue
-        case .info: Palette.info
         case .gold: Palette.accent
-        case .neutral: Palette.tertiaryText
         }
     }
 
     var text: Color {
         switch self {
-        case .good: Palette.goodText
         case .check: Palette.checkText
         case .issue: Palette.issueText
-        case .info: Palette.infoText
         case .gold: Palette.goldText
-        case .neutral: Palette.secondaryText
         }
     }
 

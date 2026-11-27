@@ -554,4 +554,36 @@ struct AnalyzeLayoutTests {
     @Test func showMoreLabel() {
         #expect(AnalyzeLayout.showMoreLabel(count: 2) == "+2 more")
     }
+
+    @Test(
+        "iPhone portrait's RTA yields height down to the floor but never grows past its fixed height",
+        arguments: [
+            (AnalyzeLayout.portrait, AnalyzeLayout.rtaMinHeight, AnalyzeLayout.compactRTAHeight),
+            (AnalyzeLayout.landscape, AnalyzeLayout.rtaMinHeight, Double.infinity),
+            (AnalyzeLayout.tallPortrait, AnalyzeLayout.rtaMinHeight, Double.infinity),
+            (AnalyzeLayout.wide, AnalyzeLayout.rtaMinHeight, Double.infinity),
+        ]
+    )
+    func rtaHeightRange(layout: AnalyzeLayout, lower: Double, upper: Double) {
+        #expect(layout.rtaHeightRange == lower...upper)
+    }
+
+    @Test func rtaHeightConstants() {
+        #expect(AnalyzeLayout.compactRTAHeight == 300)
+        #expect(AnalyzeLayout.rtaMinHeight == 120)
+        #expect(AnalyzeLayout.rtaMinHeight < AnalyzeLayout.compactRTAHeight)
+    }
+
+    @Test(
+        "the Room legend shows only in Absolute and never while editing",
+        arguments: [
+            (false, RTAViewMode.absolute, true),
+            (true, RTAViewMode.absolute, false),
+            (false, RTAViewMode.relative, false),
+            (true, RTAViewMode.relative, false),
+        ]
+    )
+    func roomLegend(isEditingTarget: Bool, mode: RTAViewMode, expected: Bool) {
+        #expect(AnalyzeLayout.showsRoomLegend(isEditingTarget: isEditingTarget, requestedMode: mode) == expected)
+    }
 }

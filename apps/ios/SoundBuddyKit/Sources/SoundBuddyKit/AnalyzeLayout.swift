@@ -75,6 +75,17 @@ public enum AnalyzeLayout: Equatable, Sendable {
     /// portrait, which keeps its fixed height.
     public var rtaFillsHeight: Bool { self != .portrait }
 
+    public static let compactRTAHeight = 300.0
+    public static let rtaMinHeight = 120.0
+
+    public var rtaHeightRange: ClosedRange<Double> {
+        Self.rtaMinHeight...(rtaFillsHeight ? .infinity : Self.compactRTAHeight)
+    }
+
+    public static func showsRoomLegend(isEditingTarget: Bool, requestedMode: RTAViewMode) -> Bool {
+        !isEditingTarget && requestedMode == .absolute
+    }
+
     /// Landscape variants use the one-line status strip (Listening, level,
     /// gear) so the RTA gets nearly the full height; portrait variants use the
     /// brand header.

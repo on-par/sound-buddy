@@ -66,9 +66,6 @@ struct RootTabView: View {
                 agentSheetDetent = .large
                 agentSheetOpen = true
             }
-            if DebugLaunchOptions.forcesLandscape(ProcessInfo.processInfo.arguments) {
-                Self.requestLandscape()
-            }
             #endif
         }
         .onDisappear {
@@ -184,15 +181,6 @@ struct RootTabView: View {
     private func applyKeepAwake() {
         keepAwake.apply(keepAwake: keepAwakeEnabled, isSceneActive: scenePhase == .active)
     }
-
-    #if DEBUG && canImport(UIKit)
-    private static func requestLandscape() {
-        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        for scene in scenes {
-            scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) { _ in }
-        }
-    }
-    #endif
 
     private static var initialTab: AppTab {
         #if DEBUG

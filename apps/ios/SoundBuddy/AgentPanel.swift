@@ -54,8 +54,8 @@ struct AgentPanel: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("agent.error")
                 }
-                if let event = agent.selected, let move = agent.move {
-                    diagnosis(event.message)
+                if let event = agent.selected, let move = agent.move, let diagnosis = agent.diagnosis {
+                    diagnosisCard(diagnosis)
                     moveCard(event: event, move: move, applyState: agent.applyState)
                     if let next = agent.next {
                         nextRow(next)
@@ -147,7 +147,7 @@ struct AgentPanel: View {
         .accessibilityIdentifier("agent.badge")
     }
 
-    private func diagnosis(_ message: String) -> some View {
+    private func diagnosisCard(_ message: String) -> some View {
         VStack(alignment: .leading, spacing: Layout.tightSpacing) {
             Text(message)
                 .font(.subheadline.weight(.semibold))
