@@ -82,7 +82,7 @@ export function MixerCard({ card, frozen }: { card: CardView; frozen: boolean })
       )}
       {card.sends !== '' && <p className="mx-card-sends">{card.sends}</p>}
       <div className="mx-card-foot">
-        <span className="mx-unavailable">{card.share}</span>
+        {card.share !== '' && <span className="mx-unavailable">{card.share}</span>}
         <button
           type="button"
           className="btn btn-ghost mx-card-dismiss"

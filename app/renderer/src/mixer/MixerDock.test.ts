@@ -20,8 +20,8 @@ const DOCK: DockView = {
   header: '19 channels · 1 queued',
   tiles: [TILE, { ...TILE, channel: 2, queuedSeverity: null, level: { available: false, percent: 0, label: 'Meters unavailable' } }],
   buses: [
-    { index: 1, name: 'Vox Bus', fader: '-2.0 dB', on: true, age: 'read 4 s ago' },
-    { index: 2, name: 'Band', fader: '-1.0 dB', on: false, age: 'read 1 s ago' },
+    { index: 1, name: 'Vox Bus', label: 'Bus 1 · Vox Bus', fader: '-2.0 dB', on: true, age: 'read 4 s ago' },
+    { index: 2, name: 'Band', label: 'Bus 2 · Band', fader: '-1.0 dB', on: false, age: 'read 1 s ago' },
   ],
   busMeters: 'Bus meters unavailable',
   mainLufs: 'Main LUFS unavailable',
@@ -34,9 +34,10 @@ describe('MixerDock', () => {
     expect(html.indexOf('data-channel="14"')).toBeLessThan(html.indexOf('data-channel="2"'));
     expect(html).toContain('mx-tile mx-tile-q mx-sev-info');
     expect(html).toContain('width:35%');
-    expect(html).toContain('Vox Bus <b>-2.0 dB</b>');
+    expect(html).toContain('Bus 1 · Vox Bus <b>-2.0 dB</b> <span class="mx-bus-age">read 4 s ago</span>');
     expect(html).toContain('class="mx-bus mx-bus-off"');
-    expect(html).toContain('Band <b>off</b>');
+    expect(html).toContain('Bus 2 · Band <b>off</b> <span class="mx-bus-age">read 1 s ago</span>');
+    expect(html).not.toContain('title="read');
     expect(html).toContain('Bus meters unavailable');
     expect(html).toContain('Main LUFS unavailable');
     expect(html).toContain('title="Inspect this channel"');

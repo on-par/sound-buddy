@@ -1882,7 +1882,7 @@
     .mx-chain { width:320px; flex:none; border-left:1px solid var(--border-subtle); padding:12px 14px; display:flex; flex-direction:column; gap:5px; overflow-y:auto; }
     .mx-chain-h { display:flex; align-items:center; justify-content:space-between; margin-bottom:2px; }
     .mx-step { flex:none; display:flex; align-items:center; gap:8px; min-height:24px; padding:3px 8px; border-radius:var(--radius-sm); background:var(--surface); border:1px solid var(--border-subtle); }
-    .mx-step-nm { width:44px; flex:none; color:var(--text-tertiary); font:var(--fw-semibold) 10px/1 var(--font-sans); letter-spacing:0.06em; text-transform:uppercase; }
+    .mx-step-nm { width:50px; flex:none; color:var(--text-tertiary); font:var(--fw-semibold) 10px/1 var(--font-sans); letter-spacing:0.06em; text-transform:uppercase; }
     .mx-step-vv { flex:1; min-width:0; font:var(--fw-medium) 11px/1.25 var(--font-mono); color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .mx-step-age { flex:none; font:var(--fw-medium) 9.5px/1 var(--font-mono); color:var(--text-muted); }
     .mx-step-off .mx-step-vv, .mx-step-unread .mx-step-vv { color:var(--text-muted); }
@@ -1892,8 +1892,9 @@
     .mx-dock { flex:none; display:flex; flex-direction:column; gap:8px; padding:10px 12px; background:var(--bg-panel); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); }
     .mx-dock-h { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .mx-dock-sub { color:var(--text-muted); font-size:11px; }
-    .mx-dock-r { margin-left:auto; display:flex; gap:12px; font:var(--fw-medium) 10.5px/1 var(--font-mono); color:var(--text-muted); white-space:nowrap; }
+    .mx-dock-r { margin-left:auto; display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px 12px; max-width:100%; font:var(--fw-medium) 10.5px/1 var(--font-mono); color:var(--text-muted); white-space:nowrap; }
     .mx-dock-r b { color:var(--text-secondary); font-weight:var(--fw-semibold); }
+    .mx-dock-r .mx-bus-age { font-size:9.5px; }
     .mx-bus-off { opacity:0.55; }
     .mx-board-grid { display:grid; grid-template-columns:repeat(8, minmax(0, 1fr)); gap:6px; }
     .mx-tiles { display:grid; grid-template-columns:repeat(10, minmax(0, 1fr)); gap:6px; }
@@ -1914,6 +1915,7 @@
     .mx-route-chs { flex:1; min-width:0; }
     .mx-route-arrow { color:var(--text-muted); }
     .mx-route-bus { padding:4px 9px; border-radius:var(--radius-sm); background:var(--surface-raised); border:1px solid var(--border-default); color:var(--text-primary); font-weight:var(--fw-semibold); }
+    .mx-route-age { flex:none; min-width:84px; text-align:right; font:var(--fw-medium) 10px/1 var(--font-mono); color:var(--text-muted); }
     .mx-muted { color:var(--text-muted); font-size:12px; }
     .mx-buses-view { display:flex; flex-direction:column; gap:10px; }
     .mx-bus-list { display:flex; flex-direction:column; }

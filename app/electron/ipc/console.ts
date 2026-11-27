@@ -21,6 +21,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { log, logWarn } from '../logger';
 import { getSettings } from '../settings';
+import { resolveFeatureFlags } from '../feature-flags';
 import { discoverConsoles } from './console-discovery';
 import type { ConsoleDiscoverySocket } from './console-discovery';
 import { fetchConsoleIdentity, startConsoleHeartbeat } from './console-connection';
@@ -138,13 +139,15 @@ export function registerConsoleHandlers(): void {
         (error) => {
           if (!wc.isDestroyed()) wc.send('console-live-state', { error });
         },
-        {
-          onSlowTier: ({ stripDetail, surfaces }) => {
-            if (wc.isDestroyed()) return;
-            wc.send('console-live-state', { stripDetail });
-            wc.send('console-live-state', { surfaces });
-          },
-        }
+        resolveFeatureFlags(process.env).mixer
+          ? {
+              onSlowTier: ({ stripDetail, surfaces }) => {
+                if (wc.isDestroyed()) return;
+                wc.send('console-live-state', { stripDetail });
+                wc.send('console-live-state', { surfaces });
+              },
+            }
+          : {}
       );
       meterHandle = startMeterSubscription(
         { log },

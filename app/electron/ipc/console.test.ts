@@ -1,7 +1,9 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 
@@ -18,9 +20,11 @@ const discoverConsolesMock = vi.fn();
 vi.mock('./console-discovery', () => ({ discoverConsoles: (...a: unknown[]) => discoverConsolesMock(...a) }));
 const fetchConsoleIdentityMock = vi.fn();
 const startConsoleHeartbeatMock = vi.fn();
+const queryConsoleMock = vi.fn();
 vi.mock('./console-connection', () => ({
   fetchConsoleIdentity: (...a: unknown[]) => fetchConsoleIdentityMock(...a),
   startConsoleHeartbeat: (...a: unknown[]) => startConsoleHeartbeatMock(...a),
+  queryConsole: (...a: unknown[]) => queryConsoleMock(...a),
 }));
 const startChannelStateSubscriptionMock = vi.fn();
 vi.mock('./console-channel-state', () => ({
@@ -95,6 +99,11 @@ beforeEach(() => {
   captureSceneToFileMock.mockReset();
   captureSceneToFileMock.mockResolvedValue('scene text');
   registerConsoleHandlers();
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.useRealTimers();
 });
 
 describe('isValidConsoleIp', () => {
@@ -202,21 +211,39 @@ describe('start-console-live-state / stop-console-live-state', () => {
     expect(startChannelStateSubscriptionMock).not.toHaveBeenCalled();
   });
 
-  it('starts and returns { success: true }', async () => {
-    startChannelStateSubscriptionMock.mockReturnValue({ stop: vi.fn() });
+  it('starts and returns { success: true }, passing no slow-tier listener while the mixer flag is off', async () => {
+    vi.stubEnv('SOUND_BUDDY_FEATURES', 'console');
+    const received: unknown[][] = [];
+    startChannelStateSubscriptionMock.mockImplementation((...args: unknown[]) => {
+      received.push(args);
+      return { stop: vi.fn() };
+    });
     const { event } = makeFakeEvent();
 
     const result = await startLiveState(event, '10.0.0.5');
 
     expect(result).toEqual({ success: true });
-    expect(startChannelStateSubscriptionMock).toHaveBeenCalledWith(
-      { log: expect.any(Function) },
-      { consoleNetworkConsentGranted: true },
-      '10.0.0.5',
-      expect.any(Function),
-      expect.any(Function),
-      { onSlowTier: expect.any(Function) }
-    );
+    expect(received).toHaveLength(1);
+    const [deps, settings, ip, onSnapshot, onError, options] = received[0];
+    expect(deps).toEqual({ log: expect.any(Function) });
+    expect(settings).toEqual({ consoleNetworkConsentGranted: true });
+    expect(ip).toBe('10.0.0.5');
+    expect(typeof onSnapshot).toBe('function');
+    expect(typeof onError).toBe('function');
+    expect(options).toEqual({});
+  });
+
+  it('passes a slow-tier listener only when the mixer flag is on', async () => {
+    vi.stubEnv('SOUND_BUDDY_FEATURES', 'console,mixer');
+    const options: unknown[] = [];
+    startChannelStateSubscriptionMock.mockImplementation((_d, _s, _ip, _snap, _err, opts) => {
+      options.push(opts);
+      return { stop: vi.fn() };
+    });
+
+    await startLiveState(makeFakeEvent().event, '10.0.0.5');
+
+    expect(options).toEqual([{ onSlowTier: expect.any(Function) }]);
   });
 
   it('forwards a snapshot as { channels, readAt } on console-live-state', async () => {
@@ -237,6 +264,7 @@ describe('start-console-live-state / stop-console-live-state', () => {
   });
 
   it('forwards a slow-tier snapshot as a { stripDetail } push and a { surfaces } push', async () => {
+    vi.stubEnv('SOUND_BUDDY_FEATURES', 'console,mixer');
     let onSlowTier!: (snapshot: unknown) => void;
     startChannelStateSubscriptionMock.mockImplementation((_d, _s, _ip, _snap, _err, opts) => {
       onSlowTier = opts.onSlowTier;
@@ -254,6 +282,7 @@ describe('start-console-live-state / stop-console-live-state', () => {
   });
 
   it('drops a slow-tier snapshot when the sender is destroyed', async () => {
+    vi.stubEnv('SOUND_BUDDY_FEATURES', 'console,mixer');
     let onSlowTier!: (snapshot: unknown) => void;
     startChannelStateSubscriptionMock.mockImplementation((_d, _s, _ip, _snap, _err, opts) => {
       onSlowTier = opts.onSlowTier;
@@ -702,5 +731,53 @@ describe('start-console-scene-capture / cancel-console-scene-capture', () => {
 
     resolveCapture('scene text');
     await pending;
+  });
+});
+
+describe('start-console-live-state /node budget per tick, scoped by the mixer flag', () => {
+  const sceneLines = fs
+    .readFileSync(fileURLToPath(new URL('../../../packages/console/src/capture-2026-08-16.scn', import.meta.url)), 'utf8')
+    .split('\n')
+    .map((l) => l.trim());
+
+  function recordingConsole(): string[] {
+    const recorded: string[] = [];
+    queryConsoleMock.mockImplementation((_d: unknown, _ip: unknown, address: string, _m: unknown, opts: { requestArgs: Array<{ value: string }> }) => {
+      const path = opts.requestArgs[0].value;
+      recorded.push(`${address} ${path}`);
+      return Promise.resolve(sceneLines.find((l) => l.startsWith(`${path} `)) ?? '');
+    });
+    return recorded;
+  }
+
+  async function queriesPerTick(features: string): Promise<{ perTick: number[]; recorded: string[] }> {
+    vi.stubEnv('SOUND_BUDDY_FEATURES', features);
+    vi.useFakeTimers();
+    const real = await vi.importActual<typeof import('./console-channel-state')>('./console-channel-state');
+    startChannelStateSubscriptionMock.mockImplementation(real.startChannelStateSubscription);
+    const recorded = recordingConsole();
+
+    await startLiveState(makeFakeEvent().event, '10.0.0.5');
+    await vi.advanceTimersByTimeAsync(0);
+    const first = recorded.length;
+    await vi.advanceTimersByTimeAsync(real.DEFAULT_CHANNEL_POLL_INTERVAL_MS);
+    const second = recorded.length - first;
+    await stopLiveState();
+    return { perTick: [first, second], recorded };
+  }
+
+  it('sends exactly 96 /node queries per tick, none of them slow-tier, with the mixer flag off', async () => {
+    const { perTick, recorded } = await queriesPerTick('console');
+
+    expect(perTick).toEqual([96, 96]);
+    expect(recorded.every((q) => q.startsWith('/node /ch/') && /\/(config|mix|dyn)$/.test(q))).toBe(true);
+    expect(recorded.filter((q) => /preamp|gate|\/eq|\/mix\/|\/bus\/|\/main\//.test(q))).toEqual([]);
+  });
+
+  it('sends exactly 145 /node queries per tick with the mixer flag on', async () => {
+    const { perTick, recorded } = await queriesPerTick('console,mixer');
+
+    expect(perTick).toEqual([145, 145]);
+    expect(recorded.every((q) => q.startsWith('/node /'))).toBe(true);
   });
 });

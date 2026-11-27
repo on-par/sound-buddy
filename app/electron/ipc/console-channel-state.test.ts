@@ -21,6 +21,7 @@ import {
   initialSlowTierState,
   startChannelStateSubscription,
   CONSOLE_CHANNEL_COUNT,
+  DEFAULT_CHANNEL_POLL_INTERVAL_MS,
   type ConsoleChannelState,
   type ConsoleSlowTierSnapshot,
 } from './console-channel-state';
@@ -482,5 +483,55 @@ describe('tiered /node poll (fast tier every tick, slow tier rotating)', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(slow).toEqual([]);
+  });
+});
+
+describe('slow-tier stall when every slow-tier read times out at the real /node query timeout', () => {
+  it('measures how long the next tick fast tier waits behind 49 timed-out slow-tier reads', async () => {
+    vi.useFakeTimers();
+    const actual = await vi.importActual<typeof import('./console-connection')>('./console-connection');
+    const fastPaths = new Set(channelNodePaths());
+    const datagrams: number[] = [];
+    const fastTickStarts: number[] = [];
+    const silentSocket = () => ({
+      bind: (ready: () => void) => ready(),
+      setBroadcast: () => {},
+      send: () => {
+        datagrams.push(Date.now());
+      },
+      on: () => {},
+      close: () => {},
+    });
+    queryConsoleMock.mockImplementation(
+      (d: ConsoleDiscoveryDeps, ip: string, address: string, parse: never, opts: { requestArgs: Array<{ value: string }> }) => {
+        const path = opts.requestArgs[0].value;
+        if (path === '/ch/01/config') fastTickStarts.push(Date.now());
+        if (fastPaths.has(path)) return Promise.resolve(sceneLine(path));
+        return actual.queryConsole(d, ip, address, parse, opts);
+      }
+    );
+    const start = Date.now();
+    const snapshots: number[] = [];
+    const slowAt: number[] = [];
+    const logs: string[] = [];
+    const slowDeps: ConsoleDiscoveryDeps = { log: (m) => logs.push(m), createSocket: silentSocket };
+
+    const handle = startChannelStateSubscription(slowDeps, GRANTED, IP, () => snapshots.push(Date.now() - start), () => {}, {
+      onSlowTier: () => slowAt.push(Date.now() - start),
+    });
+    await vi.advanceTimersByTimeAsync(70_000);
+    handle.stop();
+
+    const perReadTimeoutMs = actual.DEFAULT_CONNECTION_QUERY_TIMEOUT_MS * (actual.DEFAULT_CONNECTION_QUERY_MAX_RETRIES + 1);
+    const nextTickStart = fastTickStarts[1] - start;
+    const fastTierDelayMs = nextTickStart - DEFAULT_CHANNEL_POLL_INTERVAL_MS;
+    expect(perReadTimeoutMs).toBe(1400);
+    expect(datagrams.filter((t) => t < fastTickStarts[1])).toHaveLength(49 * 4);
+    expect(logs.filter((m) => m.includes('slow-tier read of'))).toHaveLength(49);
+    expect(slowAt).toEqual([49 * perReadTimeoutMs]);
+    expect(snapshots).toEqual([0, 69_000]);
+    expect(nextTickStart).toBe(69_000);
+    expect(fastTierDelayMs).toBe(68_000);
+    expect(fastTierDelayMs).toBeGreaterThan(DEFAULT_CHANNEL_POLL_INTERVAL_MS);
   });
 });

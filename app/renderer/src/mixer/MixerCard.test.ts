@@ -78,8 +78,10 @@ describe('MixerCard', () => {
   });
 
   it('renders a room card with no scribble or meters, the candidate mics, and no sends line', () => {
-    const html = render({ ...BASE, key: 'feedback-risk:room', kind: 'feedback-risk', channel: null, scribble: null, sends: '', candidates: ['01 Lead Vox', '05 Pastor'], inspected: false });
+    const html = render({ ...BASE, key: 'feedback-risk:room', kind: 'feedback-risk', channel: null, scribble: null, sends: '', share: '', candidates: ['01 Lead Vox', '05 Pastor'], inspected: false });
     expect(html).toContain('mx-c-room');
+    expect(html).not.toContain('Share of mix unavailable');
+    expect(html).not.toContain('mx-unavailable');
     expect(html).not.toContain('mx-meters');
     expect(html).toContain('Open channels (candidates, not confirmed): 01 Lead Vox, 05 Pastor');
     expect(html).not.toContain('mx-card-sends');

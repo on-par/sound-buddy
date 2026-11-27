@@ -8,7 +8,7 @@ import type {
   ConsoleSurfacesDto,
 } from '../../../electron/ipc/api';
 import { moveParamLabel, type ProposedMoves } from './proposed-moves';
-import { compLabel, formatDb, formatReadAge, scribbleView, sendsLabel, type ScribbleView } from './view-model';
+import { compLabel, formatDb, formatReadAge, scribbleView, sendsSummary, SENDS_NOT_READ, type ScribbleView } from './view-model';
 
 export const CHANNEL_SPECTRUM_UNAVAILABLE = 'Channel spectrum unavailable — board USB is not a 32-track input';
 export const ROOM_RTA_LABEL = 'Room mic RTA — the whole room, not this channel';
@@ -31,6 +31,11 @@ export interface ChainRow {
   value: string;
   age: string;
   state: ChainState;
+}
+
+export interface FastTierLink {
+  offline: boolean;
+  channelsReadAt: number | null;
 }
 
 export interface RoomCurve {
@@ -64,6 +69,19 @@ function agedRow<T>(
   return { key, name, value, age: formatReadAge(aged.readAt, now), state: on ? 'ok' : 'off' };
 }
 
+function compRow(channel: ConsoleChannelStateDto | undefined, live: FastTierLink, now: number): ChainRow {
+  if (!channel) return { key: 'comp', name: 'Comp', value: NOT_READ_YET, age: '', state: 'unread' };
+  const on = channel.dynamics.on;
+  if (!live.offline) return { key: 'comp', name: 'Comp', value: compLabel(channel), age: 'live', state: on ? 'live' : 'off' };
+  const age = live.channelsReadAt === null ? '' : formatReadAge(live.channelsReadAt, now);
+  return { key: 'comp', name: 'Comp', value: compLabel(channel), age, state: on ? 'ok' : 'off' };
+}
+
+function sendsRow(detail: ConsoleStripDetailDto | undefined, surfaces: ConsoleSurfacesDto | null, now: number): ChainRow {
+  if (!detail?.sends) return { key: 'sends', name: 'Sends', value: SENDS_NOT_READ, age: '', state: 'unread' };
+  return { key: 'sends', name: 'Sends', value: sendsSummary(detail, surfaces), age: formatReadAge(detail.sends.readAt, now), state: 'ok' };
+}
+
 function signedGain(gain: number): string {
   return `${gain > 0 ? '+' : ''}${gain.toFixed(GAIN_DECIMALS)}`;
 }
@@ -74,7 +92,8 @@ export function signalChain(
   surfaces: ConsoleSurfacesDto | null,
   moves: ProposedMoves,
   index: number,
-  now: number
+  now: number,
+  live: FastTierLink
 ): ChainRow[] {
   const rows: ChainRow[] = [
     agedRow('trim', 'Trim', detail?.preamp, now, (p) => ({ value: `${formatDb(p.trim)}${p.invert ? ' · polarity inverted' : ''}`, on: true })),
@@ -90,18 +109,18 @@ export function signalChain(
       value: e.on ? e.bands.map((b) => `${b.freq} ${signedGain(b.gain)}`).join(' · ') : 'Off',
       on: e.on,
     })),
-    channel
-      ? { key: 'comp', name: 'Comp', value: compLabel(channel), age: 'live', state: channel.dynamics.on ? 'live' : 'off' }
-      : { key: 'comp', name: 'Comp', value: NOT_READ_YET, age: '', state: 'unread' },
+    compRow(channel, live, now),
   ];
   for (const move of Object.values(moves)) {
     if (move.channel !== index || move.status !== 'pending') continue;
     rows.push({ key: `proposed:${move.key}`, name: 'Comp', value: moveParamLabel(move), age: 'proposed', state: 'proposed' });
   }
-  const sends = sendsLabel(detail, surfaces, now);
-  rows.push({ key: 'sends', name: 'Sends', value: sends, age: '', state: detail?.sends ? 'ok' : 'unread' });
+  rows.push(sendsRow(detail, surfaces, now));
   rows.push(
-    agedRow('main', 'Main', surfaces?.main.mix, now, (m) => ({ value: m.on ? `Main LR · ${formatDb(m.faderDb)}` : 'Main LR · off', on: m.on }))
+    agedRow('main', 'Master', surfaces?.main.mix, now, (m) => ({
+      value: m.on ? `Main LR ${formatDb(m.faderDb)}` : 'Main LR off',
+      on: m.on,
+    }))
   );
   return rows;
 }
@@ -145,10 +164,11 @@ export function inspectorView(args: {
   room: RoomCurve | null;
   ring: { freq: number; label: string } | null;
   now: number;
+  live: FastTierLink;
 }): InspectorView {
   const channel = args.channels.find((c) => c.index === args.index);
   const detail = args.stripDetail.find((d) => d.index === args.index);
-  const chain = signalChain(channel, detail, args.surfaces, args.moves, args.index, args.now);
+  const chain = signalChain(channel, detail, args.surfaces, args.moves, args.index, args.now, args.live);
   return {
     channel: args.index,
     scribble: scribbleView(channel, args.index),

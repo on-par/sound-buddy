@@ -38,6 +38,7 @@ function input(overrides: Partial<MixerConsoleInput> = {}): MixerConsoleInput {
     liveMeters: [0.2, 0.2],
     liveDynamicsGainReduction: [0, 0],
     link: ONLINE,
+    liveStateStatus: 'watching',
     ...overrides,
   };
 }
@@ -109,6 +110,79 @@ describe('mixerStore ingest', () => {
     expect(Object.keys(store.getState().dismissals)).toEqual(['clipping:1']);
     store.getState().ingestConsole(input(), 5000 + DISMISS_MUTE_MS);
     expect(store.getState().dismissals).toEqual({});
+  });
+});
+
+describe('mixerStore after the watch stops', () => {
+  const STOPPED = {
+    liveStateStatus: 'idle' as const,
+    liveChannels: [],
+    liveChannelsReadAt: null,
+    liveMeters: [],
+    liveDynamicsGainReduction: [],
+    link: { status: 'unknown' as const, metersDegraded: false },
+  };
+  const MOVE = {
+    key: 'over-compression:1:comp-ratio', issueKey: 'over-compression:1', channel: 1, parameter: 'comp-ratio' as const,
+    from: 4, to: 3, why: 'w', expected: 'e', status: 'pending' as const,
+  };
+
+  it('drops every card, move and fader sample once the watch stops and its channels clear', () => {
+    const store = createMixerStore();
+    store.getState().ingestConsole(input({ liveMeters: [1.3, 0.2] }), 5000);
+    store.setState({ moves: { [MOVE.key]: MOVE } });
+    expect(store.getState().issues.map((i) => i.key)).toEqual(['clipping:1']);
+
+    store.getState().ingestConsole(input(STOPPED), 6000);
+
+    const s = store.getState();
+    expect(s.issues).toEqual([]);
+    expect(s.moves).toEqual({});
+    expect(s.faderHistory).toEqual({});
+    expect(s.history.clipPeak).toEqual({});
+    expect(s.lastChannels).toEqual([]);
+    expect(s.lastChannelsReadAt).toBeNull();
+    expect(s.lastMeters).toBeNull();
+  });
+
+  it('drops the frozen offline cards too, so a stopped watch shows no frozen card', () => {
+    const store = createMixerStore();
+    store.getState().ingestConsole(input({ liveMeters: [1.3, 0.2] }), 5000);
+    store.getState().ingestConsole(input({ link: { status: 'offline', metersDegraded: false } }), 6000);
+    expect(store.getState().frozenIssues?.map((i) => i.key)).toEqual(['clipping:1']);
+
+    store.getState().ingestConsole(input(STOPPED), 7000);
+
+    expect(store.getState().frozenIssues).toBeNull();
+    expect(store.getState().frozenAt).toBeNull();
+    expect(store.getState().issues).toEqual([]);
+  });
+
+  it('keeps the cards through a walk error while the last channels are still on screen', () => {
+    const store = createMixerStore();
+    store.getState().ingestConsole(input({ liveMeters: [1.3, 0.2] }), 5000);
+
+    store.getState().ingestConsole(input({ liveStateStatus: 'error', liveMeters: [1.3, 0.2] }), 5500);
+
+    expect(store.getState().issues.map((i) => i.key)).toEqual(['clipping:1']);
+  });
+
+  it('keeps the cards while a new watch is starting', () => {
+    const store = createMixerStore();
+    store.getState().ingestConsole(input({ liveMeters: [1.3, 0.2] }), 5000);
+
+    store.getState().ingestConsole(input({ ...STOPPED, liveStateStatus: 'starting' }), 5500);
+
+    expect(store.getState().issues.map((i) => i.key)).toEqual(['clipping:1']);
+  });
+
+  it('the app singleton drops its cards when consoleStore reaches the stopped state', () => {
+    useConsoleStore.setState({ liveStateStatus: 'watching', liveChannels: [channel(1)], liveMeters: [1.5], link: ONLINE });
+    expect(useMixerStore.getState().issues.map((i) => i.key)).toEqual(['clipping:1']);
+
+    useConsoleStore.setState({ liveStateStatus: 'idle', liveChannels: [], liveMeters: [], link: { status: 'unknown', metersDegraded: false } });
+
+    expect(useMixerStore.getState().issues).toEqual([]);
   });
 });
 

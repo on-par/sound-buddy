@@ -12,6 +12,8 @@ import {
   adviceText,
   COMP_RATIO_STEPS,
   THRESHOLD_STEP_DB,
+  THRESHOLD_WHY,
+  UNLISTED_RATIO_WHY,
   type ProposedMove,
 } from './proposed-moves';
 import { issueKey, type MixerIssue } from './attention';
@@ -52,6 +54,16 @@ describe('proposeMove', () => {
 
   it('uses the threshold when the reported ratio is not one of the console steps', () => {
     expect(proposeMove(overComp(2), ch(2, { ratio: 3.3, thr: -30 }))?.parameter).toBe('comp-threshold');
+  });
+
+  it('says the ratio is at its gentlest step only when it is, and names an unlisted ratio as unlisted', () => {
+    const gentlest = proposeMove(overComp(2), ch(2, { ratio: 1.1, thr: -20 }));
+    const unlisted = proposeMove(overComp(2), ch(2, { ratio: 3.3, thr: -30 }));
+    expect(gentlest?.why).toBe(THRESHOLD_WHY);
+    expect(gentlest?.why).toMatch(/gentlest step/);
+    expect(unlisted?.why).toBe(UNLISTED_RATIO_WHY);
+    expect(unlisted?.why).not.toMatch(/gentlest/);
+    expect(unlisted).toMatchObject({ parameter: 'comp-threshold', from: -30, to: -30 + THRESHOLD_STEP_DB });
   });
 
   it('proposes nothing for clipping, feedback, a room issue, a compressor that is off, or an unread channel', () => {

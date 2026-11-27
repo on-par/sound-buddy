@@ -14,6 +14,7 @@ import {
   NOT_READ_YET,
   RTA_WIDTH,
 } from './inspector';
+import { SENDS_NOT_READ } from './view-model';
 import type { ConsoleChannelStateDto, ConsoleStripDetailDto, ConsoleSurfacesDto } from '../../../electron/ipc/api';
 import type { ProposedMove } from './proposed-moves';
 
@@ -40,19 +41,22 @@ const SURFACES: ConsoleSurfacesDto = {
   main: { kind: 'main', index: null, name: null, mix: { value: { on: true, faderDb: -4.3 }, readAt: NOW - 7000 } },
 };
 
+const LIVE = { offline: false, channelsReadAt: NOW - 1000 };
+const OFFLINE = { offline: true, channelsReadAt: NOW - 42_000 };
+
 const MOVE: ProposedMove = { key: 'over-compression:1:comp-ratio', issueKey: 'over-compression:1', channel: 1, parameter: 'comp-ratio', from: 5, to: 4, why: 'w', expected: 'e', status: 'pending' };
 
 describe('signalChain', () => {
-  it('lists trim, HPF, gate, PEQ, comp, sends and Main from real /node values with their ages', () => {
-    const rows = signalChain(CH, DETAIL, SURFACES, {}, 1, NOW);
+  it('lists trim, HPF, gate, PEQ, comp, sends and the Main LR master fader from real /node values with visible ages', () => {
+    const rows = signalChain(CH, DETAIL, SURFACES, {}, 1, NOW, LIVE);
     expect(rows.map((r) => [r.name, r.value, r.age, r.state])).toEqual([
       ['Trim', '0.0 dB', 'read 3 s ago', 'ok'],
       ['HPF', '178 Hz · 24 dB/oct', 'read 3 s ago', 'ok'],
       ['Gate', 'GATE · thr -80.0 dB · range 60 dB', 'read 3 s ago', 'ok'],
       ['PEQ', '328.1 -6.3 · 1k09 +2.0', 'read 4 s ago', 'ok'],
       ['Comp', '5.0:1 · thr -23.0 dB', 'live', 'live'],
-      ['Sends', 'Sends to: IEM1 · read 20 s ago', '', 'ok'],
-      ['Main', 'Main LR · -4.3 dB', 'read 7 s ago', 'ok'],
+      ['Sends', 'Sends to: IEM1', 'read 20 s ago', 'ok'],
+      ['Master', 'Main LR -4.3 dB', 'read 7 s ago', 'ok'],
     ]);
   });
 
@@ -65,30 +69,43 @@ describe('signalChain', () => {
     };
     const surfaces: ConsoleSurfacesDto = { ...SURFACES, main: { ...SURFACES.main, mix: { value: { on: false, faderDb: 0 }, readAt: NOW } } };
     const ch = { ...CH, dynamics: { ...CH.dynamics, on: false } };
-    const rows = signalChain(ch, detail, surfaces, {}, 1, NOW);
+    const rows = signalChain(ch, detail, surfaces, {}, 1, NOW, LIVE);
     expect(rows.map((r) => [r.value, r.state])).toEqual([
       ['+2.0 dB · polarity inverted', 'ok'],
       ['Off', 'off'],
       ['Off', 'off'],
       ['Off', 'off'],
       ['Off', 'off'],
-      ['Sends to: IEM1 · read 20 s ago', 'ok'],
-      ['Main LR · off', 'off'],
+      ['Sends to: IEM1', 'ok'],
+      ['Main LR off', 'off'],
     ]);
   });
 
   it('marks every value the slow tier has not read yet', () => {
-    const rows = signalChain(undefined, undefined, null, {}, 3, NOW);
+    const rows = signalChain(undefined, undefined, null, {}, 3, NOW, LIVE);
     expect(rows.every((r) => r.state === 'unread')).toBe(true);
     expect(rows.filter((r) => r.value === NOT_READ_YET)).toHaveLength(6);
+    expect(rows.find((r) => r.key === 'sends')).toEqual({ key: 'sends', name: 'Sends', value: SENDS_NOT_READ, age: '', state: 'unread' });
+  });
+
+  it('never labels the Comp row live while the console is offline: it shows the age of the last fast-tier read', () => {
+    const comp = signalChain(CH, DETAIL, SURFACES, {}, 1, NOW, OFFLINE).find((r) => r.key === 'comp');
+    expect(comp).toEqual({ key: 'comp', name: 'Comp', value: '5.0:1 · thr -23.0 dB', age: 'read 42 s ago', state: 'ok' });
+    const off = { ...CH, dynamics: { ...CH.dynamics, on: false } };
+    expect(signalChain(off, DETAIL, SURFACES, {}, 1, NOW, OFFLINE).find((r) => r.key === 'comp')).toMatchObject({ value: 'Off', age: 'read 42 s ago', state: 'off' });
+  });
+
+  it('leaves the offline Comp age blank when no fast-tier read time is known', () => {
+    const comp = signalChain(CH, DETAIL, SURFACES, {}, 1, NOW, { offline: true, channelsReadAt: null }).find((r) => r.key === 'comp');
+    expect(comp).toMatchObject({ age: '', state: 'ok' });
   });
 
   it('adds a dashed proposed row only for a real pending move on this channel', () => {
-    const rows = signalChain(CH, DETAIL, SURFACES, { [MOVE.key]: MOVE }, 1, NOW);
+    const rows = signalChain(CH, DETAIL, SURFACES, { [MOVE.key]: MOVE }, 1, NOW, LIVE);
     expect(rows.find((r) => r.state === 'proposed')).toMatchObject({ value: 'Comp ratio 5.0:1 → 4.0:1', age: 'proposed' });
-    expect(signalChain(CH, DETAIL, SURFACES, { [MOVE.key]: MOVE }, 2, NOW).some((r) => r.state === 'proposed')).toBe(false);
+    expect(signalChain(CH, DETAIL, SURFACES, { [MOVE.key]: MOVE }, 2, NOW, LIVE).some((r) => r.state === 'proposed')).toBe(false);
     const done = { ...MOVE, status: 'changed-on-desk' as const };
-    expect(signalChain(CH, DETAIL, SURFACES, { [MOVE.key]: done }, 1, NOW).some((r) => r.state === 'proposed')).toBe(false);
+    expect(signalChain(CH, DETAIL, SURFACES, { [MOVE.key]: done }, 1, NOW, LIVE).some((r) => r.state === 'proposed')).toBe(false);
   });
 });
 
@@ -121,11 +138,16 @@ describe('spectrum well', () => {
 
 describe('inspectorView', () => {
   it('assembles scribble, chain, proposed count and the unavailable masking and share placards', () => {
-    const view = inspectorView({ index: 1, channels: [CH], stripDetail: [DETAIL], surfaces: SURFACES, moves: { [MOVE.key]: MOVE }, room: null, ring: null, now: NOW });
+    const view = inspectorView({ index: 1, channels: [CH], stripDetail: [DETAIL], surfaces: SURFACES, moves: { [MOVE.key]: MOVE }, room: null, ring: null, now: NOW, live: LIVE });
     expect(view.scribble.name).toBe('Lead Vox');
     expect(view.proposedCount).toBe(1);
     expect(view.spectrum.kind).toBe('unavailable');
     expect(view.masking).toBe(MASKING_UNAVAILABLE);
     expect(view.share).toBe(SHARE_OF_MAIN_UNAVAILABLE);
+  });
+
+  it('passes the link state through so an offline inspector shows the Comp read age', () => {
+    const view = inspectorView({ index: 1, channels: [CH], stripDetail: [DETAIL], surfaces: SURFACES, moves: {}, room: null, ring: null, now: NOW, live: OFFLINE });
+    expect(view.chain.find((r) => r.key === 'comp')?.age).toBe('read 42 s ago');
   });
 });

@@ -733,3 +733,157 @@ describe('consoleStore — Mixer read deepening pushes', () => {
     expect(store.getState().liveChannelsReadAt).toBeNull();
   });
 });
+
+describe('consoleStore — a stopped watch or a console switch leaves no live read behind', () => {
+  const DETAIL = [{ index: 1, preamp: null, gate: null, eq: null, sends: { value: [], readAt: 9 } }];
+  const SURFACES = { buses: [], main: { kind: 'main' as const, index: null, name: null, mix: null } };
+  const LIVE_READS = {
+    liveChannels: [CHANNEL_1],
+    liveMeters: [0.5],
+    liveGateGainReduction: [0.1],
+    liveDynamicsGainReduction: [0.2],
+    liveChannelsReadAt: 77,
+    liveStripDetail: DETAIL,
+    liveSurfaces: SURFACES,
+  };
+  const CLEARED = {
+    liveChannels: [],
+    liveMeters: [],
+    liveGateGainReduction: [],
+    liveDynamicsGainReduction: [],
+    liveChannelsReadAt: null,
+    liveStripDetail: [],
+    liveSurfaces: null,
+  };
+
+  function liveReads(store: ReturnType<typeof createConsoleStore>) {
+    const s = store.getState();
+    return {
+      liveChannels: s.liveChannels,
+      liveMeters: s.liveMeters,
+      liveGateGainReduction: s.liveGateGainReduction,
+      liveDynamicsGainReduction: s.liveDynamicsGainReduction,
+      liveChannelsReadAt: s.liveChannelsReadAt,
+      liveStripDetail: s.liveStripDetail,
+      liveSurfaces: s.liveSurfaces,
+    };
+  }
+
+  it.each([
+    ['a declined consent on start', decline, {}],
+    ['a { success: false } start', allow, { startConsoleLiveState: async () => ({ success: false as const, error: 'No reply.' }) }],
+    [
+      'a throwing start',
+      allow,
+      {
+        startConsoleLiveState: async () => {
+          throw new Error('bridge disconnected');
+        },
+      },
+    ],
+  ])('%s clears every live read wherever liveChannels clears', async (_label, consent, overrides) => {
+    const store = createConsoleStore(() => createMockSoundBuddy(overrides).api, consent);
+    store.setState({ selectedIp: '10.0.0.5', ...LIVE_READS });
+
+    await store.getState().startLiveState();
+
+    expect(liveReads(store)).toEqual(CLEARED);
+  });
+
+  it('stopping the watch clears every live read, including the channels and the slow-tier reads', async () => {
+    const store = createConsoleStore(() => createMockSoundBuddy().api, allow);
+    store.setState({ selectedIp: '10.0.0.5', liveStateStatus: 'watching', ...LIVE_READS });
+
+    await store.getState().stopLiveState();
+
+    expect(store.getState().liveStateStatus).toBe('idle');
+    expect(liveReads(store)).toEqual(CLEARED);
+  });
+
+  it('a stop that fails keeps the reads, because the watch did not stop', async () => {
+    const mock = createMockSoundBuddy({
+      stopConsoleLiveState: async () => {
+        throw new Error('bridge disconnected');
+      },
+    });
+    const store = createConsoleStore(() => mock.api, allow);
+    store.setState({ selectedIp: '10.0.0.5', liveStateStatus: 'watching', ...LIVE_READS });
+
+    await store.getState().stopLiveState();
+
+    expect(liveReads(store)).toEqual(LIVE_READS);
+  });
+
+  it('choosing a different console from the scan stops the running watch and clears every live read', async () => {
+    const mock = createMockSoundBuddy({
+      fetchConsoleIdentity: async () => ({ success: true as const, identity: { ...IDENTITY_A, ip: '10.0.0.9' } }),
+    });
+    const store = createConsoleStore(() => mock.api, allow);
+    store.setState({ selectedIp: '10.0.0.5', liveStateStatus: 'watching', ...LIVE_READS });
+
+    await store.getState().selectConsole('10.0.0.9');
+
+    expect(mock.calls.map((c) => c.method).filter((m) => m === 'stopConsoleLiveState')).toEqual(['stopConsoleLiveState']);
+    expect(store.getState().liveStateStatus).toBe('idle');
+    expect(store.getState().selectedIp).toBe('10.0.0.9');
+    expect(liveReads(store)).toEqual(CLEARED);
+  });
+
+  it('entering a different console IP clears every live read without a stop when nothing is being watched', async () => {
+    const mock = createMockSoundBuddy({
+      fetchConsoleIdentity: async () => ({ success: true as const, identity: { ...IDENTITY_A, ip: '10.0.0.9' } }),
+    });
+    const store = createConsoleStore(() => mock.api, allow);
+    store.setState({ selectedIp: '10.0.0.5', liveStateStatus: 'error', ...LIVE_READS });
+    store.getState().setManualIp('10.0.0.9');
+
+    await store.getState().submitManualIp();
+
+    expect(mock.calls.map((c) => c.method).filter((m) => m === 'stopConsoleLiveState')).toEqual([]);
+    expect(store.getState().liveStateStatus).toBe('idle');
+    expect(liveReads(store)).toEqual(CLEARED);
+  });
+
+  it('re-choosing the console already being watched keeps the watch and its reads', async () => {
+    const mock = createMockSoundBuddy({
+      fetchConsoleIdentity: async () => ({ success: true as const, identity: IDENTITY_A }),
+    });
+    const store = createConsoleStore(() => mock.api, allow);
+    store.setState({ selectedIp: '10.0.0.5', liveStateStatus: 'watching', ...LIVE_READS });
+
+    await store.getState().selectConsole('10.0.0.5');
+
+    expect(mock.calls.map((c) => c.method).filter((m) => m === 'stopConsoleLiveState')).toEqual([]);
+    expect(store.getState().liveStateStatus).toBe('watching');
+    expect(liveReads(store)).toEqual(LIVE_READS);
+  });
+
+  it('a console switch whose stop fails keeps the stop error and the reads, because the old watch may still be running', async () => {
+    const mock = createMockSoundBuddy({
+      stopConsoleLiveState: async () => {
+        throw new Error('bridge disconnected');
+      },
+      fetchConsoleIdentity: async () => ({ success: true as const, identity: { ...IDENTITY_A, ip: '10.0.0.9' } }),
+    });
+    const store = createConsoleStore(() => mock.api, allow);
+    store.setState({ selectedIp: '10.0.0.5', liveStateStatus: 'starting', ...LIVE_READS });
+
+    await store.getState().selectConsole('10.0.0.9');
+
+    expect(store.getState().liveStateStatus).toBe('error');
+    expect(store.getState().liveStateError).toBe(LIVE_STATE_FAILED_MESSAGE);
+    expect(liveReads(store)).toEqual(LIVE_READS);
+  });
+
+  it('a declined consent on a console switch changes nothing', async () => {
+    const mock = createMockSoundBuddy();
+    const store = createConsoleStore(() => mock.api, decline);
+    store.setState({ selectedIp: '10.0.0.5', liveStateStatus: 'watching', ...LIVE_READS });
+
+    await store.getState().selectConsole('10.0.0.9');
+
+    expect(store.getState().selectedIp).toBe('10.0.0.5');
+    expect(store.getState().liveStateStatus).toBe('watching');
+    expect(liveReads(store)).toEqual(LIVE_READS);
+  });
+});

@@ -2,7 +2,7 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import type { ConsoleChannelStateDto, ConsoleStripDetailDto, ConsoleSurfacesDto } from '../../../electron/ipc/api';
-import { activeSendBuses, busName, channelLabel, channelNumber, formatDb, formatReadAge } from './view-model';
+import { sendingBuses, busLabel, busName, channelLabel, channelNumber, formatDb, formatReadAge } from './view-model';
 
 export interface BusRoute {
   index: number;
@@ -13,6 +13,7 @@ export interface BusRoute {
   fader: string | null;
   on: boolean | null;
   age: string;
+  routeAge: string;
   channels: string[];
 }
 
@@ -42,12 +43,15 @@ export function busRoutes(
   now: number
 ): RoutingView {
   const sending = new Map<number, number[]>();
+  const sendReads = new Map<number, number[]>();
   let sendsRead = 0;
   for (const d of stripDetail) {
-    const buses = activeSendBuses(d);
-    if (buses === null) continue;
+    if (!d.sends) continue;
     sendsRead += 1;
-    for (const bus of buses) sending.set(bus, [...(sending.get(bus) ?? []), d.index]);
+    for (const bus of sendingBuses(d.sends.value)) {
+      sending.set(bus, [...(sending.get(bus) ?? []), d.index]);
+      sendReads.set(bus, [...(sendReads.get(bus) ?? []), d.sends.readAt]);
+    }
   }
   const buses = (surfaces?.buses ?? []).flatMap((b) => {
     if (b.index === null) return [];
@@ -55,15 +59,17 @@ export function busRoutes(
     const reads = [b.name?.readAt, b.mix?.readAt].filter((t): t is number => t !== undefined);
     const name = busName(surfaces, index);
     const sendingChannels = sending.get(index) ?? [];
+    const routeReads = [...(sendReads.get(index) ?? []), ...(b.name ? [b.name.readAt] : [])];
     return [{
       index,
       name,
-      label: name === `Bus ${index}` ? name : `Bus ${index} · ${name}`,
+      label: busLabel(surfaces, index),
       ranges: channelRanges(sendingChannels),
       read: b.name !== null,
       fader: b.mix ? formatDb(b.mix.value.faderDb) : null,
       on: b.mix ? b.mix.value.on : null,
       age: reads.length === 0 ? 'not read yet' : formatReadAge(Math.min(...reads), now),
+      routeAge: sendingChannels.length === 0 ? '' : formatReadAge(Math.min(...routeReads), now),
       channels: sendingChannels.map((c) => channelLabel(channels, c)),
     }];
   });

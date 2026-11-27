@@ -15,8 +15,10 @@ import {
   appendFaderSamples,
   faderTrend,
   busName,
+  busLabel,
   activeSendBuses,
   sendsLabel,
+  sendsSummary,
   compLabel,
   cardView,
   queuedPill,
@@ -200,6 +202,18 @@ describe('sends and buses', () => {
     expect(sendsLabel(detail(1, { value: [{ bus: 1, on: true, level: -3 }, { bus: 2, on: true, level: -3 }], readAt: NOW }), s, NOW)).toBe('Sends to: Vox Bus · read 0 s ago');
   });
 
+  it('prefixes a named bus with its number and leaves an unnamed one as Bus N', () => {
+    const s = surfaces();
+    expect([busLabel(s, 1), busLabel(s, 2), busLabel(null, 7)]).toEqual(['Bus 1 · Vox Bus', 'Bus 2', 'Bus 7']);
+  });
+
+  it('summarises sends without the read age, for a row that shows the age in its own column', () => {
+    const s = surfaces();
+    expect(sendsSummary(detail(1, { value: [{ bus: 1, on: true, level: -3 }], readAt: NOW - 12_000 }), s)).toBe('Sends to: Vox Bus');
+    expect(sendsSummary(detail(1, { value: [], readAt: NOW - 1000 }), s)).toBe('No active sends');
+    expect(sendsSummary(detail(1, null), s)).toBe(SENDS_NOT_READ);
+  });
+
   it('labels sends with their read age, or as not read yet', () => {
     const s = surfaces();
     expect(sendsLabel(detail(1, { value: [{ bus: 1, on: true, level: -3 }], readAt: NOW - 12_000 }), s, NOW)).toBe('Sends to: Vox Bus · read 12 s ago');
@@ -210,8 +224,8 @@ describe('sends and buses', () => {
 
   it('lists only buses whose name and mix have both been read, with the older read age', () => {
     expect(readBuses(surfaces(), NOW)).toEqual([
-      { index: 1, name: 'Vox Bus', fader: '-2.0 dB', on: true, age: 'read 4 s ago' },
-      { index: 2, name: 'Bus 2', fader: '-∞ dB', on: false, age: 'read 1 s ago' },
+      { index: 1, name: 'Vox Bus', label: 'Bus 1 · Vox Bus', fader: '-2.0 dB', on: true, age: 'read 4 s ago' },
+      { index: 2, name: 'Bus 2', label: 'Bus 2', fader: '-∞ dB', on: false, age: 'read 1 s ago' },
     ]);
     expect(readBuses(null, NOW)).toEqual([]);
   });
@@ -272,6 +286,7 @@ describe('cardView', () => {
     expect(card.fader).toBeNull();
     expect(card.level.available).toBe(false);
     expect(card.sends).toBe('');
+    expect(card.share).toBe('');
     expect(card.candidates).toEqual(['01 Vox 1']);
     expect(card.facts).toEqual([
       { label: 'Ring', value: '2.5 kHz', tone: 'issue' },
@@ -313,7 +328,7 @@ describe('queued pill and dock', () => {
     expect(dock.header).toBe('2 channels · 1 queued');
     expect(dock.tiles.map((t) => [t.channel, t.queuedSeverity])).toEqual([[14, 'info'], [4, null]]);
     expect(dock.tiles[1].level.label).toBe('-20.0 dBFS');
-    expect(dock.buses.map((b) => b.name)).toEqual(['Vox Bus', 'Bus 2']);
+    expect(dock.buses.map((b) => [b.label, b.age])).toEqual([['Bus 1 · Vox Bus', 'read 4 s ago'], ['Bus 2', 'read 1 s ago']]);
     expect(dock.busMeters).toBe(BUS_METERS_UNAVAILABLE);
     expect(dock.mainLufs).toBe(MAIN_LUFS_UNAVAILABLE);
   });
@@ -337,7 +352,8 @@ describe('rail view', () => {
 
   it('names the real sources in use', () => {
     expect(railContextLine(sources)).toBe('Reading: X32 channel poll · input meters · room mic not listening');
-    expect(railContextLine({ ...sources, offline: true })).toBe('Reading: X32 offline · input meters · room mic not listening');
+    expect(railContextLine({ ...sources, offline: true })).toBe('Reading: X32 offline · room mic not listening');
+    expect(railContextLine({ ...sources, offline: true, metersAvailable: false, roomListening: true })).toBe('Reading: X32 offline · room mic RTA');
     expect(railContextLine({ model: null, channelsRead: false, metersAvailable: false, roomListening: true })).toBe(
       'Reading: console channel poll (waiting for first read) · input meters unavailable · room mic RTA'
     );
@@ -427,7 +443,7 @@ describe('Sermon Quiet banner', () => {
     expect(sermonBanner({ watchLive: true, watchedLabel: '05 Pastor HH', heldCount: 3 })).toEqual({
       live: true,
       title: SERMON_TITLE_LIVE,
-      body: 'Watching 05 Pastor HH; other strips are dimmed. Clipping and compression alerts are held for later.',
+      body: 'Watching 05 Pastor HH; other strips are dimmed. Clipping alerts are held for later.',
       held: '3 alerts held for later',
     });
   });
@@ -438,6 +454,7 @@ describe('Sermon Quiet banner', () => {
     expect(banner.title).toBe(SERMON_TITLE_UNAVAILABLE);
     expect(banner.body).toMatch(/^Start the room mic listen.*Pick the mic to watch/);
     expect(banner.held).toBe('1 alert held for later');
+    expect(banner.body).not.toMatch(/compression/i);
   });
 
   it('never shows a feedback margin figure', () => {

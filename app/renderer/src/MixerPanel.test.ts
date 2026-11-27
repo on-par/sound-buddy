@@ -41,6 +41,7 @@ afterEach(() => {
     selectedIp: null,
     liveChannels: [],
     liveMeters: [],
+    liveChannelsReadAt: null,
     liveStripDetail: [],
     liveSurfaces: null,
     link: { status: 'unknown', metersDegraded: false },
@@ -317,6 +318,22 @@ describe('MixerPanel degraded link', () => {
     expect(html).toContain('Reading: X32 offline');
     expect(html).toContain('data-card-key="clipping:2"');
     expect(html).toContain('mx-card-dismiss" disabled=""');
+  });
+
+  it('offline: the inspector Comp row shows the last read age instead of live, and the rail lists no input meters', () => {
+    useConsoleStore.setState({ link: { status: 'offline', metersDegraded: false }, liveChannelsReadAt: NOW - 42_000 });
+    useMixerStore.setState({ frozenIssues: [clip(2, 3)], frozenAt: NOW - 30_000 });
+    const html = render();
+    expect(html).toMatch(/<span class="mx-step-nm">Comp<\/span><span class="mx-step-vv" title="4.0:1 · thr -20.0 dB">4.0:1 · thr -20.0 dB<\/span><span class="mx-step-age">read 42 s ago<\/span>/);
+    expect(html).not.toContain('<span class="mx-step-age">live</span>');
+    expect(html).toContain('Reading: X32 offline · room mic not listening');
+    expect(html).not.toContain('input meters');
+  });
+
+  it('online: the inspector Comp row reads live from the 1 Hz fast tier', () => {
+    useConsoleStore.setState({ liveChannelsReadAt: NOW - 1000 });
+    useMixerStore.setState({ issues: [clip(2, 3)] });
+    expect(render()).toContain('<span class="mx-step-age">live</span>');
   });
 
   it('recovers: back online, the notice and Reconnect go away', () => {
