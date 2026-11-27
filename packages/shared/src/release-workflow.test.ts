@@ -21,7 +21,7 @@ env:
 
 jobs:
   release:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
 
@@ -326,7 +326,7 @@ describe('auditReleaseWorkflow', () => {
   it('falls back to "unnamed step" when the offending run: block has no name:', () => {
     const yml = `jobs:
   release:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - run: |
           security delete-keychain "$KEYCHAIN_PATH"
