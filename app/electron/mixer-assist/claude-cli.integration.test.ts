@@ -7,13 +7,14 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CLAUDE_KILL_GRACE_MS, CLAUDE_TIMEOUT_MS, runClaude, type ClaudeRunDeps } from './claude-cli';
+import { CLAUDE_KILL_GRACE_MS, CLAUDE_KILL_SETTLE_MS, CLAUDE_TIMEOUT_MS, runClaude, type ClaudeRunDeps } from './claude-cli';
 
 const STUB = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'claude');
 const FAKE_TOKEN = 'stub-run-fake-token-no-secret';
 const FAST_TIMEOUT_MS = 300;
 const ROOMY_TIMEOUT_MS = 5_000;
 const FAST_GRACE_MS = 300;
+const FAST_SETTLE_MS = 300;
 const TEST_TIMEOUT_MS = 10_000;
 
 function isAlive(pid: number): boolean {
@@ -41,7 +42,7 @@ function realDeps(timeoutMs: number) {
     },
     removeDir: (dir) => fs.rmSync(dir, { recursive: true, force: true }),
     timers: {
-      setTimeout: (fn, ms) => setTimeout(fn, ms === CLAUDE_TIMEOUT_MS ? timeoutMs : ms === CLAUDE_KILL_GRACE_MS ? FAST_GRACE_MS : ms),
+      setTimeout: (fn, ms) => setTimeout(fn, ms === CLAUDE_TIMEOUT_MS ? timeoutMs : ms === CLAUDE_KILL_GRACE_MS ? FAST_GRACE_MS : ms === CLAUDE_KILL_SETTLE_MS ? FAST_SETTLE_MS : ms),
       clearTimeout: (h) => clearTimeout(h as NodeJS.Timeout),
     },
   };
@@ -101,5 +102,19 @@ describe('runClaude against a real stub child named claude', () => {
     const r = run('flood');
     expect(await r.done).toMatchObject({ ok: false, reason: 'overflow' });
     expect(isAlive(r.pids[0])).toBe(false);
+  }, TEST_TIMEOUT_MS);
+
+  it('a background grandchild that keeps stdout and stderr open past the kill cannot hang the run', async () => {
+    const r = run('orphan', new AbortController().signal, FAST_TIMEOUT_MS);
+    const result = await r.done;
+    const grandchild = Number(/grandchild=(\d+)/.exec(result.ok ? '' : result.detail)?.[1]);
+    try {
+      expect(result).toMatchObject({ ok: false, reason: 'timeout' });
+      expect(isAlive(r.pids[0])).toBe(false);
+      expect(isAlive(grandchild)).toBe(true);
+      expect(fs.existsSync(r.dirs[0])).toBe(false);
+    } finally {
+      if (grandchild > 0 && isAlive(grandchild)) process.kill(grandchild, 'SIGKILL');
+    }
   }, TEST_TIMEOUT_MS);
 });

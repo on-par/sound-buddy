@@ -78,6 +78,7 @@ describe('railAssistView', () => {
     const view = rail(OFF);
     expect(view).toMatchObject({ mode: 'off', composerEnabled: false, composerPlaceholder: COMPOSER_OFF_PLACEHOLDER, chips: [], fallbackLines: [] });
     expect(JSON.stringify(view)).not.toMatch(/Cloud|Local/);
+    expect(COMPOSER_OFF_PLACEHOLDER).toMatch(/^Rules only\. .*\bSettings$/);
     expect(rail(null).mode).toBe('off');
   });
 

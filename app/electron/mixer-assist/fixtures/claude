@@ -12,6 +12,11 @@ case "$SB_STUB_MODE" in
     trap '' TERM
     while :; do sleep 0.05; done
     ;;
+  orphan)
+    sleep 30 &
+    printf 'grandchild=%s\n' "$!" >&2
+    wait
+    ;;
   flood)
     while :; do printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n'; done
     ;;

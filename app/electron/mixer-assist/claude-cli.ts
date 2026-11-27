@@ -6,6 +6,7 @@ import { sanitize } from './sanitize';
 
 export const CLAUDE_TIMEOUT_MS = 45_000;
 export const CLAUDE_KILL_GRACE_MS = 2_000;
+export const CLAUDE_KILL_SETTLE_MS = 1_000;
 export const MAX_STDOUT_BYTES = 64 * 1024;
 export const MAX_STDERR_CHARS = 8 * 1024;
 export const PINNED_CLAUDE_MODEL: string | null = null;
@@ -93,6 +94,19 @@ export function claudeChildEnv(parent: Readonly<Record<string, string | undefine
   return env;
 }
 
+function withoutTrailingSecretHead(text: string, secrets: readonly string[]): string {
+  let out = text;
+  for (const secret of secrets.map((s) => s.trim())) {
+    for (let k = Math.min(secret.length - 1, out.length); k > 0; k -= 1) {
+      if (out.endsWith(secret.slice(0, k))) {
+        out = out.slice(0, out.length - k);
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 export function runClaude(deps: ClaudeRunDeps, input: ClaudeRunInput): Promise<ClaudeRunResult> {
   if (input.signal.aborted) return Promise.resolve({ ok: false, reason: 'cancelled', detail: '' });
   const cwd = deps.makeTempDir();
@@ -105,12 +119,14 @@ export function runClaude(deps: ClaudeRunDeps, input: ClaudeRunInput): Promise<C
     let settled = false;
     let timeoutTimer: unknown = null;
     let killTimer: unknown = null;
+    let settleTimer: unknown = null;
 
     const finish = (result: ClaudeRunResult) => {
       if (settled) return;
       settled = true;
       deps.timers.clearTimeout(timeoutTimer);
       deps.timers.clearTimeout(killTimer);
+      deps.timers.clearTimeout(settleTimer);
       input.signal.removeEventListener('abort', onAbort);
       deps.removeDir(cwd);
       resolve(result);
@@ -129,11 +145,16 @@ export function runClaude(deps: ClaudeRunDeps, input: ClaudeRunInput): Promise<C
       return;
     }
 
+    const fail = (reason: ClaudeFailure) =>
+      finish({ ok: false, reason, detail: sanitize(withoutTrailingSecretHead(stderr, secrets), secrets) });
     const stop = (reason: ClaudeFailure) => {
       if (failure !== null) return;
       failure = reason;
       child.kill('SIGTERM');
-      killTimer = deps.timers.setTimeout(() => child.kill('SIGKILL'), CLAUDE_KILL_GRACE_MS);
+      killTimer = deps.timers.setTimeout(() => {
+        child.kill('SIGKILL');
+        settleTimer = deps.timers.setTimeout(() => fail(reason), CLAUDE_KILL_SETTLE_MS);
+      }, CLAUDE_KILL_GRACE_MS);
     };
     function onAbort() {
       stop('cancelled');
@@ -153,17 +174,17 @@ export function runClaude(deps: ClaudeRunDeps, input: ClaudeRunInput): Promise<C
       stdout.push(bytes);
     });
     child.stderr.on('data', (chunk) => {
-      stderr = `${stderr}${String(chunk)}`.slice(-MAX_STDERR_CHARS);
+      if (stderr.length < MAX_STDERR_CHARS) stderr = `${stderr}${String(chunk)}`.slice(0, MAX_STDERR_CHARS);
     });
     child.stdin.on('error', () => undefined);
     child.on('error', (err) => finish({ ok: false, reason: 'spawn-error', detail: sanitize(err, secrets) }));
     child.on('close', (code) => {
       if (failure !== null) {
-        finish({ ok: false, reason: failure, detail: sanitize(stderr, secrets) });
+        fail(failure);
         return;
       }
       if (code !== 0) {
-        finish({ ok: false, reason: 'exit', detail: sanitize(stderr, secrets) });
+        fail('exit');
         return;
       }
       const text = Buffer.concat(stdout).toString('utf8').trim();

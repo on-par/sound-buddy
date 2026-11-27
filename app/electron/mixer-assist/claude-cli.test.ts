@@ -5,7 +5,9 @@ import { describe, it, expect } from 'vitest';
 import { EventEmitter } from 'node:events';
 import {
   CLAUDE_KILL_GRACE_MS,
+  CLAUDE_KILL_SETTLE_MS,
   CLAUDE_TIMEOUT_MS,
+  MAX_STDERR_CHARS,
   MAX_STDOUT_BYTES,
   claudeArgs,
   claudeChildEnv,
@@ -37,9 +39,10 @@ class FakeChild extends EventEmitter implements ChildLike {
   stderr = new FakeStream();
   signals: string[] = [];
   closeOnSignal: string | null = 'SIGTERM';
+  closes = true;
   kill(signal: NodeJS.Signals): boolean {
     this.signals.push(signal);
-    if (signal === this.closeOnSignal || signal === 'SIGKILL') queueMicrotask(() => this.emit('close', null, signal));
+    if (this.closes && (signal === this.closeOnSignal || signal === 'SIGKILL')) queueMicrotask(() => this.emit('close', null, signal));
     return true;
   }
 }
@@ -111,6 +114,38 @@ function input(signal = new AbortController().signal) {
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
+const UNSETTLED = 'unsettled';
+const settledOrNot = <T>(p: Promise<T>) => Promise.race([p, tick().then(() => UNSETTLED)]);
+const MIN_FRAGMENT = 8;
+const STDERR_CHUNK = 1000;
+
+function leakedFragments(text: string, token: string): string[] {
+  const found: string[] = [];
+  for (let i = 0; i + MIN_FRAGMENT <= token.length; i += 1) {
+    const fragment = token.slice(i, i + MIN_FRAGMENT);
+    if (text.includes(fragment)) found.push(fragment);
+  }
+  return found;
+}
+
+function straddlingStderr(token: string, offset: number): string[] {
+  return [
+    'e'.repeat(MAX_STDERR_CHARS - offset) + token + 'e'.repeat(MAX_STDERR_CHARS),
+    'e'.repeat(MAX_STDERR_CHARS) + token + 'e'.repeat(MAX_STDERR_CHARS - (token.length - offset)),
+  ];
+}
+
+function emitInChunks(stream: FakeStream, text: string): void {
+  for (let i = 0; i < text.length; i += STDERR_CHUNK) stream.emit('data', Buffer.from(text.slice(i, i + STDERR_CHUNK)));
+}
+
+async function failWithStderr(stderr: string, token = FAKE_TOKEN) {
+  const s = setup();
+  const done = runClaude(s.deps, { ...input(), token });
+  emitInChunks(s.child.stderr, stderr);
+  s.child.emit('close', 1, null);
+  return done;
+}
 
 describe('resolveClaudeBinary', () => {
   const exists = (paths: string[]) => (p: string) => paths.includes(p);
@@ -302,5 +337,60 @@ describe('runClaude with an injected spawn', () => {
     expect(result.ok).toBe(false);
     expect(result.ok === false && result.detail.length).toBeLessThan(500);
     await tick();
+  });
+});
+
+describe('runClaude stderr redaction window', () => {
+  it('a token straddling the stderr cut at any offset leaves no 8-char fragment in the detail', async () => {
+    for (let offset = 1; offset < FAKE_TOKEN.length; offset += 1) {
+      for (const stderr of straddlingStderr(FAKE_TOKEN, offset)) {
+        expect(stderr.length).toBeGreaterThan(MAX_STDERR_CHARS);
+        const result = await failWithStderr(stderr);
+        expect(result).toMatchObject({ ok: false, reason: 'exit' });
+        expect(leakedFragments(result.ok ? '' : result.detail, FAKE_TOKEN)).toEqual([]);
+      }
+    }
+  });
+
+  it('a long token repeated past the cut, which redaction shrinks below the sanitize cap, leaves no fragment', async () => {
+    const longToken = Array.from({ length: 500 }, (_, i) => `k${(i * 7919).toString(36)}`).join('');
+    const repeats = Math.ceil((2 * MAX_STDERR_CHARS) / longToken.length);
+    for (const lead of [0, 1, MIN_FRAGMENT - 1, 100, longToken.length - 1]) {
+      const result = await failWithStderr('e'.repeat(lead) + longToken.repeat(repeats), longToken);
+      expect(result).toMatchObject({ ok: false, reason: 'exit' });
+      expect(leakedFragments(result.ok ? '' : result.detail, longToken)).toEqual([]);
+    }
+  });
+
+  it('keeps the start of stderr, where a short error is readable', async () => {
+    const result = await failWithStderr(`Error: not logged in. ${'x'.repeat(MAX_STDERR_CHARS * 2)}`);
+    expect(result.ok === false && result.detail.startsWith('Error: not logged in.')).toBe(true);
+  });
+});
+
+describe('runClaude settles after SIGKILL even when close never fires', () => {
+  it.each([
+    ['timeout', (s: ReturnType<typeof setup>) => s.timers.fire(CLAUDE_TIMEOUT_MS)],
+    ['cancelled', (_s: ReturnType<typeof setup>, controller: AbortController) => controller.abort()],
+  ] as const)('a child that never closes resolves as %s with its stderr, removes the temp dir and clears every timer', async (reason, trigger) => {
+    const child = new FakeChild();
+    child.closes = false;
+    const s = setup(child);
+    const controller = new AbortController();
+    const done = runClaude(s.deps, input(controller.signal));
+    child.stderr.emit('data', Buffer.from('a grandchild still holds the pipes'));
+    trigger(s, controller);
+    s.timers.fire(CLAUDE_KILL_GRACE_MS);
+    expect(child.signals).toEqual(['SIGTERM', 'SIGKILL']);
+    expect(await settledOrNot(done)).toBe(UNSETTLED);
+    s.timers.fire(CLAUDE_KILL_SETTLE_MS);
+    expect(await settledOrNot(done)).toEqual({ ok: false, reason, detail: 'a grandchild still holds the pipes' });
+    expect(s.removed).toEqual(s.made);
+    expect(s.timers.pending.size).toBe(0);
+    child.emit('close', null, 'SIGKILL');
+    controller.abort();
+    await tick();
+    expect(s.removed).toEqual(s.made);
+    expect(child.signals).toEqual(['SIGTERM', 'SIGKILL']);
   });
 });

@@ -161,14 +161,15 @@ export interface StatusRefreshSources {
 }
 
 export function bindAssistStatusRefresh(refresh: () => void, sources: StatusRefreshSources): () => void {
+  const mixerOn = () => sources.settings.getState().featureFlags.mixer;
   const offSettings = sources.settings.subscribe((next, prev) => {
     const assistChanged = ASSIST_SETTING_KEYS.some((key) => next.settings?.[key] !== prev.settings?.[key]);
     const opened = next.dialogOpen && !prev.dialogOpen;
     const flagChanged = next.featureFlags.mixer !== prev.featureFlags.mixer;
-    if (assistChanged || opened || flagChanged) refresh();
+    if (mixerOn() && (assistChanged || opened || flagChanged)) refresh();
   });
   const offLive = sources.live.subscribe((next, prev) => {
-    if (next.appMode === 'mixer' && prev.appMode !== 'mixer') refresh();
+    if (mixerOn() && next.appMode === 'mixer' && prev.appMode !== 'mixer') refresh();
   });
   return () => {
     offSettings();
@@ -187,10 +188,8 @@ export interface NarrationSource {
 export function bindAssistNarration(narrate: (issue: MixerIssue) => void, source: NarrationSource): () => void {
   let previous = new Set<string>();
   return source.mixer.subscribe((state) => {
-    const visible =
-      state.frozenIssues === null
-        ? selectAttention({ issues: state.issues, now: source.now(), cap: source.cap(), dismissals: state.dismissals, sermonQuiet: state.sermonQuiet }).visible
-        : [];
+    if (state.frozenIssues !== null) return;
+    const visible = selectAttention({ issues: state.issues, now: source.now(), cap: source.cap(), dismissals: state.dismissals, sermonQuiet: state.sermonQuiet }).visible;
     const fresh = newlyVisibleIssues(previous, visible);
     previous = new Set(visible.filter((i) => i.severity === 'issue').map((i) => i.key));
     if (fresh.length > 0 && source.ready() && source.mixerOpen()) narrate(fresh[0]);
