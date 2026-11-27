@@ -11,8 +11,21 @@ import SwiftUI
 /// (SoundBuddyKit) owns every curve and band-marker value; `AnalyzeModel`
 /// only supplies the RTA levels for the background trace.
 struct EQCurveView: View {
+    enum Style {
+        case panel
+        case proposal
+
+        var height: CGFloat {
+            switch self {
+            case .panel: Layout.height
+            case .proposal: Layout.proposalHeight
+            }
+        }
+    }
+
     let eqPanel: ConsoleEQPanelState
     let analyze: AnalyzeModel
+    var style: Style = .panel
 
     var body: some View {
         Canvas { context, size in
@@ -22,7 +35,7 @@ struct EQCurveView: View {
             drawCurve(in: &context, plot: plot)
             drawGhost(in: &context, plot: plot)
         }
-        .frame(height: Layout.height)
+        .frame(height: style.height)
         .background(Layout.background, in: RoundedRectangle(cornerRadius: Layout.cornerRadius))
         .accessibilityIdentifier("consoleEQ.curve")
     }
@@ -83,7 +96,7 @@ struct EQCurveView: View {
             }
         }
         context.stroke(
-            path, with: .color(Layout.curveColor),
+            path, with: .color(curveColor),
             style: StrokeStyle(lineWidth: Layout.curveLineWidth, lineCap: .round, lineJoin: .round)
         )
         drawBandMarkers(in: &context, plot: plot)
@@ -99,8 +112,12 @@ struct EQCurveView: View {
                 x: point.x - Layout.markerRadius, y: point.y - Layout.markerRadius,
                 width: Layout.markerRadius * 2, height: Layout.markerRadius * 2
             )
-            context.fill(Path(ellipseIn: dot), with: .color(Layout.curveColor))
+            context.fill(Path(ellipseIn: dot), with: .color(curveColor))
         }
+    }
+
+    private var curveColor: Color {
+        style == .proposal ? Layout.currentCurveColor : Layout.curveColor
     }
 
     /// The dashed ghost curve (#1671) for `eqPanel.coaching`'s suggested
@@ -121,10 +138,19 @@ struct EQCurveView: View {
                 path.addLine(to: point)
             }
         }
-        context.stroke(
-            path, with: .color(Layout.ghostColor),
-            style: StrokeStyle(lineWidth: Layout.ghostLineWidth, lineCap: .round, lineJoin: .round, dash: Layout.ghostDash)
-        )
+        if style == .proposal {
+            var glow = context
+            glow.addFilter(.shadow(color: Layout.proposedColor.opacity(Layout.proposedGlowOpacity), radius: Layout.proposedGlowRadius))
+            glow.stroke(
+                path, with: .color(Layout.proposedColor),
+                style: StrokeStyle(lineWidth: Layout.ghostLineWidth, lineCap: .round, lineJoin: .round)
+            )
+        } else {
+            context.stroke(
+                path, with: .color(Layout.ghostColor),
+                style: StrokeStyle(lineWidth: Layout.ghostLineWidth, lineCap: .round, lineJoin: .round, dash: Layout.ghostDash)
+            )
+        }
 
         let ghostEQ = ConsoleCoachingMapper.ghostEQ(eq, applying: coaching)
         let db = ghostEQ.magnitudeResponseDb(atHz: [coaching.band.freqHz]).first ?? 0
@@ -134,17 +160,26 @@ struct EQCurveView: View {
             x: point.x - Layout.ghostMarkerRadius, y: point.y - Layout.ghostMarkerRadius,
             width: Layout.ghostMarkerRadius * 2, height: Layout.ghostMarkerRadius * 2
         )
-        context.stroke(
-            Path(ellipseIn: dot), with: .color(Layout.ghostColor),
-            style: StrokeStyle(lineWidth: Layout.ghostMarkerLineWidth, dash: Layout.ghostDash)
-        )
+        if style == .proposal {
+            context.fill(Path(ellipseIn: dot), with: .color(Layout.proposedColor))
+        } else {
+            context.stroke(
+                Path(ellipseIn: dot), with: .color(Layout.ghostColor),
+                style: StrokeStyle(lineWidth: Layout.ghostMarkerLineWidth, dash: Layout.ghostDash)
+            )
+        }
     }
 
     private enum Layout {
         static let height: CGFloat = 160
+        static let proposalHeight: CGFloat = 112
+        static let currentCurveColor = Palette.tertiaryText
+        static let proposedColor = Palette.accent
+        static let proposedGlowOpacity = 0.6
+        static let proposedGlowRadius: CGFloat = 4
         static let inset: CGFloat = 8
         static let cornerRadius: CGFloat = 12
-        static let background = Color(red: 0.03, green: 0.035, blue: 0.045)
+        static let background = Palette.inset
         static let gridColor = Color.white.opacity(0.12)
         static let gridLineWidth: CGFloat = 0.5
         static let minBarWidth: CGFloat = 1

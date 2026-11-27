@@ -35,8 +35,7 @@ public struct ConsoleEQPanelState: Equatable, Sendable {
     public let eq: ConsoleEQ?
     public let phase: ConsoleSessionPhase
     /// Non-nil only while Main LR is selected and its EQ has been read
-    /// (#1671) — `ConsoleTargetModel.eqPanel` is the only caller that passes
-    /// one.
+    /// (#1671).
     public let coaching: ConsoleCoachingSuggestion?
 
     public init(target: ConsoleEQTarget, eq: ConsoleEQ?, phase: ConsoleSessionPhase, coaching: ConsoleCoachingSuggestion? = nil) {

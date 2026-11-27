@@ -76,6 +76,7 @@ struct RTAView: View {
                     }
                 case .absolute:
                     drawAbsoluteBars(in: &context, plot: plot, layout: layout, display: display)
+                    drawRoom(in: &context, plot: plot, layout: layout, levels: display.levels)
                     if let line, line.count == layout.bands.count {
                         if !spans.isEmpty {
                             drawProblemMarkers(in: &context, plot: plot, layout: layout, target: line, spans: spans, opacity: pulse)
@@ -83,6 +84,7 @@ struct RTAView: View {
                         drawTarget(in: &context, plot: plot, layout: layout, target: line, isEditing: isEditingTarget)
                     }
                 }
+                drawBandStrip(in: &context, plot: plot)
             }
         }
         .accessibilityElement(children: .ignore)
@@ -103,6 +105,7 @@ struct RTAView: View {
             maxHeight: fillsHeight ? .infinity : RTAMetrics.height
         )
         .background(RTAPalette.plotBackground, in: RoundedRectangle(cornerRadius: RTAMetrics.cornerRadius))
+        .overlay(RoundedRectangle(cornerRadius: RTAMetrics.cornerRadius).strokeBorder(Palette.borderSubtle, lineWidth: RTAMetrics.wellBorderWidth))
     }
 
     private func plotRect(in size: CGSize) -> CGRect {
@@ -298,6 +301,15 @@ struct RTAView: View {
         }
         context.stroke(
             path,
+            with: .color(RTAPalette.targetHalo),
+            style: StrokeStyle(
+                lineWidth: (isEditing ? RTAMetrics.editingTargetLineWidth : RTAMetrics.targetLineWidth) + RTAMetrics.targetHaloExtraWidth,
+                lineCap: .round,
+                lineJoin: .round
+            )
+        )
+        context.stroke(
+            path,
             with: .color(RTAPalette.target),
             style: StrokeStyle(
                 lineWidth: isEditing ? RTAMetrics.editingTargetLineWidth : RTAMetrics.targetLineWidth,
@@ -306,6 +318,42 @@ struct RTAView: View {
                 dash: isEditing ? [] : RTAMetrics.targetDash
             )
         )
+    }
+
+    private func drawRoom(in context: inout GraphicsContext, plot: CGRect, layout: RTALayout, levels: [Double]) {
+        guard levels.count == layout.bands.count, !levels.isEmpty, levels.contains(where: { scale.fraction(db: $0) > 0 }) else { return }
+        let points = layout.bands.enumerated().map { i, band in
+            CGPoint(x: x(band.centerHz, in: plot), y: y(levels[i], in: plot))
+        }
+        var line = Path()
+        line.addLines(points)
+        var fill = line
+        if let last = points.last, let first = points.first {
+            fill.addLine(to: CGPoint(x: last.x, y: plot.maxY))
+            fill.addLine(to: CGPoint(x: first.x, y: plot.maxY))
+            fill.closeSubpath()
+        }
+        context.fill(
+            fill,
+            with: .linearGradient(
+                Gradient(colors: [RTAPalette.room.opacity(RTAMetrics.roomFillTopOpacity), RTAPalette.room.opacity(0)]),
+                startPoint: CGPoint(x: plot.midX, y: plot.minY),
+                endPoint: CGPoint(x: plot.midX, y: plot.maxY)
+            )
+        )
+        let style = StrokeStyle(lineWidth: RTAMetrics.roomLineWidth, lineCap: .round, lineJoin: .round)
+        var glow = context
+        glow.addFilter(.shadow(color: RTAPalette.room.opacity(RTAMetrics.roomGlowOpacity), radius: RTAMetrics.roomGlowRadius))
+        glow.stroke(line, with: .color(RTAPalette.room), style: style)
+    }
+
+    private func drawBandStrip(in context: inout GraphicsContext, plot: CGRect) {
+        for band in Band.allCases {
+            let left = x(band.lowHz, in: plot)
+            let right = x(band.highHz, in: plot)
+            let strip = CGRect(x: left, y: plot.maxY + RTAMetrics.bandStripGap, width: max(0, right - left), height: RTAMetrics.bandStripHeight)
+            context.fill(Path(strip), with: .color(Palette.band(band)))
+        }
     }
 
     /// Points along the target curve over `span`'s RTA bands, at their
@@ -375,7 +423,8 @@ private enum RTAMetrics {
     /// fillsHeight floor (landscape, iPad tall portrait and wide, #1659), so
     /// the grid stays readable on an SE in landscape.
     static let minFillHeight: CGFloat = 120
-    static let cornerRadius: CGFloat = 12
+    static let cornerRadius: CGFloat = 14
+    static let wellBorderWidth: CGFloat = 1
     static let dbLabelWidth: CGFloat = 34
     static let trailingInset: CGFloat = 10
     static let topInset: CGFloat = 18
@@ -393,8 +442,15 @@ private enum RTAMetrics {
     static let barFillOpacity = 0.6
     /// The cap marker on a Relative bar past ±15 dB.
     static let overflowCapHeight: CGFloat = 2
-    static let targetLineWidth: CGFloat = 1.5
-    static let targetDash: [CGFloat] = [5, 4]
+    static let targetLineWidth: CGFloat = 2
+    static let targetDash: [CGFloat] = [7, 5]
+    static let targetHaloExtraWidth: CGFloat = 3
+    static let roomLineWidth: CGFloat = 2.4
+    static let roomFillTopOpacity = 0.22
+    static let roomGlowOpacity = 0.6
+    static let roomGlowRadius: CGFloat = 4
+    static let bandStripHeight: CGFloat = 2
+    static let bandStripGap: CGFloat = 0.5
     /// Thicker than the dashed reference line, so an editable target reads
     /// differently at a glance (#1559).
     static let editingTargetLineWidth: CGFloat = 2.5
@@ -410,14 +466,13 @@ private enum RTAMetrics {
 }
 
 enum RTAPalette {
-    static let plotBackground = Color(red: 0.03, green: 0.035, blue: 0.045)
+    static let plotBackground = Palette.inset
     static let grid = Color.white.opacity(0.12)
     static let label = Color.white.opacity(0.55)
     static let peak = Color.white.opacity(0.9)
-    /// High-opacity white rather than the gold accent: gold would blend into
-    /// the hot end of the warm low-band ramp (RTAColor), and white reads
-    /// consistently against both the warm lows and the cool mids/highs.
-    static let target = Color.white.opacity(0.85)
+    static let target = Palette.targetLine
+    static let targetHalo = Palette.inset.opacity(0.85)
+    static let room = Palette.accent
     /// Over-target problem markers (#1553): warm amber, cut suggested.
     static let overTargetMarker = Color(red: 1.0, green: 0.66, blue: 0.2)
     /// Under-target problem markers (#1553): cool cyan, boost suggested.

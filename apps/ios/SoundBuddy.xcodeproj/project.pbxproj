@@ -15,6 +15,10 @@
 		3279118DA6CB9871F5E784AF /* SoundBuddyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D108D9CDAC13447AF712A950 /* SoundBuddyApp.swift */; };
 		3C444817253DA43B3DAC9D3A /* ConsoleChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C9DA9493BA5F5B759F9A49A /* ConsoleChip.swift */; };
 		522189B2E927CBA97026824B /* ConsoleTargetPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40BD8EC6ED98F51D9150D3C5 /* ConsoleTargetPickerView.swift */; };
+		5CB0CFC55C0BD3DFDC4A16EA /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B74F6E686EE23A6AFD7ED52 /* RootTabView.swift */; };
+		61775F5E9637630985559E65 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD9167A42EB03AB07149507D /* Theme.swift */; };
+		67C4093A69F9002A23719E36 /* AgentPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E720E5BCDC670E98D6FF0370 /* AgentPanel.swift */; };
+		6EE1E27D3D0BC21706117D1F /* MixView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0CB8663743A1832E720C03F /* MixView.swift */; };
 		87A7DAA57CA486F92A753E04 /* ConsoleEQPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC6E2606D58BB5B186B86D16 /* ConsoleEQPanel.swift */; };
 		8CF1A9637FF98C01600EAE09 /* MicCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFE5C6E8ED35B6519E4778A2 /* MicCapture.swift */; };
 		916A8C2FF1E1C54F80B2A226 /* RTAView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C666B2B6DB4351AE3267F91 /* RTAView.swift */; };
@@ -27,6 +31,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0B74F6E686EE23A6AFD7ED52 /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
 		0FAA0DA15310AF31C79E438F /* SoundBuddy.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SoundBuddy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		12277FA4F7945523590FB8BF /* ConsoleConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleConnectView.swift; sourceTree = "<group>"; };
 		25A689F561FD8A4123685947 /* IdleTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleTimer.swift; sourceTree = "<group>"; };
@@ -41,9 +46,12 @@
 		770C099101BBBDBF216FAB1C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		7B3A06F042D250EFA8F6B42C /* ChannelSetupFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelSetupFlowView.swift; sourceTree = "<group>"; };
 		7DF90837164C3F346F48B3B8 /* ConsoleNWTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleNWTransport.swift; sourceTree = "<group>"; };
+		CD9167A42EB03AB07149507D /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		D108D9CDAC13447AF712A950 /* SoundBuddyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoundBuddyApp.swift; sourceTree = "<group>"; };
 		D14BD1E233487865DA0C9A07 /* ChannelSetupReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelSetupReviewView.swift; sourceTree = "<group>"; };
 		DD263257E4F708EAFE55D813 /* SoundBuddyKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = SoundBuddyKit; path = SoundBuddyKit; sourceTree = SOURCE_ROOT; };
+		E0CB8663743A1832E720C03F /* MixView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MixView.swift; sourceTree = "<group>"; };
+		E720E5BCDC670E98D6FF0370 /* AgentPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPanel.swift; sourceTree = "<group>"; };
 		FC6E2606D58BB5B186B86D16 /* ConsoleEQPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleEQPanel.swift; sourceTree = "<group>"; };
 		FFE5C6E8ED35B6519E4778A2 /* MicCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicCapture.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -72,6 +80,7 @@
 		36AF817355B4329D320BA169 /* SoundBuddy */ = {
 			isa = PBXGroup;
 			children = (
+				E720E5BCDC670E98D6FF0370 /* AgentPanel.swift */,
 				6F16C27B342308E5868ED13A /* AnalyzeView.swift */,
 				770C099101BBBDBF216FAB1C /* Assets.xcassets */,
 				348F4FEA6D2020BD5890AE00 /* ChannelRolePickerView.swift */,
@@ -87,8 +96,11 @@
 				25A689F561FD8A4123685947 /* IdleTimer.swift */,
 				5156C524554BC91E2837D621 /* Info.plist */,
 				FFE5C6E8ED35B6519E4778A2 /* MicCapture.swift */,
+				E0CB8663743A1832E720C03F /* MixView.swift */,
+				0B74F6E686EE23A6AFD7ED52 /* RootTabView.swift */,
 				3C666B2B6DB4351AE3267F91 /* RTAView.swift */,
 				D108D9CDAC13447AF712A950 /* SoundBuddyApp.swift */,
+				CD9167A42EB03AB07149507D /* Theme.swift */,
 			);
 			path = SoundBuddy;
 			sourceTree = "<group>";
@@ -185,6 +197,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				67C4093A69F9002A23719E36 /* AgentPanel.swift in Sources */,
 				0CDC60465904A92EF0D2D810 /* AnalyzeView.swift in Sources */,
 				2B9C84BEEF15D2192D5037C3 /* ChannelRolePickerView.swift in Sources */,
 				1C5FB7074EF7A338D4445847 /* ChannelSetupFlowView.swift in Sources */,
@@ -198,8 +211,11 @@
 				29F10DF61584F0B16A2A178E /* EQCurveView.swift in Sources */,
 				B292D2695BCEFEDB1D035DF0 /* IdleTimer.swift in Sources */,
 				8CF1A9637FF98C01600EAE09 /* MicCapture.swift in Sources */,
+				6EE1E27D3D0BC21706117D1F /* MixView.swift in Sources */,
 				916A8C2FF1E1C54F80B2A226 /* RTAView.swift in Sources */,
+				5CB0CFC55C0BD3DFDC4A16EA /* RootTabView.swift in Sources */,
 				3279118DA6CB9871F5E784AF /* SoundBuddyApp.swift in Sources */,
+				61775F5E9637630985559E65 /* Theme.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

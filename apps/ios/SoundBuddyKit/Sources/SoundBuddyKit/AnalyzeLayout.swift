@@ -121,6 +121,20 @@ public enum AnalyzeLayout: Equatable, Sendable {
         return (columnHeight - spacing) * wideConsoleEQHeightFraction
     }
 
+    public static let compactInlineCoachingCardLimit = 1
+
+    public var inlineCoachingCardLimit: Int {
+        self == .portrait ? Self.compactInlineCoachingCardLimit : AnalyzeCoachingViewModel.maxCards
+    }
+
+    public func coachingOverflowCount(cardCount: Int) -> Int {
+        max(0, cardCount - inlineCoachingCardLimit)
+    }
+
+    public static func showMoreLabel(count: Int) -> String {
+        "+\(count) more"
+    }
+
     /// Every layout draws the text-free problem pulses on the RTA — in landscape
     /// they are the only in-the-moment cue while coaching sits behind the peek
     /// (#1554). Deliberately independent of peek state.
