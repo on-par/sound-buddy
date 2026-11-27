@@ -44,6 +44,7 @@ import {
   type AppSettings,
   type CaptureRig,
 } from './settings';
+import { MIXER_ASSIST_BINARY_PATH_MAX_LEN, MIXER_ASSIST_ENDPOINT_MAX_LEN, MIXER_ASSIST_MODEL_MAX_LEN } from './ipc/api';
 import { logWarn } from './logger';
 
 const settingsFile = () => path.join(userDataDir, 'settings.json');
@@ -528,6 +529,97 @@ describe('mixerAttentionCap (Mixer attention cards shown at once)', () => {
 
   it('isMixerAttentionCap accepts only 2 and 3', () => {
     expect([1, 2, 3, 4, '2'].map(isMixerAttentionCap)).toEqual([false, true, true, false, false]);
+  });
+});
+
+describe('Mixer assist settings (Cloud and Local toggles, binary path, endpoint, model)', () => {
+  const TOGGLES = ['mixerCloudAssistEnabled', 'mixerLocalAssistEnabled'] as const;
+  const STRINGS = ['mixerCloudAssistBinaryPath', 'mixerLocalAssistEndpoint', 'mixerLocalAssistModel'] as const;
+
+  it('every key defaults to off or blank when settings.json is absent', () => {
+    const s = getSettings();
+    expect([s.mixerCloudAssistEnabled, s.mixerLocalAssistEnabled]).toEqual([false, false]);
+    expect([s.mixerCloudAssistBinaryPath, s.mixerLocalAssistEndpoint, s.mixerLocalAssistModel]).toEqual(['', '', '']);
+  });
+
+  it.each(TOGGLES)('%s reads back a persisted true', (key) => {
+    writeFile({ [key]: true });
+    expect(getSettings()[key]).toBe(true);
+  });
+
+  it.each(TOGGLES.flatMap((key) => ['true', 1, 'yes', null, {}].map((v) => [key, v] as const)))(
+    '%s fails closed on the non-boolean %p',
+    (key, corrupted) => {
+      writeFile({ [key]: corrupted });
+      expect(getSettings()[key]).toBe(false);
+    }
+  );
+
+  it.each(TOGGLES)('%s has no env override', (key) => {
+    process.env.SOUND_BUDDY_MIXER_CLOUD_ASSIST = '1';
+    process.env.SOUND_BUDDY_MIXER_LOCAL_ASSIST = '1';
+    try {
+      expect(getSettings()[key]).toBe(false);
+      expect(SETTING_SPECS[key].envRead).toBeUndefined();
+    } finally {
+      delete process.env.SOUND_BUDDY_MIXER_CLOUD_ASSIST;
+      delete process.env.SOUND_BUDDY_MIXER_LOCAL_ASSIST;
+    }
+  });
+
+  it.each(TOGGLES)('%s patch accepts only a boolean', (key) => {
+    const patch = SETTING_SPECS[key].sanitizePatch;
+    expect([true, false, 'true', 1, null].map((v) => patch?.(v))).toEqual([true, false, undefined, undefined, undefined]);
+  });
+
+  it.each(STRINGS)('%s has no env override and repairs a non-string to blank', (key) => {
+    expect(SETTING_SPECS[key].envRead).toBeUndefined();
+    writeFile({ [key]: 42 });
+    expect(getSettings()[key]).toBe('');
+  });
+
+  it('round-trips every key through updateSettings and the raw file', () => {
+    const patch = {
+      mixerCloudAssistEnabled: true,
+      mixerLocalAssistEnabled: true,
+      mixerCloudAssistBinaryPath: '/opt/homebrew/bin/claude',
+      mixerLocalAssistEndpoint: 'http://127.0.0.1:11434/v1',
+      mixerLocalAssistModel: 'qwen2.5:7b',
+    };
+    const next = updateSettings(patch);
+    for (const [key, value] of Object.entries(patch)) {
+      expect(next[key as keyof AppSettings]).toEqual(value);
+      expect(readFile()[key]).toEqual(value);
+    }
+  });
+
+  it('the binary path patch trims, accepts blank or an absolute path, and drops relative, oversized or NUL-bearing paths', () => {
+    const patch = SETTING_SPECS.mixerCloudAssistBinaryPath.sanitizePatch;
+    expect(patch?.('  /usr/local/bin/claude  ')).toBe('/usr/local/bin/claude');
+    expect(patch?.('')).toBe('');
+    expect(patch?.('claude')).toBeUndefined();
+    expect(patch?.(`/${'a'.repeat(MIXER_ASSIST_BINARY_PATH_MAX_LEN)}`)).toBeUndefined();
+    expect(patch?.('/bin/cl\0aude')).toBeUndefined();
+    expect(patch?.(7)).toBeUndefined();
+  });
+
+  it('a hand-edited relative binary path in settings.json repairs to blank', () => {
+    writeFile({ mixerCloudAssistBinaryPath: 'bin/claude' });
+    expect(getSettings().mixerCloudAssistBinaryPath).toBe('');
+  });
+
+  it('the endpoint and model patches trim and drop oversized values', () => {
+    const endpoint = SETTING_SPECS.mixerLocalAssistEndpoint.sanitizePatch;
+    const model = SETTING_SPECS.mixerLocalAssistModel.sanitizePatch;
+    expect(endpoint?.(' http://192.168.1.20:8080/v1 ')).toBe('http://192.168.1.20:8080/v1');
+    expect(endpoint?.('x'.repeat(MIXER_ASSIST_ENDPOINT_MAX_LEN + 1))).toBeUndefined();
+    expect(model?.(' llama3 ')).toBe('llama3');
+    expect(model?.('m'.repeat(MIXER_ASSIST_MODEL_MAX_LEN + 1))).toBeUndefined();
+    expect(model?.(null)).toBeUndefined();
+  });
+
+  it('no assist key ever holds a token: a token-shaped patch key is not a setting', () => {
+    expect(Object.keys(SETTING_SPECS).filter((k) => /token/i.test(k))).toEqual([]);
   });
 });
 
@@ -1149,6 +1241,11 @@ describe('SETTING_SPECS — the single owner of every field invariant (#747)', (
     consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
     splCalibrationOffsetDb: null, mixerAttentionCap: 3, lastAppMode: '',
+    mixerCloudAssistEnabled: false,
+    mixerLocalAssistEnabled: false,
+    mixerCloudAssistBinaryPath: '',
+    mixerLocalAssistEndpoint: '',
+    mixerLocalAssistModel: '',
   };
 
   it('covers every AppSettings key — and no extras (compile-time + runtime set equality)', () => {

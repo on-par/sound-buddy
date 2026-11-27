@@ -3,6 +3,7 @@
 
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // AI carve-out 1/5 (#657): removes every AI Engineer UI surface from the
@@ -49,6 +50,21 @@ const TROUBLESHOOTING_FILES: Record<string, string> = {
   'rule-renderers/gain.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/gain.ts', import.meta.url)), 'utf8'),
 };
 
+const rendererSrc = path.dirname(fileURLToPath(import.meta.url));
+
+const MIXER_ASSIST_FILES: Record<string, string> = Object.fromEntries(
+  [
+    'MixerPanel.tsx',
+    'MixerAssistSettings.tsx',
+    path.join('stores', 'mixerStore.ts'),
+    path.join('stores', 'mixerAssistStore.ts'),
+    ...fs
+      .readdirSync(path.join(rendererSrc, 'mixer'))
+      .filter((f) => /\.tsx?$/.test(f) && !f.endsWith('.test.ts'))
+      .map((f) => path.join('mixer', f)),
+  ].map((relative) => [relative, fs.readFileSync(path.join(rendererSrc, relative), 'utf8')]),
+);
+
 const files: Record<string, string> = {
   'root-markup.html': fs.readFileSync(fileURLToPath(new URL('./root-markup.html', import.meta.url)), 'utf8'),
   'inline-app.js': fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8'),
@@ -63,6 +79,7 @@ const files: Record<string, string> = {
   '../single-column-state.js': fs.readFileSync(fileURLToPath(new URL('../single-column-state.js', import.meta.url)), 'utf8'),
   '../upgrade-momentum.js': fs.readFileSync(fileURLToPath(new URL('../upgrade-momentum.js', import.meta.url)), 'utf8'),
   ...TROUBLESHOOTING_FILES,
+  ...MIXER_ASSIST_FILES,
 };
 
 describe('AI carve-out gate (#657)', () => {
@@ -148,6 +165,31 @@ describe('AI carve-out gate — Troubleshooting section (#864)', () => {
 
     for (const token of NETWORK_TOKENS) {
       it(`${name} makes no network call (no "${token}")`, () => {
+        expect(content).not.toContain(token);
+      });
+    }
+  }
+});
+
+const ASSIST_NETWORK_TOKENS = ['fetch(', 'XMLHttp' + 'Request', 'Web' + 'Socket', 'Event' + 'Source', 'send' + 'Beacon'];
+const ASSIST_SECRET_TOKENS = ['CLAUDE_CODE_' + 'OAUTH_TOKEN'];
+
+describe('AI carve-out gate — Mixer and Settings assist (renderer never fetches, never holds the token)', () => {
+  it('scans the Mixer panel, the Settings assist section, both stores and every mixer module', () => {
+    expect(Object.keys(MIXER_ASSIST_FILES)).toEqual(
+      expect.arrayContaining(['MixerPanel.tsx', 'MixerAssistSettings.tsx', path.join('stores', 'mixerAssistStore.ts'), path.join('mixer', 'MixerRail.tsx'), path.join('mixer', 'assist-view.ts')]),
+    );
+  });
+
+  for (const [name, content] of Object.entries(MIXER_ASSIST_FILES)) {
+    for (const token of ASSIST_NETWORK_TOKENS) {
+      it(`${name} makes no network call (no "${token}")`, () => {
+        expect(content).not.toContain(token);
+      });
+    }
+
+    for (const token of ASSIST_SECRET_TOKENS) {
+      it(`${name} never names the oauth token variable`, () => {
         expect(content).not.toContain(token);
       });
     }

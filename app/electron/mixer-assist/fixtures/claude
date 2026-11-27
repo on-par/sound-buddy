@@ -1,0 +1,21 @@
+#!/bin/sh
+input=$(cat)
+case "$SB_STUB_MODE" in
+  exit)
+    printf 'stub refused token %s\n' "$CLAUDE_CODE_OAUTH_TOKEN" >&2
+    exit 3
+    ;;
+  slow)
+    exec sleep 30
+    ;;
+  stubborn)
+    trap '' TERM
+    while :; do sleep 0.05; done
+    ;;
+  flood)
+    while :; do printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n'; done
+    ;;
+  *)
+    printf 'args=%s cwd=%s\n%s\n' "$#" "$(basename "$(pwd)")" "$input"
+    ;;
+esac

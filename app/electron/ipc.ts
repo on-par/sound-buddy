@@ -26,6 +26,7 @@ import { registerPlaybackHandlers } from './ipc/playback';
 import { registerLicensingHandlers } from './ipc/licensing';
 import { registerSettingsHandlers } from './ipc/settings';
 import { registerConsoleHandlers } from './ipc/console';
+import { registerMixerAssistHandlers } from './ipc/mixer-assist';
 
 export { runSox, runFfprobe, runSpectrum, runEbur128 } from './ipc/analysis';
 export { enumerateDevices, type DeviceListResult } from './ipc/live-capture';
@@ -39,4 +40,5 @@ export function registerIpcHandlers(): void {
   registerLicensingHandlers();
   registerSettingsHandlers();
   registerConsoleHandlers();
+  registerMixerAssistHandlers();
 }

@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   registerLicensingHandlers: vi.fn(),
   registerSettingsHandlers: vi.fn(),
   registerConsoleHandlers: vi.fn(),
+  registerMixerAssistHandlers: vi.fn(),
 }));
 
 vi.mock('./ipc/analysis', () => ({
@@ -48,6 +49,9 @@ vi.mock('./ipc/settings', () => ({
 vi.mock('./ipc/console', () => ({
   registerConsoleHandlers: mocks.registerConsoleHandlers,
 }));
+vi.mock('./ipc/mixer-assist', () => ({
+  registerMixerAssistHandlers: mocks.registerMixerAssistHandlers,
+}));
 
 import { registerIpcHandlers } from './ipc';
 
@@ -78,6 +82,7 @@ describe('registerIpcHandlers', () => {
     mocks.registerLicensingHandlers.mockName('registerLicensingHandlers');
     mocks.registerSettingsHandlers.mockName('registerSettingsHandlers');
     mocks.registerConsoleHandlers.mockName('registerConsoleHandlers');
+    mocks.registerMixerAssistHandlers.mockName('registerMixerAssistHandlers');
 
     registerIpcHandlers();
 
@@ -90,6 +95,7 @@ describe('registerIpcHandlers', () => {
       'registerLicensingHandlers',
       'registerSettingsHandlers',
       'registerConsoleHandlers',
+      'registerMixerAssistHandlers',
     ]);
   });
 });

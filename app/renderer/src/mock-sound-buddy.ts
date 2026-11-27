@@ -16,8 +16,15 @@ import type {
   StorageUsage,
   AnalysisPayloadDto,
   ConsoleLiveStateEvent,
+  MixerAssistStatusDto,
 } from '../../electron/ipc/api';
 import { ALL_FEATURE_FLAGS_OFF } from '../../electron/feature-flags';
+
+export const DEFAULT_MIXER_ASSIST_STATUS: MixerAssistStatusDto = {
+  cloud: { enabled: false, binaryFound: false, tokenSaved: false, encryptionAvailable: null, lastFailure: null },
+  local: { enabled: false, endpoint: 'unset', modelSet: false, lastFailure: null },
+  inFlight: false,
+};
 
 export interface RecordedCall {
   method: keyof SoundBuddyApi;
@@ -55,7 +62,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   gradingProfile: 'casual', gradingRubric: {},
   consoleNetworkConsentGranted: false,
   soundcheckBuses: [],
-  splCalibrationOffsetDb: null, mixerAttentionCap: 3, lastAppMode: '',
+  splCalibrationOffsetDb: null, mixerAttentionCap: 3, mixerCloudAssistEnabled: false, mixerLocalAssistEnabled: false, mixerCloudAssistBinaryPath: '', mixerLocalAssistEndpoint: '', mixerLocalAssistModel: '', lastAppMode: '',
 };
 
 const DEFAULT_LICENSE_STATE: LicenseState = { tier: 'free', status: 'none' };
@@ -206,6 +213,11 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     }),
     cancelConsoleSceneCapture: invoke('cancelConsoleSceneCapture', { success: true }),
     onConsoleSceneCaptureProgress: listen<[{ done: number; total: number }]>('onConsoleSceneCaptureProgress'),
+    getMixerAssistStatus: invoke('getMixerAssistStatus', DEFAULT_MIXER_ASSIST_STATUS),
+    setMixerAssistToken: invoke('setMixerAssistToken', { ok: true as const, status: DEFAULT_MIXER_ASSIST_STATUS }),
+    clearMixerAssistToken: invoke('clearMixerAssistToken', DEFAULT_MIXER_ASSIST_STATUS),
+    askMixerAssist: invoke('askMixerAssist', { ok: false as const, trigger: 'question' as const, issueKey: null, reason: 'disabled' as const, attempts: [] }),
+    cancelMixerAssist: invoke('cancelMixerAssist', { success: true }),
     isOnboardingDisabled: invoke('isOnboardingDisabled', false),
     areTestHooksEnabled: invoke('areTestHooksEnabled', false),
     listDevices: invoke('listDevices', undefined),

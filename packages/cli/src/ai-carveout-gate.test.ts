@@ -75,3 +75,19 @@ describe('AI carve-out gate (#661)', () => {
     expect(hasEarendil).toBe(false);
   });
 });
+
+const MIXER_ASSIST_TOKENS = ['CLAUDE_CODE_' + 'OAUTH_TOKEN', 'mixer' + 'CloudAssist', 'mixer' + 'LocalAssist', 'safe' + 'Storage'];
+
+describe('AI carve-out gate — Mixer assist stays in the Mac app', () => {
+  const scannedFiles = collectAllTsFiles(cliSrc);
+
+  it.each(scannedFiles.map((f) => [path.relative(cliSrc, f), f] as const))(
+    '%s contains no Mixer assist token',
+    (_relative, file) => {
+      const text = fs.readFileSync(file, 'utf8');
+      for (const token of MIXER_ASSIST_TOKENS) {
+        expect(text).not.toContain(token);
+      }
+    },
+  );
+});

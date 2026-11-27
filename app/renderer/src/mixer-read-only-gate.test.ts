@@ -34,6 +34,9 @@ const ALLOWED_STORE_CALLS = new Set([
   'watchChannel',
   'ingestConsole',
   'ingestRoom',
+  'ask',
+  'cancel',
+  'refreshStatus',
 ]);
 
 const BRIDGE_TOKENS = ['getSoundBuddy', 'useElectron', 'soundBuddy', 'ipcRenderer', 'ipcMain', 'window.'];
@@ -89,11 +92,21 @@ describe('Mixer is read-only by construction', () => {
     expect(block).not.toContain('onClick');
   });
 
-  it('the composer is a disabled input with no handler', () => {
+  it('the composer is disabled unless an assist is healthy, and its only handler sends the question to the assist store', () => {
     const source = MIXER_FILES['mixer/MixerRail.tsx'];
-    const start = source.indexOf('<input');
+    const start = source.indexOf('<input', source.indexOf('className={COMPOSER_CLASS}'));
     const input = source.slice(start, source.indexOf('/>', start));
-    expect(input).toMatch(/\sdisabled\s/);
-    expect(input).not.toMatch(/onChange|onKeyDown|onSubmit/);
+    expect(input).toContain('disabled={!assist.composerEnabled}');
+    expect(input).not.toMatch(/onChange|onKeyDown|onSubmit|onClick/);
+    const ask = buttonBlock(source, 'mx-composer-ask');
+    expect(ask).toContain('disabled={!assist.composerEnabled}');
+    expect(ask).toContain('onClick={(e) => void askFromComposer(e)}');
+  });
+
+  it('assist answers never create or edit a proposed move', () => {
+    const assistStore = fs.readFileSync(path.join(srcDir, 'stores', 'mixerAssistStore.ts'), 'utf8');
+    for (const token of ['proposed-moves', 'moves', 'dismissMove', 'useMixerStore.setState', 'mixer.setState']) expect(assistStore).not.toContain(token);
+    expect(MIXER_FILES['stores/mixerStore.ts']).not.toContain('mixerAssistStore');
+    expect(MIXER_FILES['mixer/proposed-moves.ts']).not.toContain('assist');
   });
 });

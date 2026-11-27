@@ -21,6 +21,7 @@ import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useLicensingStore } from './stores/licensingStore';
 import { createMockSoundBuddy } from './mock-sound-buddy';
 import type { AppSettings } from '../../electron/ipc/api';
+import { ALL_FEATURE_FLAGS_OFF } from '../../electron/feature-flags';
 
 // PreflightSettings (composed into the Audio pane, #757) reads the pure
 // classic scripts window.rigReconcile/window.preflight — real modules, same
@@ -131,7 +132,7 @@ describe('SettingsPanel markup', () => {
         crashReportingEnabled: false, liveAdjustmentsEnabled: false, advancedFeaturesEnabled: true, lineCheckCalibrationEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
         liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual', gradingRubric: {}, consoleNetworkConsentGranted: false,
         soundcheckBuses: [],
-        splCalibrationOffsetDb: null, mixerAttentionCap: 3, lastAppMode: '',
+        splCalibrationOffsetDb: null, mixerAttentionCap: 3, mixerCloudAssistEnabled: false, mixerLocalAssistEnabled: false, mixerCloudAssistBinaryPath: '', mixerLocalAssistEndpoint: '', mixerLocalAssistModel: '', lastAppMode: '',
       },
     });
     const html = renderMarkup();
@@ -496,6 +497,24 @@ describe('console network consent status (#378)', () => {
     const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
     expect(src).toContain('const consoleNetworkConsentGranted = !!settings?.consoleNetworkConsentGranted');
     expect(src).not.toContain('setConsoleNetworkConsent' + 'Granted');
+  });
+});
+
+describe('Mixer assist section (Cloud and Local assist)', () => {
+  afterEach(() => {
+    useSettingsStore.setState({ featureFlags: ALL_FEATURE_FLAGS_OFF });
+  });
+
+  it('is absent from every pane in a default build (mixer flag off)', () => {
+    expect(renderMarkup()).not.toContain('id="mixer-assist-settings"');
+  });
+
+  it('renders inside the Console pane, after network access, when the mixer and console flags are on', () => {
+    useSettingsStore.setState({ featureFlags: { ...ALL_FEATURE_FLAGS_OFF, console: true, mixer: true } });
+    const html = renderMarkup();
+    const consolePane = html.match(/id="settings-pane-console"[\s\S]*?id="settings-pane-about"/)?.[0] ?? '';
+    expect(consolePane).toContain('id="mixer-assist-settings"');
+    expect(consolePane.indexOf('console-network-consent-row')).toBeLessThan(consolePane.indexOf('mixer-assist-settings'));
   });
 });
 
