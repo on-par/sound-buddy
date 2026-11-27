@@ -12,12 +12,19 @@ vi.mock('../console-network-consent', () => ({
   ConsoleNetworkConsentError: class ConsoleNetworkConsentError extends Error {},
 }));
 
+import * as fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   channelNodePaths,
   readChannelStates,
+  readSlowTier,
+  initialSlowTierState,
   startChannelStateSubscription,
   CONSOLE_CHANNEL_COUNT,
+  type ConsoleChannelState,
+  type ConsoleSlowTierSnapshot,
 } from './console-channel-state';
+import { MAX_NODE_QUERIES_PER_TICK } from './console-strip-detail';
 import type { ConsoleDiscoveryDeps } from './console-discovery';
 
 const GRANTED = { consoleNetworkConsentGranted: true };
@@ -34,36 +41,46 @@ afterEach(() => {
 });
 
 describe('channelNodePaths', () => {
-  it('returns 64 zero-padded paths starting /ch/01/config, /ch/01/mix', () => {
+  it('returns 96 zero-padded fast-tier paths: config, mix and dyn per channel', () => {
     const paths = channelNodePaths();
 
-    expect(paths).toHaveLength(CONSOLE_CHANNEL_COUNT * 2);
+    expect(paths).toHaveLength(CONSOLE_CHANNEL_COUNT * 3);
     expect(paths[0]).toBe('/ch/01/config');
     expect(paths[1]).toBe('/ch/01/mix');
-    expect(paths[62]).toBe('/ch/32/config');
-    expect(paths[63]).toBe('/ch/32/mix');
+    expect(paths[2]).toBe('/ch/01/dyn');
+    expect(paths[93]).toBe('/ch/32/config');
+    expect(paths[94]).toBe('/ch/32/mix');
+    expect(paths[95]).toBe('/ch/32/dyn');
   });
 
   it('honours an explicit count', () => {
     const paths = channelNodePaths(2);
 
-    expect(paths).toEqual(['/ch/01/config', '/ch/01/mix', '/ch/02/config', '/ch/02/mix']);
+    expect(paths).toEqual(['/ch/01/config', '/ch/01/mix', '/ch/01/dyn', '/ch/02/config', '/ch/02/mix', '/ch/02/dyn']);
   });
 });
 
 describe('readChannelStates', () => {
-  it('returns index/name/faderDb/on for two channels, including -oo as -Infinity', async () => {
+  it('returns index/name/faderDb/on/color/icon/dynamics for two channels, including -oo as -Infinity', async () => {
     queryConsoleMock
       .mockResolvedValueOnce('/ch/01/config "Kick" 1 RD 1')
       .mockResolvedValueOnce('/ch/01/mix ON -10.5 OFF +0')
-      .mockResolvedValueOnce('/ch/02/config "Snare" 1 RD 1')
-      .mockResolvedValueOnce('/ch/02/mix OFF -oo OFF +0');
+      .mockResolvedValueOnce('/ch/01/dyn ON COMP PEAK LOG -23.0 5.0 1 0.00 10 10.0  151 POST 0 100 OFF')
+      .mockResolvedValueOnce('/ch/02/config "Snare" 7 BLi 2')
+      .mockResolvedValueOnce('/ch/02/mix OFF -oo OFF +0')
+      .mockResolvedValueOnce('/ch/02/dyn OFF EXP RMS LIN -10.0 2.0 2 1.50 10 10.0  151 POST 0 100 OFF');
 
     const result = await readChannelStates(deps(), GRANTED, IP, { channelCount: 2 });
 
     expect(result).toEqual([
-      { index: 1, name: 'Kick', faderDb: -10.5, on: true },
-      { index: 2, name: 'Snare', faderDb: -Infinity, on: false },
+      {
+        index: 1, name: 'Kick', faderDb: -10.5, on: true, icon: 1, color: { base: 'red', inverted: false },
+        dynamics: { on: true, mode: 'COMP', thr: -23, ratio: 5, knee: 1, mgain: 0 },
+      },
+      {
+        index: 2, name: 'Snare', faderDb: -Infinity, on: false, icon: 7, color: { base: 'blue', inverted: true },
+        dynamics: { on: false, mode: 'EXP', thr: -10, ratio: 2, knee: 2, mgain: 1.5 },
+      },
     ]);
   });
 
@@ -72,7 +89,7 @@ describe('readChannelStates', () => {
 
     await readChannelStates(deps(), GRANTED, IP, { channelCount: 1 });
 
-    expect(queryConsoleMock).toHaveBeenCalledTimes(2);
+    expect(queryConsoleMock).toHaveBeenCalledTimes(3);
     for (const call of queryConsoleMock.mock.calls) {
       expect(call[2]).toBe('/node');
       expect(call[4]).toMatchObject({ requestArgs: [{ type: 's', value: expect.any(String) }] });
@@ -85,7 +102,7 @@ describe('readChannelStates', () => {
     queryConsoleMock.mockResolvedValueOnce('/ch/01/config "Kick" 1 RD 1').mockRejectedValueOnce(new Error('timeout'));
 
     await expect(readChannelStates(deps(), GRANTED, IP, { channelCount: 1 })).rejects.toThrow(
-      /did not answer "\/ch\/01\/mix" \(1 of 2 reads completed\)/
+      /did not answer "\/ch\/01\/mix" \(1 of 3 reads completed\)/
     );
     expect(queryConsoleMock).toHaveBeenCalledTimes(2);
   });
@@ -101,7 +118,7 @@ describe('readChannelStates', () => {
       expect(error).toBeInstanceOf(Error);
       expect((error as Error).message).toMatch(/channel-state \/node read\/protocol path/);
       expect((error as Error).message).toContain('/ch/01/config');
-      expect((error as Error).message).toContain('0 of 2');
+      expect((error as Error).message).toContain('0 of 3');
       expect((error as Error).message).toMatch(/verify the console's OSC\/remote-control path before trying Watch again/i);
       expect((error as Error).cause).toBe(cause);
     }
@@ -156,7 +173,8 @@ describe('startChannelStateSubscription', () => {
     queryConsoleMock
       .mockRejectedValueOnce(new Error('transient /node miss'))
       .mockResolvedValueOnce('/ch/01/config "Kick" 1 RD 1')
-      .mockResolvedValueOnce('/ch/01/mix ON -10.5 OFF +0');
+      .mockResolvedValueOnce('/ch/01/mix ON -10.5 OFF +0')
+      .mockResolvedValueOnce('/ch/01/dyn ON COMP PEAK LOG -23.0 5.0 1 0.00 10 10.0  151 POST 0 100 OFF');
     const onSnapshot = vi.fn();
     const onError = vi.fn();
 
@@ -167,9 +185,12 @@ describe('startChannelStateSubscription', () => {
 
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(onSnapshot).toHaveBeenCalledWith([{ index: 1, name: 'Kick', faderDb: -10.5, on: true }]);
+    expect(onSnapshot).toHaveBeenCalledWith(
+      [expect.objectContaining({ index: 1, name: 'Kick', faderDb: -10.5, on: true })],
+      expect.any(Number)
+    );
     expect(onError).not.toHaveBeenCalled();
-    expect(queryConsoleMock).toHaveBeenCalledTimes(3);
+    expect(queryConsoleMock).toHaveBeenCalledTimes(4);
 
     handle.stop();
   });
@@ -312,5 +333,154 @@ describe('startChannelStateSubscription', () => {
     expect(onSnapshot).toHaveBeenCalledTimes(2);
 
     handle.stop();
+  });
+});
+
+const sceneLines = fs
+  .readFileSync(fileURLToPath(new URL('../../../packages/console/src/capture-2026-08-16.scn', import.meta.url)), 'utf8')
+  .split('\n')
+  .map((l) => l.trim());
+
+function sceneLine(path: string): string {
+  return sceneLines.find((l) => l.startsWith(`${path} `)) ?? '';
+}
+
+interface RecordedQuery {
+  address: string;
+  path: string;
+}
+
+function recordingConsole(failPath?: (path: string) => boolean): RecordedQuery[] {
+  const recorded: RecordedQuery[] = [];
+  queryConsoleMock.mockImplementation((_d: unknown, _ip: unknown, address: string, _m: unknown, opts: { requestArgs: Array<{ value: string }> }) => {
+    const path = opts.requestArgs[0].value;
+    recorded.push({ address, path });
+    if (failPath?.(path)) return Promise.reject(new Error(`no reply for ${path}`));
+    return Promise.resolve(sceneLine(path));
+  });
+  return recorded;
+}
+
+describe('tiered /node poll (fast tier every tick, slow tier rotating)', () => {
+  it('sends at most the per-tick cap of /node queries in one tick, all addressed /node', async () => {
+    vi.useFakeTimers();
+    const recorded = recordingConsole();
+    const slow: ConsoleSlowTierSnapshot[] = [];
+
+    const handle = startChannelStateSubscription(deps(), GRANTED, IP, () => {}, () => {}, {
+      pollIntervalMs: 1000,
+      onSlowTier: (snap) => slow.push(snap),
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    handle.stop();
+
+    expect(slow).toHaveLength(1);
+    expect(recorded.length).toBeLessThanOrEqual(MAX_NODE_QUERIES_PER_TICK);
+    expect(recorded).toHaveLength(96 + 4 * 7 + 16 + 5);
+    expect(new Set(recorded.map((q) => q.address))).toEqual(new Set(['/node']));
+    expect(recorded.filter((q) => q.path.endsWith('/dyn'))).toHaveLength(32);
+  });
+
+  it('keeps every tick under the cap while rotating detail across all 32 strips within 8 ticks', async () => {
+    vi.useFakeTimers();
+    const recorded = recordingConsole();
+    const perTick: number[] = [];
+    let last = 0;
+    const slow: ConsoleSlowTierSnapshot[] = [];
+
+    const handle = startChannelStateSubscription(deps(), GRANTED, IP, () => {}, () => {}, {
+      pollIntervalMs: 1000,
+      now: () => 1_000_000 + slow.length,
+      onSlowTier: (snap) => {
+        slow.push(snap);
+        perTick.push(recorded.length - last);
+        last = recorded.length;
+      },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    for (let i = 0; i < 7; i++) await vi.advanceTimersByTimeAsync(1000);
+    handle.stop();
+
+    expect(perTick).toHaveLength(8);
+    for (const count of perTick) expect(count).toBeLessThanOrEqual(MAX_NODE_QUERIES_PER_TICK);
+    const final = slow[slow.length - 1];
+    expect(final.stripDetail.every((d) => d.preamp !== null && d.gate !== null && d.eq !== null)).toBe(true);
+    expect(final.stripDetail.filter((d) => d.sends !== null).map((d) => d.index)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(final.surfaces.buses.slice(0, 16).every((b) => b.name !== null && b.mix !== null)).toBe(true);
+    expect(final.stripDetail[0].preamp?.readAt).toBe(1_000_000);
+    expect(final.stripDetail[31].preamp?.readAt).toBe(1_000_007);
+  });
+
+  it('a failing slow-tier read keeps fast-tier snapshots flowing and leaves the slow value unread instead of blanking anything', async () => {
+    vi.useFakeTimers();
+    recordingConsole((path) => path.includes('/preamp') || path.includes('/mix/'));
+    const snapshots: ConsoleChannelState[][] = [];
+    const slow: ConsoleSlowTierSnapshot[] = [];
+    const errors: string[] = [];
+
+    const handle = startChannelStateSubscription(deps(), GRANTED, IP, (c) => snapshots.push(c), (e) => errors.push(e), {
+      pollIntervalMs: 1000,
+      onSlowTier: (snap) => slow.push(snap),
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    handle.stop();
+
+    expect(errors).toEqual([]);
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0]).toHaveLength(32);
+    expect(snapshots[0][1]).toMatchObject({ index: 2, name: 'Vox 1', faderDb: -5.8, on: true });
+    expect(slow[0].stripDetail[0].preamp).toBeNull();
+    expect(slow[0].stripDetail[0].sends).toBeNull();
+    expect(slow[0].stripDetail[0].gate).not.toBeNull();
+  });
+
+  it('a slow-tier failure after a good read keeps the last value with its older read time so it ages', async () => {
+    let failing = false;
+    recordingConsole((path) => failing && path.endsWith('/gate'));
+    let state = initialSlowTierState(4);
+    let clock = 100;
+    state = await readSlowTier(deps(), IP, state, () => clock);
+    failing = true;
+    clock = 900;
+    state = await readSlowTier(deps(), IP, { ...state, cursor: { detail: 0, sends: 0, surface: 0 } }, () => clock);
+
+    expect(state.stripDetail[0].gate?.readAt).toBe(100);
+    expect(state.stripDetail[0].preamp?.readAt).toBe(900);
+  });
+
+  it('reads no slow tier at all when no slow-tier listener is attached', async () => {
+    vi.useFakeTimers();
+    const recorded = recordingConsole();
+
+    const handle = startChannelStateSubscription(deps(), GRANTED, IP, () => {}, () => {}, { pollIntervalMs: 1000 });
+    await vi.advanceTimersByTimeAsync(0);
+    handle.stop();
+
+    expect(recorded).toHaveLength(96);
+  });
+
+  it('drops the slow-tier result when stopped while the slow tier is in flight', async () => {
+    vi.useFakeTimers();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    queryConsoleMock.mockImplementation(async (_d: unknown, _ip: unknown, _a: string, _m: unknown, opts: { requestArgs: Array<{ value: string }> }) => {
+      const path = opts.requestArgs[0].value;
+      if (path === '/ch/01/preamp') await gate;
+      return sceneLine(path);
+    });
+    const slow: ConsoleSlowTierSnapshot[] = [];
+
+    const handle = startChannelStateSubscription(deps(), GRANTED, IP, () => {}, () => {}, {
+      pollIntervalMs: 1000,
+      onSlowTier: (snap) => slow.push(snap),
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    handle.stop();
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(slow).toEqual([]);
   });
 });

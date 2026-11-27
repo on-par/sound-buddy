@@ -75,6 +75,7 @@ import DirectoryPanel from './DirectoryPanel';
 import LicenseChrome from './LicenseChrome';
 import ConsoleNetworkConsentDialog from './ConsoleNetworkConsentDialog';
 import ConsolePanel from './ConsolePanel';
+import MixerPanel from './MixerPanel';
 import UpdateBanner from './UpdateBanner';
 import WhatsNewBanner from './WhatsNewBanner';
 import OnboardingDialog from './OnboardingDialog';
@@ -415,6 +416,7 @@ export default function App() {
       {booted && createPortal(<LiveSessionOffers />, document.getElementById('live-session-offers-island')!)}
       {/* #989: the Console panel moved to its own workspace, away from Live. */}
       {booted && createPortal(<ConsolePanel />, document.getElementById('tab-console')!)}
+      {booted && createPortal(<MixerPanel />, document.getElementById('tab-mixer')!)}
       {booted && createPortal(<WindowBadge />, document.getElementById('window-badge-island')!)}
       {booted && createPortal(<LiveMixAlert />, document.getElementById('live-mix-alert-island')!)}
       {booted && createPortal(<RigDialog />, document.getElementById('rig-dialog-island')!)}

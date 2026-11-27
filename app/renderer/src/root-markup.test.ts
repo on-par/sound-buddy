@@ -75,6 +75,21 @@ describe('Console workspace separation (#989)', () => {
   });
 });
 
+describe('Mixer workspace', () => {
+  it('has its own full-stage tab content beside the workspace, outside the Source panel', () => {
+    const stage = markup.slice(markup.indexOf('<div id="stage">'), markup.indexOf('<div id="reportcard-view">'));
+    const workspaceEnd = stage.indexOf('id="live-eq-pane"');
+    expect(stage.indexOf('<div class="tab-content" id="tab-mixer"></div>')).toBeGreaterThan(workspaceEnd);
+    const source = markup.slice(markup.indexOf('id="source-panel"'), markup.indexOf('id="spectrum-panel"'));
+    expect(source).not.toContain('tab-mixer');
+  });
+
+  it('portals MixerPanel onto #tab-mixer', () => {
+    const appSrc = fs.readFileSync(fileURLToPath(new URL('./App.tsx', import.meta.url)), 'utf8');
+    expect(appSrc).toContain("createPortal(<MixerPanel />, document.getElementById('tab-mixer')!)");
+  });
+});
+
 describe('Live monitoring visibly leads to a Report Card (#488)', () => {
   it('shows a pre-start cue that listening builds a live Report Card (LiveSessionOffers.tsx)', () => {
     expect(liveSessionOffersTsx).toContain('id="live-rc-cue"');

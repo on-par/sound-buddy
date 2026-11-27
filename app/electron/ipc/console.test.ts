@@ -214,12 +214,13 @@ describe('start-console-live-state / stop-console-live-state', () => {
       { consoleNetworkConsentGranted: true },
       '10.0.0.5',
       expect.any(Function),
-      expect.any(Function)
+      expect.any(Function),
+      { onSlowTier: expect.any(Function) }
     );
   });
 
-  it('forwards a snapshot as { channels } on console-live-state', async () => {
-    let onSnapshot!: (channels: unknown) => void;
+  it('forwards a snapshot as { channels, readAt } on console-live-state', async () => {
+    let onSnapshot!: (channels: unknown, readAt: number) => void;
     startChannelStateSubscriptionMock.mockImplementation((_deps, _settings, _ip, snap) => {
       onSnapshot = snap;
       return { stop: vi.fn() };
@@ -227,12 +228,44 @@ describe('start-console-live-state / stop-console-live-state', () => {
     const { event, sent } = makeFakeEvent();
 
     await startLiveState(event, '10.0.0.5');
-    onSnapshot([{ index: 1, name: 'Kick', faderDb: -10.5, on: true }]);
+    onSnapshot([{ index: 1, name: 'Kick', faderDb: -10.5, on: true }], 1234);
 
     expect(sent).toContainEqual([
       'console-live-state',
-      { channels: [{ index: 1, name: 'Kick', faderDb: -10.5, on: true }] },
+      { channels: [{ index: 1, name: 'Kick', faderDb: -10.5, on: true }], readAt: 1234 },
     ]);
+  });
+
+  it('forwards a slow-tier snapshot as a { stripDetail } push and a { surfaces } push', async () => {
+    let onSlowTier!: (snapshot: unknown) => void;
+    startChannelStateSubscriptionMock.mockImplementation((_d, _s, _ip, _snap, _err, opts) => {
+      onSlowTier = opts.onSlowTier;
+      return { stop: vi.fn() };
+    });
+    const { event, sent } = makeFakeEvent();
+    const stripDetail = [{ index: 1, preamp: null, gate: null, eq: null, sends: null }];
+    const surfaces = { buses: [], main: { kind: 'main', index: null, name: null, mix: null } };
+
+    await startLiveState(event, '10.0.0.5');
+    onSlowTier({ stripDetail, surfaces });
+
+    expect(sent).toContainEqual(['console-live-state', { stripDetail }]);
+    expect(sent).toContainEqual(['console-live-state', { surfaces }]);
+  });
+
+  it('drops a slow-tier snapshot when the sender is destroyed', async () => {
+    let onSlowTier!: (snapshot: unknown) => void;
+    startChannelStateSubscriptionMock.mockImplementation((_d, _s, _ip, _snap, _err, opts) => {
+      onSlowTier = opts.onSlowTier;
+      return { stop: vi.fn() };
+    });
+    const { event, sent, setDestroyed } = makeFakeEvent();
+
+    await startLiveState(event, '10.0.0.5');
+    setDestroyed(true);
+    onSlowTier({ stripDetail: [], surfaces: { buses: [], main: null } });
+
+    expect(sent).toEqual([]);
   });
 
   it('forwards a walk failure as { error } on console-live-state', async () => {
@@ -338,7 +371,7 @@ describe('start-console-live-state / stop-console-live-state', () => {
     );
   });
 
-  it('forwards a meter frame as { meters: { inputs } } on console-live-state, dropping gate/dynamics bands', async () => {
+  it('forwards a meter frame as { meters } on console-live-state, carrying the gate and dynamics GR bands', async () => {
     let onFrame!: (snapshot: unknown) => void;
     startChannelStateSubscriptionMock.mockReturnValue({ stop: vi.fn() });
     startMeterSubscriptionMock.mockImplementation((_deps, _settings, _ip, frame) => {
@@ -350,7 +383,10 @@ describe('start-console-live-state / stop-console-live-state', () => {
     await startLiveState(event, '10.0.0.5');
     onFrame({ inputs: [0.5, 0.25], gateGainReduction: [1], dynamicsGainReduction: [1] });
 
-    expect(sent).toContainEqual(['console-live-state', { meters: { inputs: [0.5, 0.25] } }]);
+    expect(sent).toContainEqual([
+      'console-live-state',
+      { meters: { inputs: [0.5, 0.25], gateGainReduction: [1], dynamicsGainReduction: [1] } },
+    ]);
   });
 
   it('skips the meter send when the sender is destroyed', async () => {

@@ -35,7 +35,7 @@ const LOADED_SETTINGS: AppSettings = {
   gradingProfile: 'casual', gradingRubric: {},
   consoleNetworkConsentGranted: false,
   soundcheckBuses: [],
-  splCalibrationOffsetDb: null, lastAppMode: '',
+  splCalibrationOffsetDb: null, mixerAttentionCap: 3, lastAppMode: '',
 };
 
 describe('storageFolderDisplay', () => {

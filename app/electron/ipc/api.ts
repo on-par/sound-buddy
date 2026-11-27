@@ -51,7 +51,12 @@ export interface UpdateSettingsPatch {
   consoleNetworkConsentGranted?: boolean;
   soundcheckBuses?: SoundcheckBus[];
   splCalibrationOffsetDb?: number | null;
+  mixerAttentionCap?: MixerAttentionCap;
 }
+
+export const MIXER_ATTENTION_CAPS = [2, 3] as const;
+export type MixerAttentionCap = (typeof MIXER_ATTENTION_CAPS)[number];
+export const DEFAULT_MIXER_ATTENTION_CAP: MixerAttentionCap = 3;
 
 /**
  * The user-editable grading rubric (Settings ▸ Grading ▸ Rubric). Each key is a
@@ -509,6 +514,7 @@ export interface AppSettings {
    * measured user action, never a launch-time override.
    */
   splCalibrationOffsetDb: number | null;
+  mixerAttentionCap: MixerAttentionCap;
 }
 
 // ─── Analysis / storage DTOs (AnalysisSummary moved from electron/storage.ts) ─
@@ -805,11 +811,83 @@ export interface ConsoleChannelStateDto {
   name: string;
   faderDb: number;
   on: boolean;
+  color: ConsoleChannelColorDto;
+  icon: number | null;
+  dynamics: ConsoleDynamicsDto;
+}
+
+export type ConsoleChannelColorBase = 'off' | 'red' | 'green' | 'yellow' | 'blue' | 'magenta' | 'cyan' | 'white';
+
+export interface ConsoleChannelColorDto {
+  base: ConsoleChannelColorBase | null;
+  inverted: boolean;
+}
+
+export interface ConsoleDynamicsDto {
+  on: boolean;
+  mode: string;
+  thr: number;
+  ratio: number;
+  knee: number;
+  mgain: number;
 }
 
 /** One console-live-state push: a whole-snapshot replacement, never a delta. */
 export interface ConsoleLiveStateDto {
   channels: ConsoleChannelStateDto[];
+  readAt: number;
+}
+
+export interface ConsoleAgedDto<T> {
+  value: T;
+  readAt: number;
+}
+
+export interface ConsolePreampDto {
+  trim: number;
+  invert: boolean;
+  hpf: { on: boolean; slope: number; freq: number };
+}
+
+export interface ConsoleGateDto {
+  on: boolean;
+  mode: string;
+  thr: number;
+  range: number;
+  attack: number;
+  hold: number;
+  release: number;
+}
+
+export interface ConsoleEqDto {
+  on: boolean;
+  bands: Array<{ type: string; freq: string; gain: number; q: number }>;
+}
+
+export interface ConsoleSendDto {
+  bus: number;
+  on: boolean;
+  level: number;
+}
+
+export interface ConsoleStripDetailDto {
+  index: number;
+  preamp: ConsoleAgedDto<ConsolePreampDto> | null;
+  gate: ConsoleAgedDto<ConsoleGateDto> | null;
+  eq: ConsoleAgedDto<ConsoleEqDto> | null;
+  sends: ConsoleAgedDto<ConsoleSendDto[]> | null;
+}
+
+export interface ConsoleMixSurfaceDto {
+  kind: 'bus' | 'main';
+  index: number | null;
+  name: ConsoleAgedDto<string> | null;
+  mix: ConsoleAgedDto<{ on: boolean; faderDb: number }> | null;
+}
+
+export interface ConsoleSurfacesDto {
+  buses: ConsoleMixSurfaceDto[];
+  main: ConsoleMixSurfaceDto;
 }
 
 /** One /meters/1 push reduced to what the panel draws: the 32 input levels for
@@ -818,6 +896,8 @@ export interface ConsoleLiveStateDto {
  *  to dB happens at the display edge — see ConsolePanel.tsx's meterDbfs. */
 export interface ConsoleMeterFrameDto {
   inputs: number[];
+  gateGainReduction: number[];
+  dynamicsGainReduction: number[];
 }
 
 /** How the console link looks right now (#886). Structural mirror of
@@ -835,6 +915,8 @@ export type ConsoleLiveStateEvent =
   | ConsoleLiveStateDto
   | { meters: ConsoleMeterFrameDto }
   | { link: ConsoleLinkStateDto }
+  | { stripDetail: ConsoleStripDetailDto[] }
+  | { surfaces: ConsoleSurfacesDto }
   | { error: string };
 
 export type StartConsoleLiveStateResult =

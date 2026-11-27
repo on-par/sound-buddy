@@ -23,7 +23,7 @@ import type {
   SoundcheckBus,
   GradingRubricOverrides,
 } from './ipc/api';
-import { GRADING_RUBRIC_KEYS, GRADING_RUBRIC_BOUNDS } from './ipc/api';
+import { GRADING_RUBRIC_KEYS, GRADING_RUBRIC_BOUNDS, MIXER_ATTENTION_CAPS, DEFAULT_MIXER_ATTENTION_CAP, type MixerAttentionCap } from './ipc/api';
 
 // These DTOs are homed in ipc/api.ts (TD-011, #405) — the renderer-safe
 // boundary type both tsc programs share — and re-exported here so existing
@@ -431,7 +431,16 @@ export const SETTING_SPECS: { [K in keyof AppSettings]: SettingSpec<AppSettings[
           ? v
           : undefined,
   },
+  mixerAttentionCap: {
+    default: DEFAULT_MIXER_ATTENTION_CAP,
+    sanitizeFile: (v) => (isMixerAttentionCap(v) ? v : SETTING_SPECS.mixerAttentionCap.default),
+    sanitizePatch: (v) => (isMixerAttentionCap(v) ? v : undefined),
+  },
 };
+
+export function isMixerAttentionCap(v: unknown): v is MixerAttentionCap {
+  return (MIXER_ATTENTION_CAPS as readonly unknown[]).includes(v);
+}
 
 function settingsPath(): string {
   return path.join(app.getPath('userData'), 'settings.json');

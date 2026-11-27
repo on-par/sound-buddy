@@ -16,6 +16,8 @@ import type {
   ConsoleIdentityDto,
   ConsoleChannelStateDto,
   ConsoleLinkStateDto,
+  ConsoleStripDetailDto,
+  ConsoleSurfacesDto,
   SceneDiffDto,
   AnalysisApi,
 } from '../../../electron/ipc/api';
@@ -61,6 +63,11 @@ export interface ConsoleState {
   /** Meter input levels, linear 0..1, index 0 = channel 1 (#978). Independent
    *  of liveChannels — cleared everywhere liveChannels is cleared. */
   liveMeters: number[];
+  liveGateGainReduction: number[];
+  liveDynamicsGainReduction: number[];
+  liveChannelsReadAt: number | null;
+  liveStripDetail: ConsoleStripDetailDto[];
+  liveSurfaces: ConsoleSurfacesDto | null;
   /** Console link health (#886) — reachability + meter-subscription liveness.
    *  Independent of liveStateStatus: a healthy watch session can still show
    *  an offline console or degraded meters mid-session. */
@@ -101,6 +108,11 @@ const INITIAL_STATE = {
   liveStateStatus: 'idle' as ConsoleLiveStateStatus,
   liveStateError: null as string | null,
   liveMeters: [] as number[],
+  liveGateGainReduction: [] as number[],
+  liveDynamicsGainReduction: [] as number[],
+  liveChannelsReadAt: null as number | null,
+  liveStripDetail: [] as ConsoleStripDetailDto[],
+  liveSurfaces: null as ConsoleSurfacesDto | null,
   link: INITIAL_CONSOLE_LINK,
   captureStatus: 'idle' as ConsoleCaptureStatus,
   captureDone: 0,
@@ -245,14 +257,31 @@ export function createConsoleStore(
             return;
           }
           if ('meters' in evt) {
-            set({ liveMeters: evt.meters.inputs });
+            set({
+              liveMeters: evt.meters.inputs,
+              liveGateGainReduction: evt.meters.gateGainReduction,
+              liveDynamicsGainReduction: evt.meters.dynamicsGainReduction,
+            });
             return;
           }
           if ('link' in evt) {
             set({ link: evt.link });
             return;
           }
-          set({ liveChannels: evt.channels, liveStateStatus: 'watching', liveStateError: null });
+          if ('stripDetail' in evt) {
+            set({ liveStripDetail: evt.stripDetail });
+            return;
+          }
+          if ('surfaces' in evt) {
+            set({ liveSurfaces: evt.surfaces });
+            return;
+          }
+          set({
+            liveChannels: evt.channels,
+            liveChannelsReadAt: evt.readAt,
+            liveStateStatus: 'watching',
+            liveStateError: null,
+          });
         });
       }
       // Set 'starting' after the listener bind so a push that lands during

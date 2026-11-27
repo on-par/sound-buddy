@@ -66,7 +66,7 @@ function fakeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
     measurementDeviceName: '', gradingProfile: 'casual', gradingRubric: {}, consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
-    splCalibrationOffsetDb: null, lastAppMode: '',
+    splCalibrationOffsetDb: null, mixerAttentionCap: 3, lastAppMode: '',
     ...overrides,
   };
 }

@@ -14,9 +14,25 @@
 
 import { loadConsoleModule } from '../console-loader';
 import { assertConsoleNetworkConsent } from '../console-network-consent';
-import type { AppSettings } from './api';
+import type {
+  AppSettings,
+  ConsoleChannelColorDto,
+  ConsoleDynamicsDto,
+  ConsoleStripDetailDto,
+  ConsoleSurfacesDto,
+} from './api';
 import type { ConsoleDiscoveryDeps } from './console-discovery';
 import { queryConsole, type ConsoleQueryOptions } from './console-connection';
+import {
+  INITIAL_SLOW_TIER_CURSOR,
+  planSlowTier,
+  emptyStripDetail,
+  emptySurfaces,
+  applyDetailLines,
+  applySendLines,
+  applySurfaceLine,
+  type SlowTierCursor,
+} from './console-strip-detail';
 
 const { parseChannelStrips, parseNodeReplyLine } = loadConsoleModule();
 
@@ -33,6 +49,14 @@ export interface ConsoleChannelState {
   name: string;
   faderDb: number;
   on: boolean;
+  color: ConsoleChannelColorDto;
+  icon: number | null;
+  dynamics: ConsoleDynamicsDto;
+}
+
+export interface ConsoleSlowTierSnapshot {
+  stripDetail: ConsoleStripDetailDto[];
+  surfaces: ConsoleSurfacesDto;
 }
 
 export interface ChannelStateSubscriptionHandle {
@@ -45,8 +69,42 @@ export function channelNodePaths(count: number = CONSOLE_CHANNEL_COUNT): string[
     const padded = String(n).padStart(CHANNEL_INDEX_PAD, '0');
     paths.push(`/ch/${padded}/config`);
     paths.push(`/ch/${padded}/mix`);
+    paths.push(`/ch/${padded}/dyn`);
   }
   return paths;
+}
+
+async function readNodeLine(
+  deps: ConsoleDiscoveryDeps,
+  ip: string,
+  path: string,
+  queryOptions: ConsoleQueryOptions | undefined,
+  attempts: number
+): Promise<string> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await queryConsole(deps, ip, '/node', (m) => parseNodeReplyLine(path, m), {
+        ...queryOptions,
+        requestArgs: [{ type: 's', value: path }],
+      });
+    } catch (err) {
+      if (attempt >= attempts - 1) throw err;
+    }
+  }
+}
+
+async function readOptionalNodeLine(
+  deps: ConsoleDiscoveryDeps,
+  ip: string,
+  path: string,
+  queryOptions: ConsoleQueryOptions | undefined
+): Promise<string | null> {
+  try {
+    return await readNodeLine(deps, ip, path, queryOptions, 1);
+  } catch (err) {
+    deps.log(`console-channel-state: slow-tier read of ${path} failed for ${ip}; keeping the last value: ${String(err)}`);
+    return null;
+  }
 }
 
 // Sequential, not parallel: the same rate-limit rationale console-scene-capture.ts
@@ -64,19 +122,7 @@ export async function readChannelStates(
   for (const path of paths) {
     try {
       const attempts = path === paths[0] ? INITIAL_CHANNEL_CONFIG_READ_ATTEMPTS : 1;
-      let line = '';
-      for (let attempt = 0; attempt < attempts; attempt++) {
-        try {
-          line = await queryConsole(deps, ip, '/node', (m) => parseNodeReplyLine(path, m), {
-            ...options?.queryOptions,
-            requestArgs: [{ type: 's', value: path }],
-          });
-          break;
-        } catch (err) {
-          if (attempt === attempts - 1) throw err;
-        }
-      }
-      lines.push(line);
+      lines.push(await readNodeLine(deps, ip, path, options?.queryOptions, attempts));
     } catch (err) {
       const diagnostic =
         lines.length === 0
@@ -94,21 +140,85 @@ export async function readChannelStates(
   }
 
   const strips = parseChannelStrips(lines.join('\n'));
-  return strips.map((s) => ({ index: s.index, name: s.name, faderDb: s.fader, on: s.on }));
+  return strips.map((s) => ({
+    index: s.index,
+    name: s.name,
+    faderDb: s.fader,
+    on: s.on,
+    color: s.color,
+    icon: s.icon,
+    dynamics: s.dynamics,
+  }));
+}
+
+export interface SlowTierState {
+  cursor: SlowTierCursor;
+  stripDetail: ConsoleStripDetailDto[];
+  surfaces: ConsoleSurfacesDto;
+}
+
+export function initialSlowTierState(channelCount: number = CONSOLE_CHANNEL_COUNT): SlowTierState {
+  return {
+    cursor: INITIAL_SLOW_TIER_CURSOR,
+    stripDetail: Array.from({ length: channelCount }, (_, i) => emptyStripDetail(i + 1)),
+    surfaces: emptySurfaces(),
+  };
+}
+
+export async function readSlowTier(
+  deps: ConsoleDiscoveryDeps,
+  ip: string,
+  state: SlowTierState,
+  now: () => number,
+  queryOptions?: ConsoleQueryOptions
+): Promise<SlowTierState> {
+  const plan = planSlowTier(state.cursor, state.stripDetail.length);
+  let stripDetail = state.stripDetail;
+  let surfaces = state.surfaces;
+  for (const request of plan.requests) {
+    if (request.kind === 'surface') {
+      const line = await readOptionalNodeLine(deps, ip, request.path, queryOptions);
+      surfaces = applySurfaceLine(surfaces, request.path, line, now());
+      continue;
+    }
+    const lines: Array<string | null> = [];
+    for (const path of request.paths) lines.push(await readOptionalNodeLine(deps, ip, path, queryOptions));
+    const readAt = now();
+    stripDetail = stripDetail.map((d) => {
+      if (d.index !== request.channel) return d;
+      return request.kind === 'detail' ? applyDetailLines(d, lines, readAt) : applySendLines(d, lines, readAt);
+    });
+  }
+  return { cursor: plan.next, stripDetail, surfaces };
 }
 
 export function startChannelStateSubscription(
   deps: ConsoleDiscoveryDeps,
   settings: Pick<AppSettings, 'consoleNetworkConsentGranted'>,
   ip: string,
-  onSnapshot: (channels: ConsoleChannelState[]) => void,
+  onSnapshot: (channels: ConsoleChannelState[], readAt: number) => void,
   onError: (message: string) => void,
-  options?: { pollIntervalMs?: number; channelCount?: number; queryOptions?: ConsoleQueryOptions }
+  options?: {
+    pollIntervalMs?: number;
+    channelCount?: number;
+    queryOptions?: ConsoleQueryOptions;
+    now?: () => number;
+    onSlowTier?: (snapshot: ConsoleSlowTierSnapshot) => void;
+  }
 ): ChannelStateSubscriptionHandle {
   assertConsoleNetworkConsent(settings);
 
   let stopped = false;
   let inFlight = false;
+  const now = options?.now ?? Date.now;
+  const onSlowTier = options?.onSlowTier;
+  let slowTier = initialSlowTierState(options?.channelCount);
+
+  const runSlowTier = async (): Promise<void> => {
+    if (!onSlowTier) return;
+    slowTier = await readSlowTier(deps, ip, slowTier, now, options?.queryOptions);
+    if (!stopped) onSlowTier({ stripDetail: slowTier.stripDetail, surfaces: slowTier.surfaces });
+  };
 
   const tick = () => {
     if (stopped || inFlight) return;
@@ -116,7 +226,9 @@ export function startChannelStateSubscription(
     readChannelStates(deps, settings, ip, { channelCount: options?.channelCount, queryOptions: options?.queryOptions })
       .then(
         (channels) => {
-          if (!stopped) onSnapshot(channels);
+          if (stopped) return;
+          onSnapshot(channels, now());
+          return runSlowTier();
         },
         (err) => {
           if (!stopped) {

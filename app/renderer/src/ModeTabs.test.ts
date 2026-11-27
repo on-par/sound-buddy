@@ -292,3 +292,41 @@ describe('ModeTabs Listen live wiring (#1485)', () => {
     expect(await analyzeTabTarget(ROOM_MIC)).toBe('live-eq');
   });
 });
+
+describe('Mixer tab', () => {
+  function mixerButton(html: string): string {
+    const start = html.indexOf('data-mode="mixer"');
+    return html.slice(start, html.indexOf('</button>', start));
+  }
+
+  it('sits directly after Console and carries a NEW badge', () => {
+    useSettingsStore.setState({ settings: settings(), featureFlags: ALL_FEATURE_FLAGS_ON });
+    const html = renderMarkup();
+    const order = ['console', 'mixer', 'recent'].map((m) => html.indexOf(`data-mode="${m}"`));
+    expect(order[0]).toBeLessThan(order[1]);
+    expect(order[1]).toBeLessThan(order[2]);
+    expect(mixerButton(html)).toContain('<span class="tab-new">NEW</span>');
+    expect(mixerButton(html)).toContain('Mixer');
+    expect(mixerButton(html)).not.toContain('hidden=""');
+  });
+
+  it('is hidden when only mixer is on', () => {
+    useSettingsStore.setState({ settings: settings(), featureFlags: resolveFeatureFlags({ SOUND_BUDDY_FEATURES: 'mixer' }) });
+    expect(mixerButton(renderMarkup())).toContain('hidden=""');
+  });
+
+  it('is hidden when only console is on', () => {
+    useSettingsStore.setState({ settings: settings(), featureFlags: resolveFeatureFlags({ SOUND_BUDDY_FEATURES: 'console' }) });
+    expect(mixerButton(renderMarkup())).toContain('hidden=""');
+  });
+
+  it('is visible when console and mixer are both on', () => {
+    useSettingsStore.setState({ settings: settings(), featureFlags: resolveFeatureFlags({ SOUND_BUDDY_FEATURES: 'console,mixer' }) });
+    expect(mixerButton(renderMarkup())).not.toContain('hidden=""');
+  });
+
+  it('is hidden in Simple mode even with both flags on', () => {
+    useSettingsStore.setState({ settings: settings({ advancedFeaturesEnabled: false }), featureFlags: ALL_FEATURE_FLAGS_ON });
+    expect(mixerButton(renderMarkup())).toContain('hidden=""');
+  });
+});

@@ -27,10 +27,10 @@ import { clampBootMode, isModeFlagEnabled, isSimpleMode } from './simple-mode';
 import { decideAnalyzeHomeAutoListen } from './analyze-entry';
 import type { AppSettings } from '../../electron/ipc/api';
 
-export type WorkspaceMode = 'dir' | 'live' | 'console' | 'recent' | 'guide' | 'ringout' | 'reportcard';
+export type WorkspaceMode = 'dir' | 'live' | 'console' | 'mixer' | 'recent' | 'guide' | 'ringout' | 'reportcard';
 export type ModeSwitchRequest = WorkspaceMode | 'analyze' | 'history';
 
-const WORKSPACE_MODES: readonly WorkspaceMode[] = ['dir', 'live', 'console', 'recent', 'guide', 'ringout', 'reportcard'];
+const WORKSPACE_MODES: readonly WorkspaceMode[] = ['dir', 'live', 'console', 'mixer', 'recent', 'guide', 'ringout', 'reportcard'];
 const WORKSPACE_MODE_SET = new Set<string>(WORKSPACE_MODES);
 
 export function isWorkspaceMode(mode: string): mode is WorkspaceMode {
@@ -178,6 +178,7 @@ function landAnalyzeWorkspace(opts?: { boot?: boolean }): void {
 
   document.body.classList.remove('live-active');
   document.body.classList.remove('rc-active');
+  document.body.classList.remove('mixer-active');
   document.getElementById('reportcard-view')?.classList.remove('active');
   document.querySelectorAll('.tab-content').forEach((tc) => tc.classList.remove('active'));
 
@@ -265,6 +266,7 @@ export function switchMode(mode: WorkspaceMode, opts?: { boot?: boolean }): void
   // is active — collapse it via this class the same way rc-active already
   // does for the Report Card tab.
   document.body.classList.toggle('live-active', mode === 'live');
+  document.body.classList.toggle('mixer-active', mode === 'mixer');
 
   if (mode === 'live' && !opts?.boot) maybeAutoStartLive();
 

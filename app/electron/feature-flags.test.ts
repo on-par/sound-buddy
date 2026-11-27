@@ -34,7 +34,7 @@ describe('resolveFeatureFlags', () => {
     const flags = resolveFeatureFlags({ [FEATURE_FLAGS_ENV]: 'console, ringOut' });
     expect(flags).toEqual({
       reportCard: false, directory: false, session: false,
-      console: true, buildGuide: false, ringOut: true,
+      console: true, buildGuide: false, ringOut: true, mixer: false,
     });
   });
 
@@ -42,8 +42,19 @@ describe('resolveFeatureFlags', () => {
     const flags = resolveFeatureFlags({ [FEATURE_FLAGS_ENV]: 'session buildguide' });
     expect(flags).toEqual({
       reportCard: false, directory: false, session: true,
-      console: false, buildGuide: true, ringOut: false,
+      console: false, buildGuide: true, ringOut: false, mixer: false,
     });
+  });
+
+  it("'console,mixer' turns on mixer alongside console", () => {
+    const flags = resolveFeatureFlags({ [FEATURE_FLAGS_ENV]: 'console,mixer' });
+    expect(flags.mixer).toBe(true);
+    expect(flags.console).toBe(true);
+    expect(flags.session).toBe(false);
+  });
+
+  it('mixer stays off unless named, even with console on', () => {
+    expect(resolveFeatureFlags({ [FEATURE_FLAGS_ENV]: 'console' }).mixer).toBe(false);
   });
 
   it('ignores unknown tokens', () => {

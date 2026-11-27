@@ -38,6 +38,7 @@ import {
   saveCustomIdealProfiles,
   MAX_CUSTOM_IDEAL_PROFILES,
   SETTING_SPECS,
+  isMixerAttentionCap,
   sanitizeGradingRubric,
   deriveAdvancedFeaturesDefault,
   type AppSettings,
@@ -495,6 +496,38 @@ describe('splCalibrationOffsetDb (#846 — user-set SPL calibration offset, defa
     const reset = updateSettings({ splCalibrationOffsetDb: null });
     expect(reset.splCalibrationOffsetDb).toBeNull();
     expect(readFile().splCalibrationOffsetDb).toBeNull();
+  });
+});
+
+describe('mixerAttentionCap (Mixer attention cards shown at once)', () => {
+  it('defaults to 3 when settings.json is absent', () => {
+    expect(getSettings().mixerAttentionCap).toBe(3);
+  });
+
+  it('reads back a persisted 2', () => {
+    writeFile({ mixerAttentionCap: 2 });
+    expect(getSettings().mixerAttentionCap).toBe(2);
+  });
+
+  it.each([4, 1, '3', null, 2.5])('repairs a corrupted value (%p) back to 3', (corrupted) => {
+    writeFile({ mixerAttentionCap: corrupted });
+    expect(getSettings().mixerAttentionCap).toBe(3);
+  });
+
+  it('round-trips 2 then 3 through updateSettings and the raw file', () => {
+    expect(updateSettings({ mixerAttentionCap: 2 }).mixerAttentionCap).toBe(2);
+    expect(readFile().mixerAttentionCap).toBe(2);
+    expect(updateSettings({ mixerAttentionCap: 3 }).mixerAttentionCap).toBe(3);
+    expect(readFile().mixerAttentionCap).toBe(3);
+  });
+
+  it('drops a patch that is not 2 or 3', () => {
+    expect(SETTING_SPECS.mixerAttentionCap.sanitizePatch?.(5)).toBeUndefined();
+    expect(SETTING_SPECS.mixerAttentionCap.sanitizePatch?.(2)).toBe(2);
+  });
+
+  it('isMixerAttentionCap accepts only 2 and 3', () => {
+    expect([1, 2, 3, 4, '2'].map(isMixerAttentionCap)).toEqual([false, true, true, false, false]);
   });
 });
 
@@ -1115,7 +1148,7 @@ describe('SETTING_SPECS — the single owner of every field invariant (#747)', (
     gradingProfile: 'casual', gradingRubric: {},
     consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
-    splCalibrationOffsetDb: null, lastAppMode: '',
+    splCalibrationOffsetDb: null, mixerAttentionCap: 3, lastAppMode: '',
   };
 
   it('covers every AppSettings key — and no extras (compile-time + runtime set equality)', () => {

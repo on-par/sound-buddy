@@ -5,7 +5,7 @@ import type { AppSettings } from '../../electron/ipc/api';
 import type { FeatureFlagId, FeatureFlags } from '../../electron/feature-flags';
 import type { ModeSwitchRequest } from './mode-switch';
 
-export const ALL_TAB_MODES: readonly ModeSwitchRequest[] = ['analyze', 'history', 'dir', 'live', 'console', 'recent', 'guide', 'ringout'];
+export const ALL_TAB_MODES: readonly ModeSwitchRequest[] = ['analyze', 'history', 'dir', 'live', 'console', 'mixer', 'recent', 'guide', 'ringout'];
 const SIMPLE_TAB_MODES: readonly ModeSwitchRequest[] = ['analyze', 'history'];
 
 export function isSimpleMode(settings: AppSettings | null): boolean {
@@ -36,11 +36,17 @@ const MODE_FLAGS: Readonly<Partial<Record<ModeSwitchRequest, FeatureFlagId>>> = 
   dir: 'directory',
   live: 'session',
   console: 'console',
+  mixer: 'mixer',
   guide: 'buildGuide',
   ringout: 'ringOut',
 };
 
+const MODE_FLAG_PREREQUISITES: Readonly<Partial<Record<ModeSwitchRequest, FeatureFlagId>>> = {
+  mixer: 'console',
+};
+
 export function isModeFlagEnabled(mode: string, flags: FeatureFlags): boolean {
   const flag = MODE_FLAGS[mode as ModeSwitchRequest];
-  return flag === undefined || flags[flag];
+  const prerequisite = MODE_FLAG_PREREQUISITES[mode as ModeSwitchRequest];
+  return (flag === undefined || flags[flag]) && (prerequisite === undefined || flags[prerequisite]);
 }

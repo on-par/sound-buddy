@@ -45,7 +45,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     weeklyReminderServiceDay: 0, liveEqPaneWidth: 400,
     measurementDeviceName: '', gradingProfile: 'casual', gradingRubric: {}, consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
-    splCalibrationOffsetDb: null, lastAppMode: '',
+    splCalibrationOffsetDb: null, mixerAttentionCap: 3, lastAppMode: '',
     ...overrides,
   };
 }

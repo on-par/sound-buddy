@@ -36,7 +36,7 @@ const FULL_SETTINGS: AppSettings = {
   gradingRubric: {},
   consoleNetworkConsentGranted: false,
   soundcheckBuses: [],
-  splCalibrationOffsetDb: null, lastAppMode: '',
+  splCalibrationOffsetDb: null, mixerAttentionCap: 3, lastAppMode: '',
 };
 
 describe('instantSettingValues', () => {

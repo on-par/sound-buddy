@@ -19,7 +19,7 @@ const SETTINGS: AppSettings = {
   channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: false, liveAdjustmentsEnabled: false,
   advancedFeaturesEnabled: true, lineCheckCalibrationEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
   measurementDeviceName: '', gradingProfile: 'casual', gradingRubric: {}, consoleNetworkConsentGranted: false, soundcheckBuses: [],
-  splCalibrationOffsetDb: null, lastAppMode: '',
+  splCalibrationOffsetDb: null, mixerAttentionCap: 3, lastAppMode: '',
 };
 
 function render(): string {

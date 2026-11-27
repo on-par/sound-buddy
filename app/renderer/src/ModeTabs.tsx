@@ -22,6 +22,7 @@ interface TabDef {
   icon: string;
   label: string;
   lock?: boolean;
+  isNew?: boolean;
 }
 
 // Verbatim port of root-markup.html's 9 buttons, minus Report Card, which
@@ -33,13 +34,15 @@ const TABS: TabDef[] = [
   { mode: 'dir', icon: 'folder', label: 'Directory' },
   { mode: 'live', icon: 'radio', label: 'Session', lock: true },
   { mode: 'console', icon: 'sliders', label: 'Console' },
+  { mode: 'mixer', icon: 'mixer', label: 'Mixer', isNew: true },
   { mode: 'recent', icon: 'clock', label: 'Recent' },
   { mode: 'guide', icon: 'clipboard-check', label: 'Build Guide' },
   { mode: 'ringout', icon: 'waves', label: 'Ring Out' },
 ];
 
 function tabHtml(tab: TabDef): string {
-  return iconSvg(tab.icon, 16) + tab.label + (tab.lock ? `<span class="tab-lock">${iconSvg('lock', 11)}</span>` : '');
+  return iconSvg(tab.icon, 16) + tab.label + (tab.lock ? `<span class="tab-lock">${iconSvg('lock', 11)}</span>` : '')
+    + (tab.isNew ? '<span class="tab-new">NEW</span>' : '');
 }
 
 export default function ModeTabs(): JSX.Element {

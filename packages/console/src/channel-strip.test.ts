@@ -6,6 +6,8 @@ import {
   buildChannelFaderPath,
   buildHeadampGainPath,
   buildDcaFaderPath,
+  parseChannelColor,
+  NEUTRAL_CHANNEL_COLOR,
 } from './channel-strip.js'
 
 function assertNoNaN(value: unknown, path: string): void {
@@ -149,5 +151,63 @@ describe('buildDcaFaderPath', () => {
   it('does not pad the DCA index and has no mix segment', () => {
     expect(buildDcaFaderPath(1)).toBe('/dca/1/fader')
     expect(buildDcaFaderPath(8)).toBe('/dca/8/fader')
+  })
+})
+
+describe('parseChannelStrips colour and icon', () => {
+  const fixture = readFileSync(new URL('./capture-2026-08-16.scn', import.meta.url), 'utf8')
+
+  it('reads icon and colour from the scene fixture config lines', () => {
+    const strips = parseChannelStrips(fixture)
+    expect(strips[0]).toMatchObject({ index: 1, name: '', icon: 1, color: { base: 'magenta', inverted: false } })
+    expect(strips[4]).toMatchObject({ index: 5, name: 'MC', icon: 1, color: { base: 'white', inverted: false } })
+    expect(strips[11].color).toEqual({ base: 'yellow', inverted: false })
+    expect(strips[12].color).toEqual({ base: 'off', inverted: false })
+    expect(strips[20].color).toEqual({ base: 'green', inverted: false })
+    expect(strips[10].color).toEqual({ base: 'blue', inverted: false })
+    expect(strips[6].color).toEqual({ base: 'red', inverted: false })
+    expect(strips[5].color).toEqual({ base: 'cyan', inverted: false })
+  })
+
+  it('maps an unknown colour token to the neutral colour, never a guess', () => {
+    const [strip] = parseChannelStrips('/ch/01/config "Vox" 4 PK 1')
+    expect(strip.color).toEqual(NEUTRAL_CHANNEL_COLOR)
+    expect(strip.icon).toBe(4)
+  })
+
+  it('leaves icon null and colour neutral when the config line carries only a name', () => {
+    const [strip] = parseChannelStrips('/ch/01/config "Vox"')
+    expect(strip.icon).toBeNull()
+    expect(strip.color).toEqual(NEUTRAL_CHANNEL_COLOR)
+  })
+
+  it('leaves icon null when the icon token is not an integer', () => {
+    const [strip] = parseChannelStrips('/ch/01/config "Vox" x RD 1')
+    expect(strip.icon).toBeNull()
+    expect(strip.color).toEqual({ base: 'red', inverted: false })
+  })
+})
+
+describe('parseChannelColor', () => {
+  it.each([
+    ['OFF', 'off'], ['RD', 'red'], ['GN', 'green'], ['YE', 'yellow'],
+    ['BL', 'blue'], ['MG', 'magenta'], ['CY', 'cyan'], ['WH', 'white'],
+  ] as const)('%s is %s, not inverted', (token, base) => {
+    expect(parseChannelColor(token)).toEqual({ base, inverted: false })
+  })
+
+  it.each([
+    ['OFFi', 'off'], ['RDi', 'red'], ['GNi', 'green'], ['YEi', 'yellow'],
+    ['BLi', 'blue'], ['MGi', 'magenta'], ['CYi', 'cyan'], ['WHi', 'white'],
+  ] as const)('%s is inverted %s', (token, base) => {
+    expect(parseChannelColor(token)).toEqual({ base, inverted: true })
+  })
+
+  it.each(['rd', 'Rd', 'PK', 'RDI', 'i', '', 'toString', 'constructori'])('%p is neutral', (token) => {
+    expect(parseChannelColor(token)).toEqual(NEUTRAL_CHANNEL_COLOR)
+  })
+
+  it('is neutral for a missing token', () => {
+    expect(parseChannelColor(undefined)).toEqual(NEUTRAL_CHANNEL_COLOR)
   })
 })
