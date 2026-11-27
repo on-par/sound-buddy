@@ -200,6 +200,8 @@ export type {
   ChannelGate,
   ChannelDynamics,
   ChannelEq,
+  ChannelColor,
+  ChannelColorBase,
 } from './channel-strip.js'
 export {
   parseChannelStrips,
@@ -207,7 +209,11 @@ export {
   buildChannelFaderPath,
   buildHeadampGainPath,
   buildDcaFaderPath,
+  parseChannelColor,
+  NEUTRAL_CHANNEL_COLOR,
 } from './channel-strip.js'
+export type { ChannelSend } from './channel-sends.js'
+export { parseChannelSends, parseChannelSendLine, isActiveSend } from './channel-sends.js'
 export type {
   ConsoleSurfaces,
   MixStrip,

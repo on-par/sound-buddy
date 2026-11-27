@@ -23,8 +23,8 @@ import { useLiveCaptureStore } from './stores/liveCaptureStore';
 const CONSOLE_A = { ip: '10.0.0.5', model: 'M32R', firmware: '4.0' };
 const CONSOLE_B = { ip: '10.0.0.9', model: 'M32R', firmware: '4.0' };
 const IDENTITY_A = { ip: '10.0.0.5', model: 'M32R', firmware: '4.0', name: 'Main Console' };
-const CHANNEL_1 = { index: 1, name: 'Kick', faderDb: -10.5, on: true };
-const CHANNEL_3_UNNAMED = { index: 3, name: '', faderDb: 0, on: false };
+const CHANNEL_1 = { index: 1, name: 'Kick', faderDb: -10.5, on: true, color: { base: null, inverted: false }, icon: null, dynamics: { on: false, mode: 'COMP', thr: 0, ratio: 3, knee: 1, mgain: 0 } };
+const CHANNEL_3_UNNAMED = { index: 3, name: '', faderDb: 0, on: false, color: { base: null, inverted: false }, icon: null, dynamics: { on: false, mode: 'COMP', thr: 0, ratio: 3, knee: 1, mgain: 0 } };
 
 const CONSOLE_INITIAL_STATE = {
   scanStatus: 'idle' as const,

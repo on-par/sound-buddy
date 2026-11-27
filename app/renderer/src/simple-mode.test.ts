@@ -23,7 +23,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
 describe('simple-mode', () => {
   it('treats null settings as Advanced while the store is still loading', () => {
     expect(isSimpleMode(null)).toBe(false);
-    expect(visibleTabModes(null)).toEqual(['analyze', 'history', 'dir', 'live', 'console', 'recent', 'guide', 'ringout']);
+    expect(visibleTabModes(null)).toEqual(['analyze', 'history', 'dir', 'live', 'console', 'mixer', 'recent', 'guide', 'ringout']);
   });
 
   it('is Simple mode only when advanced features are disabled', () => {
@@ -60,7 +60,7 @@ describe('simple-mode', () => {
 });
 
 describe('isModeFlagEnabled (#1520)', () => {
-  const GATED_MODES = ['reportcard', 'dir', 'live', 'console', 'guide', 'ringout'];
+  const GATED_MODES = ['reportcard', 'dir', 'live', 'console', 'mixer', 'guide', 'ringout'];
 
   it.each(GATED_MODES)('%s is disabled with all flags off', (mode) => {
     expect(isModeFlagEnabled(mode, ALL_FEATURE_FLAGS_OFF)).toBe(false);
@@ -79,6 +79,17 @@ describe('isModeFlagEnabled (#1520)', () => {
     expect(isModeFlagEnabled('console', flags)).toBe(true);
     expect(isModeFlagEnabled('live', flags)).toBe(false);
     expect(isModeFlagEnabled('dir', flags)).toBe(false);
+  });
+
+  it('mixer needs both its own flag and console', () => {
+    expect(isModeFlagEnabled('mixer', resolveFeatureFlags({ SOUND_BUDDY_FEATURES: 'mixer' }))).toBe(false);
+    expect(isModeFlagEnabled('mixer', resolveFeatureFlags({ SOUND_BUDDY_FEATURES: 'console' }))).toBe(false);
+    expect(isModeFlagEnabled('mixer', resolveFeatureFlags({ SOUND_BUDDY_FEATURES: 'console mixer' }))).toBe(true);
+  });
+
+  it('clampBootMode keeps mixer in Advanced mode and folds it to analyze in Simple mode', () => {
+    expect(clampBootMode('mixer', settings())).toBe('mixer');
+    expect(clampBootMode('mixer', settings({ advancedFeaturesEnabled: false }))).toBe('analyze');
   });
 
   // Byte-stability regression (#1520): visibleTabModes/clampBootMode are pure

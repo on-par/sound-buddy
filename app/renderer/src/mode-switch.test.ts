@@ -103,6 +103,7 @@ beforeEach(() => {
     'reportcard-view': makeFakeElement(),
     'tab-live': makeFakeElement(),
     'tab-console': makeFakeElement(),
+    'tab-mixer': makeFakeElement(),
     'tab-recent': makeFakeElement(),
   };
   tabContentEls = [makeFakeElement(), makeFakeElement()];
@@ -159,14 +160,14 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
     measurementDeviceName: '', gradingProfile: 'casual', gradingRubric: {}, consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
-    splCalibrationOffsetDb: null,
+    splCalibrationOffsetDb: null, mixerAttentionCap: 3,
     lastAppMode: '',
     ...overrides,
   };
 }
 
 describe('resolveModeSwitch', () => {
-  it.each(['dir', 'live', 'console', 'recent', 'guide', 'ringout', 'reportcard'])('%s is a supported workspace mode', (mode) => {
+  it.each(['dir', 'live', 'console', 'mixer', 'recent', 'guide', 'ringout', 'reportcard'])('%s is a supported workspace mode', (mode) => {
     expect(isWorkspaceMode(mode)).toBe(true);
   });
 
@@ -582,6 +583,40 @@ describe('switchMode', () => {
       switchMode('console');
 
       expect(useLiveCaptureStore.getState().appMode).toBe('console');
+    });
+
+    it('mixer redirects to the Analyze stage when only mixer is on', () => {
+      useSettingsStore.setState({
+        settings: settings({ advancedFeaturesEnabled: true }),
+        featureFlags: resolveFeatureFlags({ SOUND_BUDDY_FEATURES: 'mixer' }),
+      });
+
+      switchMode('mixer');
+
+      expect(useLiveCaptureStore.getState().appMode).toBe('analyze');
+      expect(bodyClassList.contains('mixer-active')).toBe(false);
+    });
+
+    it('mixer lands on its own full-body tab once console and mixer are on', () => {
+      useSettingsStore.setState({
+        settings: settings({ advancedFeaturesEnabled: true }),
+        featureFlags: resolveFeatureFlags({ SOUND_BUDDY_FEATURES: 'console,mixer' }),
+      });
+
+      switchMode('mixer');
+
+      expect(useLiveCaptureStore.getState().appMode).toBe('mixer');
+      expect(bodyClassList.contains('mixer-active')).toBe(true);
+      expect(elements['tab-mixer'].classList.contains('active')).toBe(true);
+    });
+
+    it('leaving mixer for another workspace or Analyze drops mixer-active', () => {
+      switchMode('mixer');
+      switchMode('console');
+      expect(bodyClassList.contains('mixer-active')).toBe(false);
+      switchMode('mixer');
+      showAnalyzeStage();
+      expect(bodyClassList.contains('mixer-active')).toBe(false);
     });
 
     it("'recent' (the History path) still works with every flag off", () => {

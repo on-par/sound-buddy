@@ -20,6 +20,7 @@ import { useRingoutStore } from './ringoutStore';
 import { useFeedbackDialogStore } from './feedbackDialogStore';
 import { useSkillTreeStore } from './skillTreeStore';
 import { useDirectoryStore } from './directoryStore';
+import { useMixerStore } from './mixerStore';
 import { liveReportCardSource } from '../live-capture-panel';
 import { roomFeed } from '../measurement-device-state';
 import { shouldYieldLiveToFileResult } from '../analyze-entry';
@@ -49,6 +50,7 @@ export interface RendererStores {
   // two pushed-event handlers read `directory.getState().running` to suppress
   // batch-driven Report-Card updates, replacing the deleted batchRunning var.
   directory: typeof useDirectoryStore;
+  mixer: typeof useMixerStore;
 }
 
 declare global {
@@ -82,6 +84,7 @@ export function installStoreBridge(
     soundcheck: useSoundcheckStore,
     ringout: useRingoutStore,
     directory: useDirectoryStore,
+    mixer: useMixerStore,
   };
   target.rendererStores = stores;
   target.spectrumTransport = spectrumTransport;

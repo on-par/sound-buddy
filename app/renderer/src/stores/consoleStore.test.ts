@@ -15,7 +15,7 @@ import { createMockSoundBuddy } from '../mock-sound-buddy';
 
 const CONSOLE_A = { ip: '10.0.0.5', model: 'M32R', firmware: '4.0' };
 const IDENTITY_A = { ip: '10.0.0.5', model: 'M32R', firmware: '4.0', name: 'Main' };
-const CHANNEL_1 = { index: 1, name: 'Kick', faderDb: -10.5, on: true };
+const CHANNEL_1 = { index: 1, name: 'Kick', faderDb: -10.5, on: true, color: { base: null, inverted: false }, icon: null, dynamics: { on: false, mode: 'COMP', thr: 0, ratio: 3, knee: 1, mgain: 0 } };
 const DIFF = {
   changes: [
     { path: '/ch/01/mix/on', label: 'Kick — mute', from: true, to: false },
@@ -688,5 +688,48 @@ describe('createConsoleStore', () => {
       expect(store.getState().sceneDiffStatus).toBe('error');
       expect(store.getState().sceneDiffError).toBe(SCENE_DIFF_FAILED_MESSAGE);
     });
+  });
+});
+
+describe('consoleStore — Mixer read deepening pushes', () => {
+  async function watching() {
+    const mock = createMockSoundBuddy();
+    const store = createConsoleStore(() => mock.api, allow);
+    store.setState({ selectedIp: '10.0.0.5' });
+    await store.getState().startLiveState();
+    return { mock, store };
+  }
+
+  it('stores the gate and dynamics GR bands that ride a meter frame', async () => {
+    const { mock, store } = await watching();
+    mock.emit('onConsoleLiveState', { meters: { inputs: [0.5], gateGainReduction: [0.9], dynamicsGainReduction: [0.7] } });
+    expect(store.getState().liveGateGainReduction).toEqual([0.9]);
+    expect(store.getState().liveDynamicsGainReduction).toEqual([0.7]);
+    expect(store.getState().liveMeters).toEqual([0.5]);
+  });
+
+  it('stores the fast-tier read time with the channel snapshot', async () => {
+    const { mock, store } = await watching();
+    mock.emit('onConsoleLiveState', { channels: [CHANNEL_1], readAt: 4242 });
+    expect(store.getState().liveChannelsReadAt).toBe(4242);
+  });
+
+  it('stores slow-tier strip detail and surfaces without touching the fast-tier channels', async () => {
+    const { mock, store } = await watching();
+    const stripDetail = [{ index: 1, preamp: null, gate: null, eq: null, sends: { value: [], readAt: 9 } }];
+    const surfaces = { buses: [], main: { kind: 'main', index: null, name: null, mix: null } };
+    mock.emit('onConsoleLiveState', { channels: [CHANNEL_1], readAt: 1 });
+    mock.emit('onConsoleLiveState', { stripDetail });
+    mock.emit('onConsoleLiveState', { surfaces });
+    expect(store.getState().liveStripDetail).toEqual(stripDetail);
+    expect(store.getState().liveSurfaces).toEqual(surfaces);
+    expect(store.getState().liveChannels).toEqual([CHANNEL_1]);
+  });
+
+  it('starts with no slow-tier data and no read time', () => {
+    const store = createConsoleStore(() => createMockSoundBuddy().api, allow);
+    expect(store.getState().liveStripDetail).toEqual([]);
+    expect(store.getState().liveSurfaces).toBeNull();
+    expect(store.getState().liveChannelsReadAt).toBeNull();
   });
 });

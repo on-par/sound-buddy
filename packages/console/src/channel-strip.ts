@@ -28,9 +28,41 @@ export interface ChannelEq {
   bands: Array<{ type: string; freq: string; gain: number; q: number }>
 }
 
+export type ChannelColorBase = 'off' | 'red' | 'green' | 'yellow' | 'blue' | 'magenta' | 'cyan' | 'white'
+
+export interface ChannelColor {
+  base: ChannelColorBase | null
+  inverted: boolean
+}
+
+const COLOR_TOKEN_BASES: Readonly<Record<string, ChannelColorBase>> = {
+  OFF: 'off',
+  RD: 'red',
+  GN: 'green',
+  YE: 'yellow',
+  BL: 'blue',
+  MG: 'magenta',
+  CY: 'cyan',
+  WH: 'white',
+}
+
+const INVERTED_SUFFIX = 'i'
+
+export const NEUTRAL_CHANNEL_COLOR: ChannelColor = Object.freeze({ base: null, inverted: false })
+
+export function parseChannelColor(token: string | undefined): ChannelColor {
+  if (token === undefined) return NEUTRAL_CHANNEL_COLOR
+  const inverted = token.endsWith(INVERTED_SUFFIX)
+  const key = inverted ? token.slice(0, -INVERTED_SUFFIX.length) : token
+  const base = Object.prototype.hasOwnProperty.call(COLOR_TOKEN_BASES, key) ? COLOR_TOKEN_BASES[key] : undefined
+  return base === undefined ? NEUTRAL_CHANNEL_COLOR : { base, inverted }
+}
+
 export interface ChannelStrip {
   index: number // 1-based, matches the OSC path number (/ch/01 -> 1)
   name: string
+  color: ChannelColor
+  icon: number | null
   fader: number // dB, or -Infinity when the source token is "-oo"
   on: boolean // true = channel on/unmuted (raw ON/OFF token)
   pan: number
@@ -44,6 +76,8 @@ function makeChannelStrip(index: number): ChannelStrip {
   return {
     index,
     name: '',
+    color: NEUTRAL_CHANNEL_COLOR,
+    icon: null,
     fader: 0,
     on: true,
     pan: 0,
@@ -71,7 +105,8 @@ export function parseFaderToken(token: string): number {
   return token === '-oo' ? -Infinity : parseFloat(token)
 }
 
-const NAME_RE = /^\/ch\/(\d+)\/config\s+"([^"]*)"/
+const NAME_RE = /^\/ch\/(\d+)\/config\s+"([^"]*)"(?:\s+(\S+))?(?:\s+(\S+))?/
+const ICON_TOKEN_RE = /^\d+$/
 const MIX_RE = /^\/ch\/(\d+)\/mix\s+(ON|OFF)\s+(-oo|[+-]?[\d.]+)\s+\S+\s+([+-]?\d+)/
 const PREAMP_RE = /^\/ch\/(\d+)\/preamp\s+([+-]?[\d.]+)\s+(ON|OFF)\s+(ON|OFF)\s+(\d+)\s+(\d+)/
 const GATE_RE =
@@ -89,7 +124,10 @@ export function parseChannelStrips(captureText: string): ChannelStrip[] {
 
     let m = line.match(NAME_RE)
     if (m) {
-      getOrCreateChannelStrip(strips, parseInt(m[1], 10)).name = m[2]
+      const strip = getOrCreateChannelStrip(strips, parseInt(m[1], 10))
+      strip.name = m[2]
+      strip.icon = m[3] !== undefined && ICON_TOKEN_RE.test(m[3]) ? parseInt(m[3], 10) : null
+      strip.color = parseChannelColor(m[4])
       continue
     }
     m = line.match(MIX_RE)

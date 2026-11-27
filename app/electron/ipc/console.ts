@@ -132,11 +132,18 @@ export function registerConsoleHandlers(): void {
         { log },
         getSettings(),
         ip,
-        (channels) => {
-          if (!wc.isDestroyed()) wc.send('console-live-state', { channels });
+        (channels, readAt) => {
+          if (!wc.isDestroyed()) wc.send('console-live-state', { channels, readAt });
         },
         (error) => {
           if (!wc.isDestroyed()) wc.send('console-live-state', { error });
+        },
+        {
+          onSlowTier: ({ stripDetail, surfaces }) => {
+            if (wc.isDestroyed()) return;
+            wc.send('console-live-state', { stripDetail });
+            wc.send('console-live-state', { surfaces });
+          },
         }
       );
       meterHandle = startMeterSubscription(
@@ -145,7 +152,15 @@ export function registerConsoleHandlers(): void {
         ip,
         (snapshot) => {
           pushLink({ type: 'meter-frame' });
-          if (!wc.isDestroyed()) wc.send('console-live-state', { meters: { inputs: snapshot.inputs } });
+          if (!wc.isDestroyed()) {
+            wc.send('console-live-state', {
+              meters: {
+                inputs: snapshot.inputs,
+                gateGainReduction: snapshot.gateGainReduction,
+                dynamicsGainReduction: snapshot.dynamicsGainReduction,
+              },
+            });
+          }
         },
         // #886: liveness events are surfaced via pushLink (metersDegraded) as
         // well as logged — the channel poll keeps running either way.

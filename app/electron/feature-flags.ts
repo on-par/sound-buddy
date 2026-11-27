@@ -15,7 +15,7 @@
 //   console    — the M32/X32 Console workspace ('console')
 //   buildGuide — the Build Guide workspace ('guide')
 //   ringOut    — the Ring Out workspace ('ringout')
-export const FEATURE_FLAG_IDS = ['reportCard', 'directory', 'session', 'console', 'buildGuide', 'ringOut'] as const;
+export const FEATURE_FLAG_IDS = ['reportCard', 'directory', 'session', 'console', 'buildGuide', 'ringOut', 'mixer'] as const;
 
 export type FeatureFlagId = (typeof FEATURE_FLAG_IDS)[number];
 
@@ -34,6 +34,7 @@ export const ALL_FEATURE_FLAGS_OFF: FeatureFlags = Object.freeze({
   console: false,
   buildGuide: false,
   ringOut: false,
+  mixer: false,
 });
 
 /**

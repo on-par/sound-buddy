@@ -2,6 +2,7 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest';
+import { useMixerStore } from './mixerStore';
 import { installStoreBridge, type RendererStores } from './bridge';
 import { useLicensingStore } from './licensingStore';
 import { useSettingsStore } from './settingsStore';
@@ -110,6 +111,11 @@ describe('installStoreBridge', () => {
     expect(stores.ringout).toBe(useRingoutStore);
     expect(stores.directory).toBeDefined();
     expect(target.rendererStores).toBe(stores);
+  });
+
+  it('installs the Mixer store so e2e specs can feed it fixtures', () => {
+    const target: { rendererStores?: RendererStores } = {};
+    expect(installStoreBridge(target).mixer).toBe(useMixerStore);
   });
 
   it('installs the spectrumTransport singleton on the injected target', () => {
@@ -302,7 +308,7 @@ describe('installStoreBridge', () => {
     gradingProfile: 'casual', gradingRubric: {},
     consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
-    splCalibrationOffsetDb: null, lastAppMode: '',
+    splCalibrationOffsetDb: null, mixerAttentionCap: 3, lastAppMode: '',
   };
 
   it('seeds idealProfilesStore from settings once they first load, and pushes the resolved profile into spectrumStore', () => {
