@@ -16,7 +16,7 @@ import { linearToDbfs } from './rules';
 export const MAX_QUESTION_CHANNELS = 8;
 export const MAX_ASSIST_ANSWERS = 4;
 
-export const COMPOSER_OFF_PLACEHOLDER = 'Rules only. Turn on an assist in Settings to ask questions.';
+export const COMPOSER_OFF_PLACEHOLDER = 'Rules only. Turn on an assist in Settings';
 export const COMPOSER_UNAVAILABLE_PLACEHOLDER = 'Rules only until an assist is ready';
 export const COMPOSER_READY_PLACEHOLDER = 'Ask about the mix…';
 export const RULES_FALLBACK_LINE = 'Using rules for now. The Mixer works the same without an assist.';

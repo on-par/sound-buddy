@@ -281,19 +281,19 @@ describe('bindAssistStatusRefresh', () => {
     return { settings, live };
   }
 
-  it('refreshes when an assist setting changes, when Settings opens, when the flags load, and when the Mixer tab opens — and not otherwise', () => {
+  it('refreshes when the flags load, when an assist setting changes, when Settings opens, and when the Mixer tab opens — and not otherwise', () => {
     const s = sources();
     let refreshes = 0;
     const off = bindAssistStatusRefresh(() => (refreshes += 1), { settings: s.settings, live: s.live } as unknown as StatusRefreshSources);
-    s.settings.setState({ settings: { mixerCloudAssistEnabled: false, mixerAttentionCap: 2 } });
-    expect(refreshes).toBe(0);
-    s.settings.setState({ settings: { mixerCloudAssistEnabled: true, mixerAttentionCap: 2 } });
-    expect(refreshes).toBe(1);
-    s.settings.setState({ dialogOpen: true });
-    expect(refreshes).toBe(2);
-    s.settings.setState({ dialogOpen: false });
     s.settings.setState({ featureFlags: { mixer: true } });
+    expect(refreshes).toBe(1);
+    s.settings.setState({ settings: { mixerCloudAssistEnabled: false, mixerAttentionCap: 2 } });
+    expect(refreshes).toBe(1);
+    s.settings.setState({ settings: { mixerCloudAssistEnabled: true, mixerAttentionCap: 2 } });
+    expect(refreshes).toBe(2);
+    s.settings.setState({ dialogOpen: true });
     expect(refreshes).toBe(3);
+    s.settings.setState({ dialogOpen: false });
     s.live.setState({ appMode: 'mixer' });
     expect(refreshes).toBe(4);
     s.live.setState({ appMode: 'mixer' });
@@ -303,6 +303,18 @@ describe('bindAssistStatusRefresh', () => {
     s.settings.setState({ settings: { mixerCloudAssistEnabled: false, mixerAttentionCap: 2 } });
     s.live.setState({ appMode: 'mixer' });
     expect(refreshes).toBe(4);
+  });
+
+  it('never asks for status while the mixer flag is off: not on Settings open, an assist setting change, the flag turning off, or a Mixer tab change', () => {
+    const s = sources();
+    s.settings.setState({ featureFlags: { mixer: true } });
+    let refreshes = 0;
+    bindAssistStatusRefresh(() => (refreshes += 1), { settings: s.settings, live: s.live } as unknown as StatusRefreshSources);
+    s.settings.setState({ featureFlags: { mixer: false } });
+    s.settings.setState({ dialogOpen: true });
+    s.settings.setState({ settings: { mixerCloudAssistEnabled: true, mixerAttentionCap: 3 } });
+    s.live.setState({ appMode: 'mixer' });
+    expect(refreshes).toBe(0);
   });
 });
 
@@ -339,6 +351,18 @@ describe('bindAssistNarration', () => {
     }
   });
 
+  it('a card that was visible before a link freeze is not newly visible after it; a card new since then still is', () => {
+    const m = mixer([]);
+    const narrated: string[] = [];
+    bindAssistNarration((issue) => narrated.push(issue.key), source(m));
+    m.setState({ issues: [ISSUE] });
+    m.setState({ frozenIssues: [ISSUE] });
+    m.setState({ frozenIssues: null });
+    expect(narrated).toEqual(['clipping:2']);
+    m.setState({ issues: [ISSUE, { ...ISSUE, key: 'clipping:5', channel: 5 }] });
+    expect(narrated).toEqual(['clipping:2', 'clipping:5']);
+  });
+
   it('during Sermon Quiet only the visible feedback-risk card can be narrated', () => {
     const ring: MixerIssue = { ...ISSUE, key: 'feedback-risk:room', kind: 'feedback-risk', channel: null };
     const m = mixer([], { sermonQuiet: true });
@@ -360,6 +384,8 @@ describe('the app-wide assist store wiring', () => {
     const bridge = createMockSoundBuddy();
     vi.stubGlobal('window', { soundBuddy: bridge.api });
     const before = useSettingsStore.getState().settings;
+    useSettingsStore.setState({ featureFlags: { ...useSettingsStore.getState().featureFlags, mixer: true } });
+    bridge.calls.length = 0;
     useSettingsStore.setState({ settings: { ...(before as NonNullable<typeof before>), mixerLocalAssistModel: 'changed' } as NonNullable<typeof before> });
     await flush();
     expect(bridge.calls.map((c) => c.method)).toContain('getMixerAssistStatus');

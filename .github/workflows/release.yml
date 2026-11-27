@@ -42,8 +42,9 @@ env:
 
 jobs:
   release:
-    # macos-14 runners are Apple Silicon (arm64 / M1+), matching the build target.
-    runs-on: macos-14
+    # macos-15 runners are Apple Silicon (arm64 / M1+), matching the build target.
+    # macos-14 was retired on 2026-11-02; jobs requesting it cancel immediately.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
 

@@ -22,13 +22,13 @@ const MODEL = 'qwen2.5';
 const scene = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'packages', 'console', 'src', 'capture-2026-08-16.scn'), 'utf8');
 
 type Status = {
-  cloud: { enabled: boolean; binaryFound: boolean; tokenSaved: boolean; encryptionAvailable: boolean; lastFailure: string | null };
+  cloud: { enabled: boolean; binaryFound: boolean; tokenSaved: boolean; encryptionAvailable: boolean | null; lastFailure: string | null };
   local: { enabled: boolean; endpoint: string; modelSet: boolean; lastFailure: string | null };
   inFlight: boolean;
 };
 
 const OFF: Status = {
-  cloud: { enabled: false, binaryFound: false, tokenSaved: false, encryptionAvailable: true, lastFailure: null },
+  cloud: { enabled: false, binaryFound: false, tokenSaved: false, encryptionAvailable: null, lastFailure: null },
   local: { enabled: false, endpoint: 'unset', modelSet: false, lastFailure: null },
   inFlight: false,
 };
@@ -75,6 +75,18 @@ async function shot(name: string): Promise<void> {
   if (!SHOTS_DIR) return;
   fs.mkdirSync(SHOTS_DIR, { recursive: true });
   await window.screenshot({ path: path.join(SHOTS_DIR, name) });
+}
+
+async function composerPlaceholderFits(): Promise<boolean> {
+  return window.locator('.mx-composer-input').evaluate((el) => {
+    const input = el as HTMLInputElement;
+    const style = getComputedStyle(input);
+    const ctx = document.createElement('canvas').getContext('2d');
+    if (ctx === null) return false;
+    ctx.font = style.font;
+    const room = input.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    return ctx.measureText(input.placeholder).width <= room;
+  });
 }
 
 async function openConsoleSettings(): Promise<void> {
@@ -196,7 +208,8 @@ test.describe('Mixer assist screens (stubbed assist IPC, no real Claude, no keyc
   test('rail with both off: rules only, composer disabled, no chips', async () => {
     await reopenMixer();
     await expect(window.locator('.mx-composer-input')).toBeDisabled();
-    await expect(window.locator('.mx-composer-input')).toHaveAttribute('placeholder', 'Rules only. Turn on an assist in Settings to ask questions.');
+    await expect(window.locator('.mx-composer-input')).toHaveAttribute('placeholder', 'Rules only. Turn on an assist in Settings');
+    expect(await composerPlaceholderFits()).toBe(true);
     await expect(window.locator('.mx-chip')).toHaveCount(0);
     expect((await assistLog()).asked).toEqual([]);
     await shot('rail-rules-only.png');
@@ -276,18 +289,20 @@ test.describe('Mixer assist screens (stubbed assist IPC, no real Claude, no keyc
   });
 
   test('rail fallback: Cloud on with no Claude Code binary', async () => {
-    await setAssist({ status: { ...OFF, cloud: { enabled: true, binaryFound: false, tokenSaved: true, encryptionAvailable: true, lastFailure: null } } });
+    await setAssist({ status: { ...OFF, cloud: { enabled: true, binaryFound: false, tokenSaved: true, encryptionAvailable: null, lastFailure: null } } });
     await reopenMixer();
     await expect(window.locator('[data-reason="cloud:no-binary"]')).toContainText("Claude Code isn't installed");
     await expect(window.locator('[data-reason="rules"]')).toBeVisible();
     await expect(window.locator('.mx-composer-input')).toBeDisabled();
     await expect(window.locator('.mx-chip')).toHaveCount(0);
     await expect(window.locator('#mixer-cards .mx-card').first()).toBeVisible();
+    await expect(window.locator('.mx-composer-input')).toHaveAttribute('placeholder', 'Rules only until an assist is ready');
+    expect(await composerPlaceholderFits()).toBe(true);
     await shot('rail-fallback-no-binary.png');
   });
 
   test('rail fallback: Cloud on with no token', async () => {
-    await setAssist({ status: { ...OFF, cloud: { enabled: true, binaryFound: true, tokenSaved: false, encryptionAvailable: true, lastFailure: null } } });
+    await setAssist({ status: { ...OFF, cloud: { enabled: true, binaryFound: true, tokenSaved: false, encryptionAvailable: null, lastFailure: null } } });
     await window.locator('#mixer-assist-recheck').click();
     await expect(window.locator('[data-reason="cloud:no-token"]')).toContainText("The Claude Code token isn't set");
     await expect(window.locator('[data-reason="cloud:no-binary"]')).toHaveCount(0);

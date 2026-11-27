@@ -21,9 +21,8 @@ const LOCKED = [
       'site/src/pages/index.astro', // landing — trust section
       'README.md',                  // docs — architecture overview
       // app/renderer/src/SettingsPanel.tsx dropped the AI provider settings pane
-      // entirely (#657) — the renderer no longer advertises AI configuration
-      // that can't run in a packaged build. Restore this surface once #658/#659
-      // bring a working AI settings UI back.
+      // entirely (#657). The phrase is back in the app through the Mixer assist
+      // group in Settings ▸ Console (#1817), which is the required entry below.
       'app/renderer/src/MixerAssistSettings.tsx', // app — Settings ▸ Console ▸ Mixer assist (shown only with the mixer flag)
     ],
     forbidden: [
