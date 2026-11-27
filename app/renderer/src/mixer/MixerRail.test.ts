@@ -28,7 +28,7 @@ describe('MixerRail', () => {
   it('renders the title, a static Suggest & Approve badge with no switch, and the real sources line', () => {
     const html = render(RAIL);
     expect(html).toContain(RAIL_TITLE);
-    expect(html).toContain(RAIL_BADGE.replace('&', '&amp;'));
+    expect(html).toContain(RAIL_BADGE.replaceAll('&', '&amp;'));
     expect(html).not.toMatch(/role="switch"|type="checkbox"/);
     expect(html).toContain('Reading: X32 channel poll · input meters · room mic not listening');
     expect(html).not.toMatch(/Cloud|Local|coming soon/i);
