@@ -4,6 +4,7 @@
 import type {
   ConsoleChannelColorBase,
   ConsoleChannelStateDto,
+  ConsoleSendDto,
   ConsoleStripDetailDto,
   ConsoleSurfacesDto,
 } from '../../../electron/ipc/api';
@@ -227,9 +228,26 @@ export function busName(surfaces: ConsoleSurfacesDto | null, bus: number): strin
   return name === '' ? `Bus ${bus}` : name;
 }
 
+export function busLabel(surfaces: ConsoleSurfacesDto | null, bus: number): string {
+  const name = busName(surfaces, bus);
+  return name === `Bus ${bus}` ? name : `Bus ${bus} · ${name}`;
+}
+
+export function sendingBuses(sends: readonly ConsoleSendDto[]): number[] {
+  return sends.filter((s) => s.on && Number.isFinite(s.level)).map((s) => s.bus);
+}
+
 export function activeSendBuses(detail: ConsoleStripDetailDto | undefined): number[] | null {
   if (!detail?.sends) return null;
-  return detail.sends.value.filter((s) => s.on && Number.isFinite(s.level)).map((s) => s.bus);
+  return sendingBuses(detail.sends.value);
+}
+
+export function sendsSummary(detail: ConsoleStripDetailDto | undefined, surfaces: ConsoleSurfacesDto | null): string {
+  const buses = activeSendBuses(detail);
+  if (buses === null) return SENDS_NOT_READ;
+  if (buses.length === 0) return NO_ACTIVE_SENDS;
+  const names = [...new Set(buses.map((b) => busName(surfaces, b)))];
+  return `Sends to: ${names.join(', ')}`;
 }
 
 export function sendsLabel(
@@ -237,12 +255,8 @@ export function sendsLabel(
   surfaces: ConsoleSurfacesDto | null,
   now: number
 ): string {
-  const buses = activeSendBuses(detail);
-  if (buses === null || !detail?.sends) return SENDS_NOT_READ;
-  const age = formatReadAge(detail.sends.readAt, now);
-  if (buses.length === 0) return `${NO_ACTIVE_SENDS} · ${age}`;
-  const names = [...new Set(buses.map((b) => busName(surfaces, b)))];
-  return `Sends to: ${names.join(', ')} · ${age}`;
+  const summary = sendsSummary(detail, surfaces);
+  return detail?.sends ? `${summary} · ${formatReadAge(detail.sends.readAt, now)}` : summary;
 }
 
 export function compLabel(channel: ConsoleChannelStateDto | undefined): string {
@@ -291,7 +305,7 @@ export function cardView(issue: MixerIssue, ctx: CardContext): CardView {
     grLabel: GR_UNAVAILABLE_LABEL,
     facts: cardFacts(issue, ctx, channel),
     sends: index === null ? '' : sendsLabel(detail, ctx.surfaces, ctx.now),
-    share: SHARE_OF_MIX_UNAVAILABLE,
+    share: index === null ? '' : SHARE_OF_MIX_UNAVAILABLE,
     candidates: index === null ? (ctx.ring?.candidates ?? []) : [],
     inspected: index !== null && index === ctx.inspected,
   };
@@ -324,6 +338,7 @@ export interface DockTile {
 export interface DockBus {
   index: number;
   name: string;
+  label: string;
   fader: string;
   on: boolean;
   age: string;
@@ -352,7 +367,7 @@ export function readBuses(surfaces: ConsoleSurfacesDto | null, now: number): Doc
   return surfaces.buses.flatMap((b) => {
     if (b.index === null || !b.name || !b.mix) return [];
     const oldest = Math.min(b.name.readAt, b.mix.readAt);
-    return [{ index: b.index, name: busName(surfaces, b.index), fader: formatDb(b.mix.value.faderDb), on: b.mix.value.on, age: formatReadAge(oldest, now) }];
+    return [{ index: b.index, name: busName(surfaces, b.index), label: busLabel(surfaces, b.index), fader: formatDb(b.mix.value.faderDb), on: b.mix.value.on, age: formatReadAge(oldest, now) }];
   });
 }
 
@@ -432,9 +447,10 @@ export interface RailSources {
 export function railContextLine(src: RailSources): string {
   const desk = src.model ?? 'console';
   const poll = src.offline ? `${desk} offline` : src.channelsRead ? `${desk} channel poll` : `${desk} channel poll (waiting for first read)`;
+  const meters = src.metersAvailable ? 'input meters' : 'input meters unavailable';
   const parts = [
     poll,
-    src.metersAvailable ? 'input meters' : 'input meters unavailable',
+    ...(src.offline ? [] : [meters]),
     src.roomListening ? 'room mic RTA' : 'room mic not listening',
   ];
   return `Reading: ${parts.join(' · ')}`;
@@ -542,7 +558,7 @@ export interface SermonBanner {
 }
 
 export function sermonBanner(args: { watchLive: boolean; watchedLabel: string | null; heldCount: number }): SermonBanner {
-  const heldNote = 'Clipping and compression alerts are held for later.';
+  const heldNote = 'Clipping alerts are held for later.';
   const watching = args.watchedLabel
     ? `Watching ${args.watchedLabel}; other strips are dimmed.`
     : 'Pick the mic to watch on the board below; the other strips dim.';

@@ -46,9 +46,9 @@ export function MixerDock({ dock, sermonQuiet }: { dock: DockView; sermonQuiet: 
         <span className="mx-dock-sub">queued strips wait here until a card frees up</span>
         <span className="mx-dock-r">
           {dock.buses.map((b) => (
-            <span key={b.index} className={b.on ? 'mx-bus' : 'mx-bus mx-bus-off'} title={b.age}>
-              {`${b.name} `}
-              <b>{b.on ? b.fader : 'off'}</b>
+            <span key={b.index} className={b.on ? 'mx-bus' : 'mx-bus mx-bus-off'}>
+              {`${b.label} `}
+              <b>{b.on ? b.fader : 'off'}</b> <span className="mx-bus-age">{b.age}</span>
             </span>
           ))}
           <span className="mx-unavailable">{dock.busMeters}</span>

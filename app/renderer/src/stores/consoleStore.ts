@@ -94,6 +94,16 @@ export interface ConsoleState {
   compareLastSceneCaptures(): Promise<void>;
 }
 
+const CLEARED_LIVE_READS = {
+  liveChannels: [] as ConsoleChannelStateDto[],
+  liveMeters: [] as number[],
+  liveGateGainReduction: [] as number[],
+  liveDynamicsGainReduction: [] as number[],
+  liveChannelsReadAt: null as number | null,
+  liveStripDetail: [] as ConsoleStripDetailDto[],
+  liveSurfaces: null as ConsoleSurfacesDto | null,
+};
+
 const INITIAL_STATE = {
   scanStatus: 'idle' as ConsoleScanStatus,
   found: [] as ConsoleIdentityDto[],
@@ -104,15 +114,9 @@ const INITIAL_STATE = {
   identityStatus: 'idle' as ConsoleIdentityStatus,
   identityError: null as string | null,
   manualIp: '',
-  liveChannels: [] as ConsoleChannelStateDto[],
+  ...CLEARED_LIVE_READS,
   liveStateStatus: 'idle' as ConsoleLiveStateStatus,
   liveStateError: null as string | null,
-  liveMeters: [] as number[],
-  liveGateGainReduction: [] as number[],
-  liveDynamicsGainReduction: [] as number[],
-  liveChannelsReadAt: null as number | null,
-  liveStripDetail: [] as ConsoleStripDetailDto[],
-  liveSurfaces: null as ConsoleSurfacesDto | null,
   link: INITIAL_CONSOLE_LINK,
   captureStatus: 'idle' as ConsoleCaptureStatus,
   captureDone: 0,
@@ -126,6 +130,20 @@ const INITIAL_STATE = {
   sceneDiffNameB: null as string | null,
   sceneDiffError: null as string | null,
 };
+
+async function leaveConsole(
+  ip: string,
+  get: () => ConsoleState,
+  set: (partial: Partial<ConsoleState>) => void
+): Promise<void> {
+  if (ip === get().selectedIp) return;
+  const status = get().liveStateStatus;
+  if (status === 'watching' || status === 'starting') {
+    await get().stopLiveState();
+    if (get().liveStateStatus === 'error') return;
+  }
+  set({ liveStateStatus: 'idle', liveStateError: null, ...CLEARED_LIVE_READS, link: INITIAL_CONSOLE_LINK });
+}
 
 export function createConsoleStore(
   getApi: () => ConsoleApi & Pick<AnalysisApi, 'diffScenes'>,
@@ -178,6 +196,7 @@ export function createConsoleStore(
         return;
       }
 
+      await leaveConsole(ip, get, set);
       const myRequestId = (identityRequestId += 1);
       set({ selectedIp: ip, identityStatus: 'loading', identitySource: 'scan', identityError: null });
       try {
@@ -212,6 +231,7 @@ export function createConsoleStore(
         return;
       }
 
+      await leaveConsole(ip, get, set);
       const myRequestId = (identityRequestId += 1);
       set({ selectedIp: ip, identityStatus: 'loading', identitySource: 'manual', identityError: null });
       try {
@@ -243,8 +263,7 @@ export function createConsoleStore(
         set({
           liveStateStatus: 'error',
           liveStateError: CONSENT_DECLINED_MESSAGE,
-          liveChannels: [],
-          liveMeters: [],
+          ...CLEARED_LIVE_READS,
           link: INITIAL_CONSOLE_LINK,
         });
         return;
@@ -295,8 +314,7 @@ export function createConsoleStore(
           set({
             liveStateStatus: 'error',
             liveStateError: result.error,
-            liveChannels: [],
-            liveMeters: [],
+            ...CLEARED_LIVE_READS,
             link: INITIAL_CONSOLE_LINK,
           });
         }
@@ -304,8 +322,7 @@ export function createConsoleStore(
         set({
           liveStateStatus: 'error',
           liveStateError: LIVE_STATE_FAILED_MESSAGE,
-          liveChannels: [],
-          liveMeters: [],
+          ...CLEARED_LIVE_READS,
           link: INITIAL_CONSOLE_LINK,
         });
       }
@@ -314,7 +331,7 @@ export function createConsoleStore(
     async stopLiveState() {
       try {
         await getApi().stopConsoleLiveState();
-        set({ liveStateStatus: 'idle', liveStateError: null, liveMeters: [], link: INITIAL_CONSOLE_LINK });
+        set({ liveStateStatus: 'idle', liveStateError: null, ...CLEARED_LIVE_READS, link: INITIAL_CONSOLE_LINK });
       } catch {
         set({ liveStateStatus: 'error', liveStateError: LIVE_STATE_FAILED_MESSAGE });
       }

@@ -8,7 +8,7 @@ import { dismissIssue, pruneDismissals, type MixerDismissals, type MixerIssue } 
 import { EMPTY_RULE_HISTORY, grDbFromMeters, ingestMeterFrame, ruleIssues, trackActive, type RuleHistory } from '../mixer/rules';
 import { appendFaderSamples, type FaderHistory } from '../mixer/view-model';
 import { reconcileMoves, type ProposedMoves } from '../mixer/proposed-moves';
-import { useConsoleStore } from './consoleStore';
+import { useConsoleStore, type ConsoleLiveStateStatus } from './consoleStore';
 import { useLiveCaptureStore } from './liveCaptureStore';
 import { ANALYZER_GRID_FREQS } from '../live-capture-panel';
 import type { RoomCurve } from '../mixer/inspector';
@@ -29,6 +29,7 @@ export interface MixerConsoleInput {
   liveMeters: readonly number[];
   liveDynamicsGainReduction: readonly number[];
   link: ConsoleLinkStateDto;
+  liveStateStatus: ConsoleLiveStateStatus;
 }
 
 export interface MixerState {
@@ -83,6 +84,12 @@ export const INITIAL_MIXER_STATE = {
   metersDegraded: false,
 };
 
+const WATCH_RUNNING: ReadonlySet<ConsoleLiveStateStatus> = new Set(['starting', 'watching']);
+
+export function watchEnded(input: Pick<MixerConsoleInput, 'liveStateStatus' | 'liveChannels'>): boolean {
+  return !WATCH_RUNNING.has(input.liveStateStatus) && input.liveChannels.length === 0;
+}
+
 function recompute(s: MixerState, history: RuleHistory, ring: RoomRingState, now: number) {
   const ringIssue = roomRingIssue(ring, now);
   const raw = [...(s.metersDegraded ? [] : ruleIssues(history, now)), ...(ringIssue ? [ringIssue] : [])];
@@ -100,6 +107,20 @@ export function createMixerStore(): UseBoundStore<StoreApi<MixerState>> {
 
     ingestConsole(input, now) {
       const s = get();
+      if (watchEnded(input)) {
+        const cleared = { ...s, moves: {}, lastChannels: [], metersDegraded: false };
+        set({
+          ...recompute(cleared, EMPTY_RULE_HISTORY, s.ring, now),
+          lastChannels: [],
+          metersDegraded: false,
+          faderHistory: {},
+          lastMeters: null,
+          lastChannelsReadAt: null,
+          frozenIssues: null,
+          frozenAt: null,
+        });
+        return;
+      }
       if (input.link.status === 'offline') {
         if (s.frozenIssues === null) set({ frozenIssues: s.issues, frozenAt: now });
         return;

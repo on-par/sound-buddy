@@ -98,6 +98,7 @@ export function MixerRouting({ routing }: { routing: RoutingView }): JSX.Element
             </span>
             <span className="mx-route-arrow">→</span>
             <span className={b.on === false ? 'mx-route-bus mx-bus-off' : 'mx-route-bus'}>{b.label}</span>
+            <span className="mx-route-age">{b.routeAge}</span>
           </div>
         ))
       )}

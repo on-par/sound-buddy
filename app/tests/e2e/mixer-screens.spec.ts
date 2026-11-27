@@ -22,13 +22,44 @@ const scene = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'packages',
 let electronApp: ElectronApplication;
 let window: Page;
 
-function channelsEvent() {
+function channelsEvent(ratioOverride: Record<number, number> = {}) {
   return {
     channels: parseChannelStrips(scene).map((s) => ({
-      index: s.index, name: s.name, faderDb: s.fader, on: s.on, color: s.color, icon: s.icon, dynamics: s.dynamics,
+      index: s.index, name: s.name, faderDb: s.fader, on: s.on, color: s.color, icon: s.icon,
+      dynamics: ratioOverride[s.index] === undefined ? s.dynamics : { ...s.dynamics, ratio: ratioOverride[s.index] },
     })),
     readAt: Date.now(),
   };
+}
+
+function stripDetailNotReadFor(channel: number) {
+  const [{ stripDetail }] = slowTierEvents() as [{ stripDetail: Array<{ index: number }> }];
+  return { stripDetail: stripDetail.map((d) => (d.index === channel ? { index: channel, preamp: null, gate: null, eq: null, sends: null } : d)) };
+}
+
+const MOVE_KEY = 'over-compression:1:comp-ratio';
+
+async function injectMove(ratio: number): Promise<void> {
+  await window.evaluate(([key, from]) => {
+    const stores = (window as unknown as { rendererStores: { mixer: { setState(s: object): void } } }).rendererStores;
+    stores.mixer.setState({
+      moves: {
+        [key]: {
+          key, issueKey: 'over-compression:1', channel: 1, parameter: 'comp-ratio',
+          from, to: 4,
+          why: 'The compressor has been holding heavy gain reduction. One ratio step gentler lets loud passages through with less squeeze.',
+          expected: 'Less gain reduction on loud passages; the channel should sound less squashed.',
+          status: 'pending',
+        },
+      },
+    });
+  }, [MOVE_KEY, ratio] as const);
+}
+
+async function clearMoves(): Promise<void> {
+  await window.evaluate(() => {
+    (window as unknown as { rendererStores: { mixer: { setState(s: object): void } } }).rendererStores.mixer.setState({ moves: {}, dismissedMoves: [] });
+  });
 }
 
 function slowTierEvents() {
@@ -130,7 +161,31 @@ test.describe('Mixer screens (read-only, fixture-fed)', () => {
     await expect(window.locator('#mixer-calm')).toContainText('Over-compression: off until the GR meter scale is established');
     await expect(window.locator('#mixer-conn')).toHaveText('Connected: X32 · 32 ch');
     await expect(window.locator('#mixer-routing')).toBeVisible();
+    await expect(window.locator('#mixer-routing .mx-route-age').first()).toHaveText(/^read \d+ s ago$/);
     await shot('calm.png');
+  });
+
+  test('meters degraded: meter checks pause, the notice explains it, /node state keeps showing', async () => {
+    await push([{ link: { status: 'online', metersDegraded: true } }]);
+    await expect(window.locator('#mixer-link-notice')).toHaveText(
+      'Meters unavailable. Meter checks are paused; channel state is still being read from the console.'
+    );
+    await expect(window.locator('#mixer-calm')).toContainText('Clipping: paused while console meters are unavailable');
+    await expect(window.locator('#mixer-rail-context')).toContainText('input meters unavailable');
+    await expect(window.locator('#mixer-conn')).toHaveText('Connected: X32 · 32 ch');
+    await shot('meters-degraded.png');
+    await push([{ link: { status: 'online', metersDegraded: false } }, metersEvent(false)]);
+    await expect(window.locator('#mixer-link-notice')).toHaveCount(0);
+  });
+
+  test('Buses view: every bus with its number, fader, visible read age and the channels sending to it', async () => {
+    await window.locator('[data-view="buses"]').click();
+    await expect(window.locator('#mixer-buses')).toBeVisible();
+    await expect(window.locator('#mixer-buses .mx-bus-row')).toHaveCount(16);
+    await expect(window.locator('#mixer-buses .mx-bus-row[data-bus="1"] .mx-bus-name')).toHaveText(/^Bus 1/);
+    await expect(window.locator('#mixer-buses .mx-bus-row[data-bus="1"] .mx-bus-age')).toHaveText(/^read \d+ s ago$/);
+    await shot('buses-view.png');
+    await window.locator('[data-view="attention"]').click();
   });
 
   test('attention: three cards ranked by severity and a +1 queued pill', async () => {
@@ -140,6 +195,8 @@ test.describe('Mixer screens (read-only, fixture-fed)', () => {
     await expect(window.locator('.mx-sec-sub')).toContainText('ranked by severity');
     await expect(window.locator('#mixer-cards')).toContainText('GR unavailable');
     await expect(window.locator('#mixer-cards')).toContainText('Share of mix unavailable');
+    await expect(window.locator('#mixer-dock .mx-bus').first()).toContainText(/^Bus 1 · /);
+    await expect(window.locator('#mixer-dock .mx-bus-age').first()).toHaveText(/^read \d+ s ago$/);
     await shot('attention.png');
   });
 
@@ -151,35 +208,50 @@ test.describe('Mixer screens (read-only, fixture-fed)', () => {
     await expect(window.locator('#mixer-share-unavailable')).toBeVisible();
     await expect(window.locator('#mixer-inspector svg')).toHaveCount(0);
     await expect(window.locator('#mixer-inspector .mx-step')).toHaveCount(7);
+    await expect(window.locator('#mixer-inspector .mx-step', { hasText: 'Sends' }).locator('.mx-step-age')).toHaveText(/^read \d+ s ago$/);
+    await expect(window.locator('#mixer-inspector .mx-step', { hasText: 'Master' })).toContainText(/Main LR -?\d/);
     await shot('inspector-unavailable.png');
     await window.locator('[data-view="attention"]').click();
   });
 
-  test('locked Apply: a proposed move renders Apply to Board disabled with the locked note', async () => {
+  test('a strip before its slow-tier read: every slow value says Not read yet, and sends say Sends not read yet', async () => {
+    await push([stripDetailNotReadFor(30)]);
+    await window.locator('[data-view="all"]').click();
+    await window.locator('.mx-board-grid [data-channel="30"]').click();
+    const chain = window.locator('#mixer-inspector .mx-chain');
+    await expect(chain.locator('.mx-step-unread')).toHaveCount(5);
+    await expect(chain.locator('.mx-step', { hasText: 'Trim' })).toContainText('Not read yet');
+    await expect(chain.locator('.mx-step', { hasText: 'Sends' })).toContainText('Sends not read yet');
+    await shot('not-read-yet.png');
+    await push([slowTierEvents()[0]]);
+    await window.locator('[data-view="attention"]').click();
+  });
+
+  test('locked Apply with the moved channel inspected: Apply disabled, and the dashed proposed row on that channel', async () => {
     await push([metersEvent(true)]);
     const dyn = parseChannelStrips(scene)[0].dynamics;
-    await window.evaluate((ratio) => {
-      const stores = (window as unknown as { rendererStores: { mixer: { setState(s: object): void } } }).rendererStores;
-      stores.mixer.setState({
-        moves: {
-          'over-compression:1:comp-ratio': {
-            key: 'over-compression:1:comp-ratio', issueKey: 'over-compression:1', channel: 1, parameter: 'comp-ratio',
-            from: ratio, to: 4,
-            why: 'The compressor has been holding heavy gain reduction. One ratio step gentler lets loud passages through with less squeeze.',
-            expected: 'Less gain reduction on loud passages; the channel should sound less squashed.',
-            status: 'pending',
-          },
-        },
-      });
-    }, dyn.ratio);
+    await injectMove(dyn.ratio);
+    await window.locator('#mixer-dock [data-channel="1"]').click();
+    await expect(window.locator('#mixer-inspector .mx-scrib').first()).toContainText('01');
+    await expect(window.locator('#mixer-inspector .mx-step-proposed')).toContainText('Comp ratio 5.0:1 → 4.0:1');
+    await expect(window.locator('#mixer-inspector .mx-chain-h')).toContainText('1 proposed');
     await expect(window.locator('.mx-apply')).toBeDisabled();
     await expect(window.locator('.mx-undo')).toBeDisabled();
     await expect(window.locator('.mx-locked')).toHaveText('Console writes are locked in this build');
     await expect(window.locator('.mx-composer-input')).toBeDisabled();
     await shot('locked-apply.png');
-    await window.evaluate(() => {
-      (window as unknown as { rendererStores: { mixer: { setState(s: object): void } } }).rendererStores.mixer.setState({ moves: {} });
-    });
+    await shot('dashed-proposed-row.png');
+  });
+
+  test('changed on desk: the desk moves the same value, so the pending move resolves as changed on desk', async () => {
+    await push([channelsEvent({ 1: 4 })]);
+    await expect(window.locator(`[data-move-key="${MOVE_KEY}"]`)).toContainText('Changed on desk');
+    await expect(window.locator(`[data-move-key="${MOVE_KEY}"]`)).toHaveClass(/mx-move-done/);
+    await expect(window.locator('#mixer-inspector .mx-step-proposed')).toHaveCount(0);
+    await shot('changed-on-desk.png');
+    await clearMoves();
+    await push([channelsEvent()]);
+    await expect(window.locator(`[data-move-key="${MOVE_KEY}"]`)).toHaveCount(0);
   });
 
   test('Sermon Quiet with no room spectrum: the feedback watch is unavailable', async () => {
@@ -208,8 +280,18 @@ test.describe('Mixer screens (read-only, fixture-fed)', () => {
     await shot('sermon-quiet-live.png');
   });
 
-  test('disconnected: red chip, Reconnect, frozen cards', async () => {
+  test('inspector with the room mic listening: the RTA is labelled as the whole room, not the channel', async () => {
     await window.locator('#mixer-sermon-quiet').click();
+    await window.locator('[data-view="all"]').click();
+    await window.locator('.mx-board-grid [data-channel="2"]').click();
+    await expect(window.locator('#mixer-room-rta .mx-canvas-label')).toHaveText('Room mic RTA — the whole room, not this channel');
+    await expect(window.locator('#mixer-room-rta svg path')).toHaveCount(1);
+    await expect(window.locator('#mixer-spectrum-unavailable')).toHaveCount(0);
+    await shot('inspector-room-rta.png');
+    await window.locator('[data-view="attention"]').click();
+  });
+
+  test('disconnected: red chip, Reconnect, frozen cards, no live Comp and no input meters in the rail', async () => {
     await window.evaluate(() => {
       const stores = (window as unknown as { rendererStores: { liveCapture: { setState(s: object): void } } }).rendererStores;
       stores.liveCapture.setState({ secondaryMeasurement: { status: 'off', deviceName: '' }, lastMeasurementChannels: null });
@@ -220,6 +302,24 @@ test.describe('Mixer screens (read-only, fixture-fed)', () => {
     await expect(window.locator('#mixer-reconnect')).toBeVisible();
     await expect(window.locator('#mixer-link-notice')).toContainText('Cards are frozen');
     await expect(window.locator('.mx-card-dismiss').first()).toBeDisabled();
+    await expect(window.locator('#mixer-rail-context')).toContainText('X32 offline');
+    await expect(window.locator('#mixer-rail-context')).not.toContainText('input meters');
+    await expect(window.locator('#mixer-inspector .mx-step-age', { hasText: /^live$/ })).toHaveCount(0);
+    await expect(window.locator('#mixer-inspector .mx-step', { hasText: 'Comp' }).first().locator('.mx-step-age')).toHaveText(/^read \d+ s ago$/);
     await shot('disconnected.png');
+    await shot('reconnect-before.png');
+  });
+
+  test('Reconnect: clicking it restarts the read and the cards unfreeze', async () => {
+    await window.locator('#mixer-reconnect').click();
+    await expect(window.locator('#mixer-link-notice')).toHaveCount(0);
+    await expect(window.locator('#mixer-reconnect')).toHaveCount(0);
+    await push([{ link: { status: 'online', metersDegraded: false } }, metersEvent(true), channelsEvent()]);
+    await expect(window.locator('#mixer-conn')).toHaveText('Connected: X32 · 32 ch');
+    await expect(window.locator('#mixer-cards .mx-card')).toHaveCount(3);
+    await expect(window.locator('.mx-card-dismiss').first()).toBeEnabled();
+    await expect(window.locator('#mixer-inspector .mx-step', { hasText: 'Comp' }).first().locator('.mx-step-age')).toHaveText('live');
+    await expect(window.locator('#mixer-rail-context')).toContainText('input meters');
+    await shot('reconnect-after.png');
   });
 });

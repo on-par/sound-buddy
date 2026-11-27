@@ -31,10 +31,19 @@ describe('busRoutes', () => {
   it('builds name, fader, on and the channels sending to each bus from parsed sends and surfaces', () => {
     const view = busRoutes(SURFACES, DETAIL, [ch(1, 'Lead Vox'), ch(2, 'Vox 1')], NOW);
     expect(view.buses).toEqual([
-      { index: 1, name: 'IEM1', label: 'Bus 1 · IEM1', ranges: '2 channels · 01–02', read: true, fader: '-3.4 dB', on: true, age: 'read 5 s ago', channels: ['01 Lead Vox', '02 Vox 1'] },
-      { index: 2, name: 'Bus 2', label: 'Bus 2', ranges: '0 channels', read: false, fader: '-∞ dB', on: false, age: 'read 1 s ago', channels: [] },
-      { index: 3, name: 'Bus 3', label: 'Bus 3', ranges: '0 channels', read: false, fader: null, on: null, age: 'not read yet', channels: [] },
+      { index: 1, name: 'IEM1', label: 'Bus 1 · IEM1', ranges: '2 channels · 01–02', read: true, fader: '-3.4 dB', on: true, age: 'read 5 s ago', routeAge: 'read 5 s ago', channels: ['01 Lead Vox', '02 Vox 1'] },
+      { index: 2, name: 'Bus 2', label: 'Bus 2', ranges: '0 channels', read: false, fader: '-∞ dB', on: false, age: 'read 1 s ago', routeAge: '', channels: [] },
+      { index: 3, name: 'Bus 3', label: 'Bus 3', ranges: '0 channels', read: false, fader: null, on: null, age: 'not read yet', routeAge: '', channels: [] },
     ]);
+  });
+
+  it('ages each routing row by the oldest send read behind it, and by the bus name when it is older', () => {
+    const detail: ConsoleStripDetailDto[] = [
+      { index: 1, preamp: null, gate: null, eq: null, sends: { value: [{ bus: 2, on: true, level: -5 }], readAt: NOW - 30_000 } },
+      { index: 4, preamp: null, gate: null, eq: null, sends: { value: [{ bus: 2, on: true, level: -5 }, { bus: 1, on: true, level: 0 }], readAt: NOW - 3000 } },
+    ];
+    const view = busRoutes(SURFACES, detail, [], NOW);
+    expect(view.buses.map((b) => [b.index, b.routeAge])).toEqual([[1, 'read 5 s ago'], [2, 'read 30 s ago'], [3, '']]);
   });
 
   it('counts how many channels have had their sends read', () => {

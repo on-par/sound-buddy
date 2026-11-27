@@ -66,6 +66,7 @@ export default function MixerPanel({ now: nowProp }: { now?: number }): JSX.Elem
     liveStateStatus: s.liveStateStatus,
     liveChannels: s.liveChannels,
     liveMeters: s.liveMeters,
+    liveChannelsReadAt: s.liveChannelsReadAt,
     liveStripDetail: s.liveStripDetail,
     liveSurfaces: s.liveSurfaces,
     link: s.link,
@@ -154,6 +155,7 @@ export default function MixerPanel({ now: nowProp }: { now?: number }): JSX.Elem
           room: mx.roomCurve,
           ring: ring ? { freq: ring.freq, label: `Ring near ${ring.freqLabel}` } : null,
           now,
+          live: { offline, channelsReadAt: con.liveChannelsReadAt },
         });
   const rail = railView(attention, mx.moves, con.liveChannels, {
     sources: {

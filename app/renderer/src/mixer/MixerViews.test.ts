@@ -27,9 +27,9 @@ const TILE: DockTile = {
 
 const ROUTING: RoutingView = {
   buses: [
-    { index: 1, name: 'IEM1', label: 'Bus 1 · IEM1', ranges: '2 channels · 01–02', read: true, fader: '-3.4 dB', on: true, age: 'read 5 s ago', channels: ['01 Lead Vox', '02 Vox 1'] },
-    { index: 2, name: 'Bus 2', label: 'Bus 2', ranges: '0 channels', read: false, fader: '-∞ dB', on: false, age: 'read 1 s ago', channels: [] },
-    { index: 3, name: 'Bus 3', label: 'Bus 3', ranges: '0 channels', read: false, fader: null, on: null, age: 'not read yet', channels: [] },
+    { index: 1, name: 'IEM1', label: 'Bus 1 · IEM1', ranges: '2 channels · 01–02', read: true, fader: '-3.4 dB', on: true, age: 'read 5 s ago', routeAge: 'read 21 s ago', channels: ['01 Lead Vox', '02 Vox 1'] },
+    { index: 2, name: 'Bus 2', label: 'Bus 2', ranges: '0 channels', read: false, fader: '-∞ dB', on: false, age: 'read 1 s ago', routeAge: '', channels: [] },
+    { index: 3, name: 'Bus 3', label: 'Bus 3', ranges: '0 channels', read: false, fader: null, on: null, age: 'not read yet', routeAge: '', channels: [] },
   ],
   sendsRead: 2,
   channelCount: 32,
@@ -87,6 +87,7 @@ describe('MixerBuses and routing', () => {
     expect(html.match(/class="mx-route"/g)).toHaveLength(1);
     expect(html).toContain('2 channels · 01–02');
     expect(html).toContain('Bus 1 · IEM1');
+    expect(html).toContain('<span class="mx-route-age">read 21 s ago</span>');
     expect(html).toContain('Sends read for 2 of 32 channels');
     const offBus = renderToString(createElement(MixerRouting, { routing: { ...ROUTING, buses: [{ ...ROUTING.buses[0], on: false }] } }));
     expect(offBus).toContain('mx-route-bus mx-bus-off');

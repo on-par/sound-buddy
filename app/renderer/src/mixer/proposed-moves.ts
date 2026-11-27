@@ -29,7 +29,8 @@ export interface ProposedMove {
 export type ProposedMoves = Readonly<Record<string, ProposedMove>>;
 
 const RATIO_WHY = 'The compressor has been holding heavy gain reduction. One ratio step gentler lets loud passages through with less squeeze.';
-const THRESHOLD_WHY = 'The compressor has been holding heavy gain reduction and the ratio is already at its gentlest step. A slightly higher threshold engages it less often.';
+export const THRESHOLD_WHY = 'The compressor has been holding heavy gain reduction and the ratio is already at its gentlest step. A slightly higher threshold engages it less often.';
+export const UNLISTED_RATIO_WHY = 'The compressor has been holding heavy gain reduction and its ratio is not one of the desk steps Sound Buddy knows. A slightly higher threshold engages it less often.';
 const EXPECTED = 'Less gain reduction on loud passages; the channel should sound less squashed.';
 
 function sameValue(a: number, b: number): boolean {
@@ -66,7 +67,7 @@ export function proposeMove(issue: MixerIssue, channel: ConsoleChannelStateDto |
     parameter: 'comp-threshold',
     from: thr,
     to,
-    why: THRESHOLD_WHY,
+    why: step === 0 ? THRESHOLD_WHY : UNLISTED_RATIO_WHY,
     expected: EXPECTED,
     status: 'pending',
   };
