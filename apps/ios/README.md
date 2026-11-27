@@ -46,17 +46,22 @@ Capabilities**. The project sets no team on purpose.
 ## Simulator smoke test
 
 1. Run the **SoundBuddy** scheme (⌘R) on an iPhone Simulator.
-2. The app starts listening by itself. It has no Start or Stop button. The
+2. The app opens on the **Analyze** tab of an Analyze · Mix · Agent tab bar
+   and starts listening by itself. It has no Start or Stop button. The
    first time, iOS asks for microphone access. Allow it. The header shows the
-   Sound Buddy mark and name, with "Analyze · Listening" beneath.
+   Sound Buddy mark and name, with "Analyze · Listening" beneath, and an
+   Absolute / Relative switch under it.
 3. The Simulator uses your Mac's default input. Play music or speak near the
    Mac. The RTA bars move, and white peak ticks hold above them for a moment.
    Lows glow green to orange as they get hot; mids and highs are cyan to blue.
-   A dashed white target line rides on top of the bars, tracks the material's
-   level, and keeps its shape as the level changes. Under the RTA,
-   "Target · Worship – Full Band (auto)" shows with a matching dashed swatch.
+   A gold Room line traces the bar tops in Absolute. A dashed azure target
+   line with a dark halo rides on top, tracks the material's level, and keeps
+   its shape as the level changes. Under the RTA, "Target · Worship – Full
+   Band (auto)" shows with a matching dashed swatch, and a gold "Room" swatch
+   sits beside it.
 4. Play something tonally lopsided, such as a bass-heavy track. Within a
-   second, up to three coaching cards appear. An example: "Bass is 6.2 dB over
+   second, coaching cards appear (one on iPhone portrait, with "+N more"
+   opening the Agent tab; up to three elsewhere). An example: "Bass is 6.2 dB over
    the target. Try a gentle cut around 60-250 Hz." The cards update in place
    about once a second.
 5. Tap the gear. Settings shows **Keep screen awake** and a **Microphone**
@@ -84,7 +89,7 @@ Capabilities**. The project sets no team on purpose.
 10. Tap the Target legend (or the pencil). An **Editing target** chip with
     Cancel and Done takes the legend's place under the RTA. The RTA does not
     move and no new screen is pushed; the header still shows the listening
-    indicator. The dashed target line turns solid, and white handles appear on
+    indicator. The dashed target line turns solid, and azure handles appear on
     it. Touching one gives a haptic (on a device) and dragging it reshapes the
     curve into a smooth spline around the handle, redrawing on every movement.
     Drag a handle past the top or bottom of the grid — it stops exactly at the

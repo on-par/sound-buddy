@@ -26,14 +26,17 @@ struct ConsoleChip: View {
                             .font(.footnote.weight(.semibold))
                         Text(status.label)
                             .font(.caption2)
-                            .foregroundStyle(Palette.secondaryText)
+                            .foregroundStyle(Palette.tertiaryText)
                     }
                 }
             }
             .padding(.horizontal, Layout.paddingH)
             .padding(.vertical, Layout.paddingV)
-            .background(Palette.surface, in: Capsule())
-            .foregroundStyle(Color.primary)
+            .background(Palette.panel2, in: Capsule())
+            .overlay(Capsule().strokeBorder(Palette.borderStrong, lineWidth: ThemeMetrics.hairline))
+            .foregroundStyle(Palette.primaryText)
+            .frame(minHeight: ThemeMetrics.minimumHitTarget)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .lineLimit(1)
@@ -46,9 +49,9 @@ struct ConsoleChip: View {
 
     private var tintColor: Color {
         switch status.tint {
-        case .green: return .green
-        case .amber: return .orange
-        case .grey: return .gray
+        case .green: return Palette.good
+        case .amber: return Palette.check
+        case .grey: return Palette.tertiaryText
         }
     }
 

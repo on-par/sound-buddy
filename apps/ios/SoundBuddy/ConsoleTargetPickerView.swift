@@ -137,17 +137,7 @@ private struct ConsoleTargetTile: View {
     }
 
     private func tintColor(for base: ConsoleChannelColor) -> Color {
-        switch base {
-        case .off: return Palette.secondaryText
-        case .red: return .red
-        case .green: return .green
-        case .yellow: return .yellow
-        case .blue: return .blue
-        case .magenta: return .pink
-        case .cyan: return .cyan
-        case .white: return .white
-        default: return Palette.secondaryText
-        }
+        base.scribbleTint
     }
 
     private enum Layout {

@@ -523,4 +523,35 @@ struct AnalyzeLayoutTests {
         #expect(split.consoleEQ >= 0)
         #expect(split.coaching >= 0)
     }
+
+    @Test(
+        "inline coaching card limit: one on iPhone portrait, the full stack elsewhere",
+        arguments: [
+            (AnalyzeLayout.portrait, 1),
+            (AnalyzeLayout.landscape, AnalyzeCoachingViewModel.maxCards),
+            (AnalyzeLayout.tallPortrait, AnalyzeCoachingViewModel.maxCards),
+            (AnalyzeLayout.wide, AnalyzeCoachingViewModel.maxCards),
+        ]
+    )
+    func inlineCoachingCardLimit(layout: AnalyzeLayout, expected: Int) {
+        #expect(layout.inlineCoachingCardLimit == expected)
+    }
+
+    @Test(
+        "cards past the inline limit become the +N more count",
+        arguments: [
+            (AnalyzeLayout.portrait, 0, 0),
+            (AnalyzeLayout.portrait, 1, 0),
+            (AnalyzeLayout.portrait, 3, 2),
+            (AnalyzeLayout.tallPortrait, 3, 0),
+            (AnalyzeLayout.wide, 2, 0),
+        ]
+    )
+    func coachingOverflow(layout: AnalyzeLayout, cardCount: Int, expected: Int) {
+        #expect(layout.coachingOverflowCount(cardCount: cardCount) == expected)
+    }
+
+    @Test func showMoreLabel() {
+        #expect(AnalyzeLayout.showMoreLabel(count: 2) == "+2 more")
+    }
 }

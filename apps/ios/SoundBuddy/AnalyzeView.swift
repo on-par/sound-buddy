@@ -7,9 +7,8 @@ import UIKit
 
 /// The P0 Analyze screen: a console-style RTA (with its dashed ideal-EQ
 /// target and legend), the short coaching stack, the overall level readout
-/// (an estimated dB, unit drawn tiny). Always listening while
-/// on screen in the foreground — no Start/Stop control; lifecycle events go
-/// to the model.
+/// (an estimated dB, unit drawn tiny). No Start/Stop control; RootTabView
+/// owns the listening lifecycle.
 /// Pure rendering — every decision lives in AnalyzeModel (SoundBuddyKit),
 /// which is where the tests are.
 ///
@@ -34,8 +33,7 @@ import UIKit
 /// A gear button beside the level readout (end of the landscape strip) opens
 /// the Settings sheet (#1591). Its keep-awake toggle (#1584): while on (the
 /// default, persisted) and the scene is active, auto-lock is off; leaving the
-/// foreground always restores it. KeepAwakePolicy decides; this view owns the
-/// stored preference and applies it. Its Microphone section (#1594) picks the
+/// foreground always restores it. KeepAwakePolicy decides. Its Microphone section (#1594) picks the
 /// input and carries the honesty copy that used to be a header badge;
 /// choosing an input restarts listening on the new route.
 ///
@@ -44,12 +42,8 @@ import UIKit
 /// beside the RTA and the chip keeps opening the target picker instead —
 /// AnalyzeLayout.consoleEQPlacement(isRegularWidth:) decides.
 ///
-/// A band-deviation coaching card gets a "Show on console" button while a
-/// console link is up (#1671): tapping it selects Main LR and shows a
-/// dashed ghost band/curve for the suggested change. Tapping Apply on that
-/// ghost (in the EQ panel) writes it to Main LR through an armed
-/// `ConsoleEQWriter` (#1676, ADR-0161); the coaching stack then shows an
-/// applied note with Undo, from `console.appliedCoaching`.
+/// The coaching stack shows an applied note with Undo, from
+/// `console.appliedCoaching` (#1676, ADR-0161).
 ///
 /// iPad (#1659): AnalyzeLayout also picks tallPortrait (regular-width
 /// portrait — the RTA fills the height above the coaching cards instead of
@@ -63,7 +57,6 @@ import UIKit
 /// Split View windows stay on portrait / landscape, unchanged.
 struct AnalyzeView: View {
     let model: AnalyzeModel
-    let keepAwake: KeepAwakeController
     let micInputs: MicInputController
     /// Injected until the heartbeat/session slice (#1667) wires a live
     /// `ConsoleSessionReducer` in: Release passes `console: nil`, so the
@@ -88,16 +81,15 @@ struct AnalyzeView: View {
     /// writer; Release passes `nil`, so Apply always reads "Unlock to
     /// apply" there.
     var consoleEQWriter: ConsoleEQWriter? = nil
-    @Environment(\.scenePhase) private var scenePhase
+    var onReviewFix: (CoachingEvent) -> Void = { _ in }
+    var onShowMore: () -> Void = {}
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var coachingPeekOpen = false
     @State private var settingsOpen = false
     @State private var consolePickerOpen = false
     @State private var consoleEQOpen = false
     @AppStorage(KeepAwakePolicy.defaultsKey) private var keepAwakeEnabled = KeepAwakePolicy.defaultValue
-    /// The RTA smoothing choice (#1707); pushed into the model, which steps
-    /// the analysis-rate display state the target line level-matches against.
-    @AppStorage(RTABallisticsMode.defaultsKey) private var rtaBallistics = RTABallisticsMode.defaultValue
+    @AppStorage(RTAViewMode.defaultsKey) private var rtaViewMode = RTAViewMode.defaultValue
 
     private var showsConsoleChip: Bool {
         ConsoleChipStatus.isVisible(flagEnabled: featureFlags.isEnabled(.console), consentGranted: consoleConsent.isGranted, console: console?.console)
@@ -143,9 +135,7 @@ struct AnalyzeView: View {
                     .presentationDetents([.medium, .large])
             }
         }
-        .task { await model.appear() }
         .onAppear {
-            applyKeepAwake()
             #if DEBUG
             // Simulator proofs (#1708): open Settings without a tap.
             if DebugLaunchOptions.opensSettings(ProcessInfo.processInfo.arguments) {
@@ -153,46 +143,6 @@ struct AnalyzeView: View {
             }
             #endif
         }
-        .onDisappear {
-            model.disappear()
-            keepAwake.release()
-        }
-        .onChange(of: keepAwakeEnabled) { _, _ in applyKeepAwake() }
-        .onChange(of: rtaBallistics, initial: true) { _, mode in model.rtaBallistics = mode }
-        // No background audio mode in P0: release the mic when the app leaves
-        // the foreground instead of letting the OS cut the engine, and pick it
-        // back up on return. .inactive (permission alert, Control Center) is
-        // deliberately ignored.
-        .onChange(of: scenePhase) { _, phase in
-            applyKeepAwake()
-            switch phase {
-            case .background: model.enterBackground()
-            case .active: Task { await model.enterForeground() }
-            default: break
-            }
-        }
-        #if canImport(UIKit)
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willTerminateNotification)) { _ in
-            model.terminate()
-        }
-        // Belt and braces: scenePhase also reports .inactive, but never leave
-        // auto-lock disabled once the app starts to leave the foreground.
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
-            keepAwake.release()
-        }
-        // An external mic unplugged (or a new one plugged in) while
-        // listening (#1601): fall back to the system default and keep going
-        // on the new route instead of leaving a dead engine.
-        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification).receive(on: RunLoop.main)) { note in
-            if micInputs.routeChanged(MicRouteChange(notification: note)) {
-                Task { await model.restartListening() }
-            }
-        }
-        #endif
-    }
-
-    private func applyKeepAwake() {
-        keepAwake.apply(keepAwake: keepAwakeEnabled, isSceneActive: scenePhase == .active)
     }
 
     /// The reconnect re-check banner, inset above the RTA (#1796). Always
@@ -260,14 +210,11 @@ struct AnalyzeView: View {
         ConsoleCoachingMapper.isArmed(writer: consoleEQWriter, phase: console?.phase ?? .idle)
     }
 
-    /// Selects Main LR and stores the tapped event (#1671); on the sheet
-    /// placement it also opens the sheet — on the side-column placement the
-    /// panel is already on screen and just updates.
-    private func showOnConsole(_ event: CoachingEvent, placement: AnalyzeLayout.ConsoleEQPlacement) {
-        console?.showCoaching(event)
-        if placement == .sheet {
-            consoleEQOpen = true
+    private func reviewFix(_ event: CoachingEvent) {
+        if showsConsoleAction(for: event) {
+            console?.showCoaching(event)
         }
+        onReviewFix(event)
     }
 
     /// iPhone portrait (fixed-height RTA, slack below the cards) and iPad
@@ -288,8 +235,9 @@ struct AnalyzeView: View {
             }
             CoachingStackView(
                 model: model,
-                onShowOnConsole: { showOnConsole($0, placement: placement) },
-                showsConsoleAction: showsConsoleAction,
+                onReviewFix: reviewFix,
+                limit: layout.inlineCoachingCardLimit,
+                onShowMore: onShowMore,
                 applied: console?.appliedCoaching,
                 canUndoApplied: canUndoApplied,
                 onUndoApplied: { try? console?.undoAppliedCoaching(using: consoleEQWriter) }
@@ -317,11 +265,7 @@ struct AnalyzeView: View {
             consoleVisible: showsConsoleChip && console != nil
         )
         let coaching = ScrollView {
-            CoachingStackView(
-                model: model,
-                onShowOnConsole: { showOnConsole($0, placement: placement) },
-                showsConsoleAction: showsConsoleAction
-            )
+            CoachingStackView(model: model, onReviewFix: reviewFix)
         }
         return VStack(spacing: Layout.landscapeSpacing) {
             landscapeStrip(placement: placement)
@@ -411,13 +355,10 @@ struct AnalyzeView: View {
                     model: model,
                     isOpen: $coachingPeekOpen,
                     maxHeight: proxy.size.height * Layout.peekMaxHeightFraction,
-                    onShowOnConsole: { event in
-                        showOnConsole(event, placement: placement)
-                        if placement == .sheet {
-                            coachingPeekOpen = false
-                        }
+                    onReviewFix: { event in
+                        coachingPeekOpen = false
+                        reviewFix(event)
                     },
-                    showsConsoleAction: showsConsoleAction,
                     applied: console?.appliedCoaching,
                     canUndoApplied: canUndoApplied,
                     onUndoApplied: { try? console?.undoAppliedCoaching(using: consoleEQWriter) }
@@ -433,6 +374,7 @@ struct AnalyzeView: View {
                 ConsoleChip(title: chipTitle, status: console.chipStatus) { consoleChipTapped(placement: placement) }
             }
             Spacer()
+            rtaModeSegment
             OverallLevelReadout(model: model, font: .headline.monospacedDigit())
             SettingsButton { settingsOpen = true }
         }
@@ -443,6 +385,31 @@ struct AnalyzeView: View {
     /// section label and listening status beneath; the level readout and the
     /// settings gear stay on the right.
     private func header(placement: AnalyzeLayout.ConsoleEQPlacement) -> some View {
+        VStack(alignment: .leading, spacing: Layout.headerRowSpacing) {
+            brandRow
+            HStack(spacing: Layout.landscapeStripSpacing) {
+                if showsConsoleChip, let console, let chipTitle = console.chipTitle {
+                    ConsoleChip(title: chipTitle, status: console.chipStatus) { consoleChipTapped(placement: placement) }
+                }
+                Spacer(minLength: 0)
+                rtaModeSegment
+            }
+        }
+    }
+
+    private var rtaModeSegment: some View {
+        SegmentedPills(
+            options: RTAViewMode.allCases,
+            selection: $rtaViewMode,
+            title: \.label,
+            identifier: { "analyze.rtaMode.\($0.rawValue)" }
+        )
+        .fixedSize()
+        .disabled(model.isEditingTarget)
+        .opacity(model.isEditingTarget ? Layout.peekDisabledOpacity : 1)
+    }
+
+    private var brandRow: some View {
         HStack(alignment: .center, spacing: Layout.brandSpacing) {
             Image("BrandMark")
                 .resizable()
@@ -459,9 +426,6 @@ struct AnalyzeView: View {
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(Palette.accent)
                     ListeningIndicator(state: model.state)
-                }
-                if showsConsoleChip, let console, let chipTitle = console.chipTitle {
-                    ConsoleChip(title: chipTitle, status: console.chipStatus) { consoleChipTapped(placement: placement) }
                 }
             }
             Spacer(minLength: 0)
@@ -522,7 +486,7 @@ private struct SettingsButton: View {
 /// The Settings sheet (#1591): the keep-awake preference (#1584) and the
 /// microphone picker with the honesty copy (#1594). The keep-awake binding is
 /// AnalyzeView's @AppStorage, so flipping it here re-applies keep-awake
-/// through AnalyzeView's onChange. `onSelectMic` persists and routes the
+/// through RootTabView's onChange. `onSelectMic` persists and routes the
 /// choice (nil = system default) and restarts listening.
 private struct SettingsView: View {
     @Binding var keepAwakeEnabled: Bool
@@ -576,7 +540,7 @@ private struct SettingsView: View {
                         .accessibilityValue(KeepAwakePolicy.accessibilityValue(keepAwake: keepAwakeEnabled))
                         .accessibilityIdentifier("settings.keepAwake")
                 } footer: {
-                    Text("Stops the screen from locking while Analyze is open. Auto-lock always returns when you leave the app.")
+                    Text("Stops the screen from locking while Sound Buddy is open. Auto-lock always returns when you leave the app.")
                 }
                 .listRowBackground(Palette.surface)
 
@@ -820,8 +784,7 @@ private struct CoachingPeekPanel: View {
     let model: AnalyzeModel
     @Binding var isOpen: Bool
     let maxHeight: CGFloat
-    var onShowOnConsole: ((CoachingEvent) -> Void)? = nil
-    var showsConsoleAction: (CoachingEvent) -> Bool = { _ in false }
+    var onReviewFix: ((CoachingEvent) -> Void)? = nil
     var applied: ConsoleCoachingApplied? = nil
     var canUndoApplied = false
     var onUndoApplied: (() -> Void)? = nil
@@ -831,8 +794,7 @@ private struct CoachingPeekPanel: View {
             ScrollView {
                 CoachingStackView(
                     model: model,
-                    onShowOnConsole: onShowOnConsole,
-                    showsConsoleAction: showsConsoleAction,
+                    onReviewFix: onReviewFix,
                     applied: applied,
                     canUndoApplied: canUndoApplied,
                     onUndoApplied: onUndoApplied
@@ -886,6 +848,7 @@ private struct TargetControlsBand: View {
     let model: AnalyzeModel
     let metrics: TargetControlMetrics
     let onEdit: () -> Void
+    @AppStorage(RTAViewMode.defaultsKey) private var requestedMode = RTAViewMode.defaultValue
 
     var body: some View {
         let editing = model.isEditingTarget
@@ -903,6 +866,9 @@ private struct TargetControlsBand: View {
                 }
                 .frame(minHeight: metrics.rowMinHeight)
                 Spacer(minLength: Layout.legendSwatchGap)
+                if !editing, requestedMode == .absolute {
+                    RoomLegend(metrics: metrics)
+                }
                 ProgramModeChip(model: model, metrics: metrics)
             }
             TargetPresetStrip(model: model, metrics: metrics)
@@ -910,6 +876,25 @@ private struct TargetControlsBand: View {
                 .allowsHitTesting(editing)
                 .accessibilityHidden(!editing)
         }
+    }
+}
+
+private struct RoomLegend: View {
+    let metrics: TargetControlMetrics
+
+    var body: some View {
+        HStack(spacing: Layout.legendSwatchGap) {
+            Capsule()
+                .fill(RTAPalette.room)
+                .frame(width: metrics.swatchWidth, height: Layout.roomSwatchHeight)
+            Text("Room")
+                .font(metrics.font.weight(.semibold))
+                .foregroundStyle(Palette.secondaryText)
+        }
+        .fixedSize()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Room, gold line, the measured bar tops")
+        .accessibilityIdentifier("analyze.roomLegend")
     }
 }
 
@@ -1223,7 +1208,7 @@ private struct TargetTray: View {
 
 // MARK: - Coaching
 
-/// The short coaching stack: up to AnalyzeCoachingViewModel.maxCards cards,
+/// The short coaching stack: up to `limit` cards,
 /// then the placeholder/filler slots so the stack height stays steady. Cards
 /// are identified by `CoachingEvent.id` (#1700) and the model keeps their
 /// order across refreshes, so a visible tip never moves or is recreated; only
@@ -1232,8 +1217,9 @@ private struct TargetTray: View {
 /// text cross-fades old and new copies into ghosted, double-drawn text.
 struct CoachingStackView: View {
     let model: AnalyzeModel
-    var onShowOnConsole: ((CoachingEvent) -> Void)? = nil
-    var showsConsoleAction: (CoachingEvent) -> Bool = { _ in false }
+    var onReviewFix: ((CoachingEvent) -> Void)? = nil
+    var limit = AnalyzeCoachingViewModel.maxCards
+    var onShowMore: (() -> Void)? = nil
     /// The last coaching suggestion Apply wrote to Main LR (#1676), or `nil`
     /// before any Apply (or after Undo/a console change clears it).
     var applied: ConsoleCoachingApplied? = nil
@@ -1244,17 +1230,29 @@ struct CoachingStackView: View {
     var onUndoApplied: (() -> Void)? = nil
 
     var body: some View {
-        let events = model.coaching
+        let shown = Array(model.coaching.prefix(limit))
+        let overflow = max(0, model.coaching.count - shown.count)
         VStack(alignment: .leading, spacing: Layout.cardSpacing) {
-            Text("Coaching")
-                .font(.headline)
+            HStack {
+                Text("Coaching")
+                    .font(.headline)
+                Spacer(minLength: 0)
+                if overflow > 0, let onShowMore {
+                    Button(AnalyzeLayout.showMoreLabel(count: overflow), action: onShowMore)
+                        .font(.footnote.weight(.bold))
+                        .foregroundStyle(Palette.goldText)
+                        .frame(minWidth: ThemeMetrics.minimumHitTarget, minHeight: ThemeMetrics.minimumHitTarget)
+                        .contentShape(Rectangle())
+                        .accessibilityIdentifier("coaching.showMore")
+                }
+            }
             if let applied, let onUndoApplied {
                 AppliedCoachingNote(applied: applied, canUndo: canUndoApplied, onUndo: onUndoApplied)
             }
-            ForEach(events) { event in
-                CoachingCard(event: event, onShowOnConsole: onShowOnConsole, showsConsoleAction: showsConsoleAction)
+            ForEach(shown) { event in
+                CoachingCard(event: event, onReviewFix: onReviewFix)
             }
-            ForEach(events.count..<AnalyzeCoachingViewModel.maxCards, id: \.self) { slot in
+            ForEach(shown.count..<max(shown.count, limit), id: \.self) { slot in
                 if slot == 0 {
                     CoachingPlaceholder(text: model.coachingPlaceholder, isCalm: model.isMixOnTarget)
                 } else {
@@ -1327,8 +1325,7 @@ private struct CoachingPlaceholder: View {
 
 private struct CoachingCard: View {
     let event: CoachingEvent
-    var onShowOnConsole: ((CoachingEvent) -> Void)? = nil
-    var showsConsoleAction: (CoachingEvent) -> Bool = { _ in false }
+    var onReviewFix: ((CoachingEvent) -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .center, spacing: Layout.cardSpacing) {
@@ -1339,18 +1336,26 @@ private struct CoachingCard: View {
                     .font(.subheadline)
                     .lineLimit(Layout.coachingMaxLines)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                if let onShowOnConsole, showsConsoleAction(event) {
-                    Button("Show on console") { onShowOnConsole(event) }
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Palette.accent)
-                        .accessibilityIdentifier("coaching.showOnConsole")
+                if let onReviewFix, AgentPresentation.offersReviewFix(for: event) {
+                    Button { onReviewFix(event) } label: {
+                        Label(MixCopy.reviewFix, systemImage: "sparkles")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Palette.onAccent)
+                            .padding(.horizontal, Layout.cardPadding)
+                            .frame(minHeight: ThemeMetrics.minimumHitTarget)
+                            .background(Palette.accent, in: RoundedRectangle(cornerRadius: ThemeMetrics.tileRadius))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("coaching.reviewFix")
                 }
             }
         }
         .frame(minHeight: Layout.coachingSlotMinHeight)
+        .padding(.vertical, onReviewFix != nil && AgentPresentation.offersReviewFix(for: event) ? Layout.cardSpacing : 0)
         .padding(.horizontal, Layout.cardPadding)
         .background(Palette.surface, in: RoundedRectangle(cornerRadius: Layout.cornerRadius))
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 
     private var icon: String {
@@ -1403,6 +1408,7 @@ private enum Layout {
     static let screenPadding: CGFloat = 20
     static let sectionSpacing: CGFloat = 20
     static let headerSpacing: CGFloat = 2
+    static let headerRowSpacing: CGFloat = 8
     static let brandSpacing: CGFloat = 10
     /// Matches BRAND_MARK_POINTS in scripts/make_ios_icons.py.
     static let brandMarkSize: CGFloat = 36
@@ -1424,6 +1430,7 @@ private enum Layout {
     static let legendSwatchGap: CGFloat = 6
     static let legendSwatchLineWidth: CGFloat = 1.5
     static let legendSwatchDash: [CGFloat] = [3, 2]
+    static let roomSwatchHeight: CGFloat = 2.4
     static let editChipSpacing: CGFloat = 10
     static let editChipPaddingH: CGFloat = 10
     static let presetPillSpacing: CGFloat = 8
@@ -1440,29 +1447,6 @@ private enum Layout {
     static let landscapeStripSpacing: CGFloat = 12
     /// Gap between the wide layout's RTA column and its coaching column (#1659).
     static let wideColumnSpacing: CGFloat = 16
-}
-
-/// Mirrors the Mac renderer's design tokens (app/renderer :root) — dark
-/// neutrals with the gold accent. Internal (not file-private) so other
-/// Analyze-adjacent views (e.g. ConsoleChip) share the same tokens.
-enum Palette {
-    static let background = hex(0x0B0C0F) // --neutral-950 (--bg-app)
-    static let surface = hex(0x1B1F26) // --neutral-800 (--surface)
-    static let accent = hex(0xEBB93C) // --gold-500
-    static let live = hex(0x3FB950)
-    static let error = hex(0xE5534B)
-    static let secondaryText = hex(0xA2AAB6) // --neutral-300 (--text-secondary)
-    /// Shares RTAPalette.target so the legend swatch matches the dashed line
-    /// drawn on the RTA itself.
-    static let target = RTAPalette.target
-
-    private static func hex(_ rgb: UInt32) -> Color {
-        Color(
-            red: Double((rgb >> 16) & 0xFF) / 255,
-            green: Double((rgb >> 8) & 0xFF) / 255,
-            blue: Double(rgb & 0xFF) / 255
-        )
-    }
 }
 
 /// The raw-mic-path readout (#1708): what the running capture actually got

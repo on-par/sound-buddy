@@ -34,6 +34,8 @@ struct SoundBuddyApp: App {
     /// Settings > Console (beta)'s saved-setup list, Redo setup and Forget
     /// this console (#1797).
     @State private var channelSetupSettings: ChannelSetupSettingsModel
+    @State private var consoleSession: ConsoleSessionModel?
+    @State private var consoleEQWriter: ConsoleEQWriter?
     private let consoleFlagBox = ConsoleFeatureFlagBox()
 
     init() {
@@ -116,6 +118,11 @@ struct SoundBuddyApp: App {
             let demoConsent = ConsoleConsentStore(defaults: UserDefaults(suiteName: "consoleDemo") ?? .standard)
             demoConsent.grant()
             _consoleConsent = State(initialValue: demoConsent)
+            if DebugLaunchOptions.armsConsoleDemo(ProcessInfo.processInfo.arguments), let identity = demo.console {
+                let session = ConsoleArmedDemo.session(for: identity)
+                _consoleSession = State(initialValue: session)
+                _consoleEQWriter = State(initialValue: session.eqWriter)
+            }
         }
         #endif
 
@@ -223,7 +230,7 @@ struct SoundBuddyApp: App {
 
     var body: some Scene {
         WindowGroup {
-            AnalyzeView(
+            RootTabView(
                 model: model,
                 keepAwake: keepAwake,
                 micInputs: micInputs,
@@ -235,6 +242,8 @@ struct SoundBuddyApp: App {
                     // ConsoleSessionModel.consentRevoked() here once a live
                     // session model exists.
                     console = nil
+                    consoleSession?.consentRevoked()
+                    consoleEQWriter = nil
                     consoleStore.disconnect()
                     channelSetupRecheck.reset()
                 },
@@ -249,7 +258,8 @@ struct SoundBuddyApp: App {
                     channelSetupOpen = true
                 },
                 channelSetups: channelSetupSettings,
-                onRedoChannelSetup: openChannelSetup
+                onRedoChannelSetup: openChannelSetup,
+                consoleEQWriter: consoleEQWriter
             )
             .task {
                 let store = await Self.storeEnvironment()
@@ -374,6 +384,25 @@ private enum ConsoleDemoSeed {
         case "offline": return .noNetwork
         default: return nil
         }
+    }
+}
+#endif
+
+#if DEBUG
+private enum ConsoleArmedDemo {
+    @MainActor
+    static func session(for identity: ConsoleIdentity) -> ConsoleSessionModel {
+        let session = ConsoleSessionModel(
+            now: { ProcessInfo.processInfo.systemUptime },
+            isConsentGranted: { true },
+            perform: { _ in },
+            sendDatagram: { _ in }
+        )
+        session.send(.connect(identity))
+        session.send(.identityReceived(identity))
+        session.send(.syncCompleted)
+        session.arm()
+        return session
     }
 }
 #endif
