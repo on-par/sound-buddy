@@ -10,6 +10,9 @@ import MixerAssistSettings, {
   CLOUD_ROW_COPY,
   FIELD_CLASS,
   LOCAL_ROW_COPY,
+  LOGIN_COPY,
+  REMOVE_STORED_TOKEN_LABEL,
+  STORED_TOKEN_NOTICE,
   closestField,
   commitAssistField,
   saveAssistToken,
@@ -18,14 +21,15 @@ import MixerAssistSettings, {
 import { createSettingsStore, useSettingsStore } from './stores/settingsStore';
 import { createMixerAssistStore, useMixerAssistStore } from './stores/mixerAssistStore';
 import { createMockSoundBuddy, DEFAULT_MIXER_ASSIST_STATUS } from './mock-sound-buddy';
-import { ALL_FEATURE_FLAGS_OFF } from '../../electron/feature-flags';
+import { CLAUDE_MISSING_LINE, CLAUDE_SIGNED_OUT_LINE } from './mixer/assist-view';
+import { ALL_FEATURE_FLAGS_OFF, type FeatureFlags } from '../../electron/feature-flags';
 import type { AppSettings, MixerAssistStatusDto, UpdateSettingsPatch } from '../../electron/ipc/api';
 
 const FAKE_TOKEN = 'fake-settings-token-9999';
 
 const BASE_SETTINGS = { mixerCloudAssistEnabled: false, mixerLocalAssistEnabled: false, mixerCloudAssistBinaryPath: '', mixerLocalAssistEndpoint: '', mixerLocalAssistModel: '' } as AppSettings;
 
-function render(settings: Partial<AppSettings>, status: MixerAssistStatusDto | null, flags = { console: true, mixer: true }, tokenMessage: string | null = null): string {
+function render(settings: Partial<AppSettings>, status: MixerAssistStatusDto | null, flags: Partial<FeatureFlags> = { console: true, mixer: true }, tokenMessage: string | null = null): string {
   useSettingsStore.setState({ settings: { ...BASE_SETTINGS, ...settings }, featureFlags: { ...ALL_FEATURE_FLAGS_OFF, ...flags } });
   useMixerAssistStore.setState({ status, tokenMessage });
   return renderToString(createElement(MixerAssistSettings));
@@ -100,6 +104,53 @@ describe('MixerAssistSettings', () => {
 
   it('shows Checking while the status has not loaded', () => {
     expect(render({}, null)).toContain('Checking Cloud assist');
+  });
+});
+
+describe('MixerAssistSettings with flag mixerCloudAssistLogin on', () => {
+  const LOGIN_FLAGS = { console: true, mixer: true, mixerCloudAssistLogin: true };
+  const LOGIN_STATUS: MixerAssistStatusDto = {
+    cloud: { enabled: true, binaryFound: true, tokenSaved: false, encryptionAvailable: null, lastFailure: null, auth: 'login', storedToken: false },
+    local: { enabled: false, endpoint: 'unset', modelSet: false, lastFailure: null },
+    inFlight: false,
+  };
+  const withCloud = (cloud: Partial<MixerAssistStatusDto['cloud']>): MixerAssistStatusDto => ({ ...LOGIN_STATUS, cloud: { ...LOGIN_STATUS.cloud, ...cloud } });
+  const FORBIDDEN = ['type="password"', 'id="mixer-cloud-token"', 'Paste token', 'write-only token', 'Token saved', 'setup-token', 'Claude Code token</label>'];
+
+  it('has no token field or token copy, says Cloud uses your own Claude Code login, and keeps the locked phrase and binary path', () => {
+    for (const status of [LOGIN_STATUS, null]) {
+      const html = decode(render({ mixerCloudAssistEnabled: true }, status, LOGIN_FLAGS));
+      for (const text of FORBIDDEN) expect(html).not.toContain(text);
+      expect(html).toContain(`id="mixer-cloud-login-copy">${LOGIN_COPY}</p>`);
+      expect(html).toContain('Works with the AI you already have');
+      expect(html).toContain('id="mixer-cloud-binary"');
+    }
+    expect(LOGIN_COPY).toMatch(/your own Claude Code login/);
+    expect(decode(render({ mixerCloudAssistEnabled: true }, LOGIN_STATUS, LOGIN_FLAGS))).toContain('Cloud assist is ready: Claude Code found, using your Claude Code login.');
+  });
+
+  it('missing binary and signed out read differently in the live status', () => {
+    const missing = decode(render({ mixerCloudAssistEnabled: true }, withCloud({ binaryFound: false }), LOGIN_FLAGS));
+    const signedOut = decode(render({ mixerCloudAssistEnabled: true }, withCloud({ lastFailure: 'not-signed-in' }), LOGIN_FLAGS));
+    expect(missing).toContain(CLAUDE_MISSING_LINE);
+    expect(missing).not.toContain(CLAUDE_SIGNED_OUT_LINE);
+    expect(signedOut).toContain(CLAUDE_SIGNED_OUT_LINE);
+    expect(signedOut).not.toContain(CLAUDE_MISSING_LINE);
+  });
+
+  it('a stored token from before shows the one-time notice with an explicit Remove stored token action', () => {
+    const html = decode(render({}, withCloud({ storedToken: true }), LOGIN_FLAGS));
+    expect(html).toContain(`id="mixer-cloud-stored-token-notice" role="status">${STORED_TOKEN_NOTICE}`);
+    expect(html).toContain(`id="mixer-cloud-stored-token-remove">${REMOVE_STORED_TOKEN_LABEL}</button>`);
+    expect(STORED_TOKEN_NOTICE).toMatch(/no longer stores a Claude Code token.*Claude Code's own login/);
+    for (const status of [LOGIN_STATUS, null]) expect(render({}, status, LOGIN_FLAGS)).not.toContain('mixer-cloud-stored-token');
+  });
+
+  it('flag off keeps the token field and its copy exactly as before', () => {
+    const html = decode(render({}, DEFAULT_MIXER_ASSIST_STATUS, { console: true, mixer: true, mixerCloudAssistLogin: false }));
+    expect(html).toContain('id="mixer-cloud-token"');
+    expect(html).toContain('Paste token');
+    expect(html).not.toContain(LOGIN_COPY);
   });
 });
 

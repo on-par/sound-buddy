@@ -67,3 +67,13 @@ export function beginCall(state: BudgetState, request: BudgetRequest, id: number
 export function endCall(state: BudgetState, id: number): BudgetState {
   return state.inFlight?.id === id ? { ...state, inFlight: null } : state;
 }
+
+export function refundCall(state: BudgetState, prior: BudgetState, request: BudgetRequest): BudgetState {
+  if (request.trigger === 'question') return state;
+  const key = anomalyKey(request.kind, request.channel);
+  const lastAnomalyAt = { ...state.lastAnomalyAt };
+  const previous = prior.lastAnomalyAt[key];
+  if (previous === undefined) delete lastAnomalyAt[key];
+  else lastAnomalyAt[key] = previous;
+  return { ...state, lastAnomalyAt, anomalyStarts: state.anomalyStarts.slice(0, -1) };
+}

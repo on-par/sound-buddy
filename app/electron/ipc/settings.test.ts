@@ -210,7 +210,7 @@ describe('list-rigs / set-active-rig / onboarding-disabled', () => {
     try {
       expect(await handler(null)).toEqual({
         reportCard: false, directory: false, session: false,
-        console: true, buildGuide: false, ringOut: false, mixer: false,
+        console: true, buildGuide: false, ringOut: false, mixer: false, mixerCloudAssistLogin: false,
       });
     } finally {
       delete process.env.SOUND_BUDDY_FEATURES;
@@ -218,7 +218,7 @@ describe('list-rigs / set-active-rig / onboarding-disabled', () => {
 
     expect(await handler(null)).toEqual({
       reportCard: false, directory: false, session: false,
-      console: false, buildGuide: false, ringOut: false, mixer: false,
+      console: false, buildGuide: false, ringOut: false, mixer: false, mixerCloudAssistLogin: false,
     });
   });
 });

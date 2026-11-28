@@ -2,7 +2,7 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import * as path from 'path';
-import { sanitize } from './sanitize';
+import { redact, sanitize } from './sanitize';
 
 export const CLAUDE_TIMEOUT_MS = 45_000;
 export const CLAUDE_KILL_GRACE_MS = 2_000;
@@ -16,6 +16,14 @@ export const HOME_FALLBACK_DIR = path.join('.local', 'bin');
 export const STRIPPED_ENV_KEYS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL'] as const;
 const OAUTH_ENV_KEY = 'CLAUDE_CODE_OAUTH_TOKEN';
 const EMPTY_ANSWER_DETAIL = 'Claude Code returned an empty answer.';
+export const LOGIN_FAILURE_PATTERNS: readonly RegExp[] = [
+  /\bnot\s+(?:logged|signed)\s+in\b/i,
+  /\bplease\s+run\s+\/login\b/i,
+  /\binvalid\s+api\s+key\b/i,
+  /\boauth\s+token\s+(?:has\s+)?(?:expired|been\s+revoked)\b/i,
+  /\bauthentication_error\b/,
+  /\bAPI\s+Error:\s*401\b/i,
+];
 
 export interface ChildLike {
   stdin: { write(data: string): unknown; end(): unknown; on(event: 'error', listener: (err: Error) => void): unknown };
@@ -47,13 +55,13 @@ export interface ClaudeRunDeps {
   timers: TimersLike;
 }
 
-export type ClaudeFailure = 'exit' | 'timeout' | 'overflow' | 'spawn-error' | 'cancelled';
+export type ClaudeFailure = 'exit' | 'not-signed-in' | 'timeout' | 'overflow' | 'spawn-error' | 'cancelled';
 
 export type ClaudeRunResult = { ok: true; text: string } | { ok: false; reason: ClaudeFailure; detail: string };
 
 export interface ClaudeRunInput {
   binary: string;
-  token: string;
+  token: string | null;
   prompt: string;
   env: Readonly<Record<string, string | undefined>>;
   model: string | null;
@@ -84,13 +92,17 @@ export function claudeArgs(model: string | null): string[] {
   return model === null ? args : [...args, '--model', model];
 }
 
-export function claudeChildEnv(parent: Readonly<Record<string, string | undefined>>, token: string): Record<string, string> {
-  const stripped = new Set<string>(STRIPPED_ENV_KEYS);
+export function isLoginFailure(text: string): boolean {
+  return LOGIN_FAILURE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+export function claudeChildEnv(parent: Readonly<Record<string, string | undefined>>, token: string | null): Record<string, string> {
+  const stripped = new Set<string>(token === null ? [...STRIPPED_ENV_KEYS, OAUTH_ENV_KEY] : STRIPPED_ENV_KEYS);
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(parent)) {
     if (value !== undefined && !stripped.has(key)) env[key] = value;
   }
-  env[OAUTH_ENV_KEY] = token;
+  if (token !== null) env[OAUTH_ENV_KEY] = token;
   return env;
 }
 
@@ -110,7 +122,7 @@ function withoutTrailingSecretHead(text: string, secrets: readonly string[]): st
 export function runClaude(deps: ClaudeRunDeps, input: ClaudeRunInput): Promise<ClaudeRunResult> {
   if (input.signal.aborted) return Promise.resolve({ ok: false, reason: 'cancelled', detail: '' });
   const cwd = deps.makeTempDir();
-  const secrets = [input.token];
+  const secrets = input.token === null ? [] : [input.token];
   return new Promise((resolve) => {
     const stdout: Buffer[] = [];
     let stdoutBytes = 0;
@@ -145,8 +157,8 @@ export function runClaude(deps: ClaudeRunDeps, input: ClaudeRunInput): Promise<C
       return;
     }
 
-    const fail = (reason: ClaudeFailure) =>
-      finish({ ok: false, reason, detail: sanitize(withoutTrailingSecretHead(stderr, secrets), secrets) });
+    const fail = (reason: ClaudeFailure, source = stderr) =>
+      finish({ ok: false, reason, detail: sanitize(withoutTrailingSecretHead(source, secrets), secrets) });
     const stop = (reason: ClaudeFailure) => {
       if (failure !== null) return;
       failure = reason;
@@ -183,11 +195,13 @@ export function runClaude(deps: ClaudeRunDeps, input: ClaudeRunInput): Promise<C
         fail(failure);
         return;
       }
+      const output = Buffer.concat(stdout).toString('utf8');
       if (code !== 0) {
-        fail('exit');
+        if (input.token === null && isLoginFailure(redact(`${stderr}\n${output}`))) fail('not-signed-in', stderr.trim() === '' ? output : stderr);
+        else fail('exit');
         return;
       }
-      const text = Buffer.concat(stdout).toString('utf8').trim();
+      const text = output.trim();
       finish(text === '' ? { ok: false, reason: 'exit', detail: EMPTY_ANSWER_DETAIL } : { ok: true, text });
     });
 

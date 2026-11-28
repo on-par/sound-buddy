@@ -11,6 +11,7 @@ import {
   beginCall,
   decideCall,
   endCall,
+  refundCall,
   type BudgetRequest,
 } from './budget';
 
@@ -86,5 +87,41 @@ describe('budget', () => {
   it('keys cooldowns by kind and channel, with room-level issues under "room"', () => {
     expect(anomalyKey('clipping', 2)).toBe('clipping:2');
     expect(anomalyKey('feedback-risk', null)).toBe('feedback-risk:room');
+  });
+});
+
+describe('refundCall', () => {
+  it('gives back an anomaly spend: the cooldown key returns to its prior value and the hourly slot is freed', () => {
+    const first = beginCall(EMPTY_BUDGET, anomaly(4), 1, T0);
+    const settled = endCall(first, 1);
+    const later = T0 + ANOMALY_COOLDOWN_MS;
+    const spent = beginCall(settled, anomaly(4), 2, later);
+    const refunded = refundCall(spent, settled, anomaly(4));
+    expect(refunded.lastAnomalyAt).toEqual({ [anomalyKey('clipping', 4)]: T0 });
+    expect(refunded.anomalyStarts).toEqual([T0]);
+    expect(refunded.inFlight).toEqual({ id: 2, trigger: 'anomaly' });
+  });
+
+  it('drops a cooldown key that did not exist before the spend', () => {
+    const spent = beginCall(EMPTY_BUDGET, anomaly(null), 1, T0);
+    const refunded = refundCall(spent, EMPTY_BUDGET, anomaly(null));
+    expect(refunded.lastAnomalyAt).toEqual({});
+    expect(refunded.anomalyStarts).toEqual([]);
+    expect(decideCall(endCall(refunded, 1), anomaly(null), T0 + 1)).toEqual({ run: true, preempt: null });
+  });
+
+  it('leaves a question untouched, since questions never spend', () => {
+    const spent = beginCall(EMPTY_BUDGET, QUESTION, 1, T0);
+    expect(refundCall(spent, EMPTY_BUDGET, QUESTION)).toBe(spent);
+  });
+
+  it('six refunded anomaly calls in an hour leave the hourly cap unspent', () => {
+    let state = EMPTY_BUDGET;
+    for (let i = 0; i < MAX_ANOMALY_CALLS_PER_WINDOW; i += 1) {
+      const prior = state;
+      state = endCall(refundCall(beginCall(prior, anomaly(i + 1), i + 1, T0 + i), prior, anomaly(i + 1)), i + 1);
+    }
+    expect(state).toEqual(EMPTY_BUDGET);
+    expect(decideCall(state, anomaly(99), T0 + MAX_ANOMALY_CALLS_PER_WINDOW)).toEqual({ run: true, preempt: null });
   });
 });

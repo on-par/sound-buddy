@@ -34,7 +34,7 @@ describe('resolveFeatureFlags', () => {
     const flags = resolveFeatureFlags({ [FEATURE_FLAGS_ENV]: 'console, ringOut' });
     expect(flags).toEqual({
       reportCard: false, directory: false, session: false,
-      console: true, buildGuide: false, ringOut: true, mixer: false,
+      console: true, buildGuide: false, ringOut: true, mixer: false, mixerCloudAssistLogin: false,
     });
   });
 
@@ -42,7 +42,7 @@ describe('resolveFeatureFlags', () => {
     const flags = resolveFeatureFlags({ [FEATURE_FLAGS_ENV]: 'session buildguide' });
     expect(flags).toEqual({
       reportCard: false, directory: false, session: true,
-      console: false, buildGuide: true, ringOut: false, mixer: false,
+      console: false, buildGuide: true, ringOut: false, mixer: false, mixerCloudAssistLogin: false,
     });
   });
 
@@ -55,6 +55,14 @@ describe('resolveFeatureFlags', () => {
 
   it('mixer stays off unless named, even with console on', () => {
     expect(resolveFeatureFlags({ [FEATURE_FLAGS_ENV]: 'console' }).mixer).toBe(false);
+  });
+
+  it('mixerCloudAssistLogin is off unless named, even with console and mixer on, and is not a mode tab', () => {
+    expect(resolveFeatureFlags({ [FEATURE_FLAGS_ENV]: 'console,mixer' }).mixerCloudAssistLogin).toBe(false);
+    const flags = resolveFeatureFlags({ [FEATURE_FLAGS_ENV]: 'console,mixer,mixerCloudAssistLogin' });
+    expect([flags.console, flags.mixer, flags.mixerCloudAssistLogin]).toEqual([true, true, true]);
+    expect(resolveFeatureFlags({ [FEATURE_FLAGS_ENV]: 'mixercloudassistlogin' }).mixerCloudAssistLogin).toBe(true);
+    expect(ALL_FEATURE_FLAGS_OFF.mixerCloudAssistLogin).toBe(false);
   });
 
   it('ignores unknown tokens', () => {

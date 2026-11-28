@@ -8,7 +8,7 @@ import { useSettingsStore, type SettingsState } from './stores/settingsStore';
 import { useMixerAssistStore, type MixerAssistState } from './stores/mixerAssistStore';
 import { isModeFlagEnabled } from './simple-mode';
 import { settingsStatusLines } from './mixer/assist-view';
-import { MIXER_ASSIST_BINARY_PATH_MAX_LEN, MIXER_ASSIST_ENDPOINT_MAX_LEN, MIXER_ASSIST_MODEL_MAX_LEN } from '../../electron/ipc/api';
+import { MIXER_ASSIST_BINARY_PATH_MAX_LEN, MIXER_ASSIST_ENDPOINT_MAX_LEN, MIXER_ASSIST_MODEL_MAX_LEN, type MixerAssistStatusDto } from '../../electron/ipc/api';
 
 export const ASSIST_POSITIONING = 'Works with the AI you already have';
 export const ASSIST_INTRO = `${ASSIST_POSITIONING}: your own Claude Code login, or a model server on this Mac or your local network. Sound Buddy never pays for or relays these requests. Both are off until you turn one on.`;
@@ -17,6 +17,10 @@ export const CLOUD_ROW_COPY =
 export const LOCAL_ROW_COPY =
   'Local assist sends the same channel readings and your question to a model server on this Mac or your local network. Audio is never sent.';
 export const TOKEN_HELP = 'Run claude setup-token in Terminal and paste the token here. It is encrypted on this Mac and never shown again.';
+export const LOGIN_COPY = 'Cloud assist uses your own Claude Code login on this Mac. Sound Buddy never asks for, sees or stores it. To sign in, run claude in Terminal.';
+export const STORED_TOKEN_NOTICE =
+  "Sound Buddy no longer stores a Claude Code token. Cloud assist now uses Claude Code's own login on this Mac, and the token you saved earlier is not used. Remove it from this Mac when you're ready.";
+export const REMOVE_STORED_TOKEN_LABEL = 'Remove stored token';
 export const FIELD_CLASS = 'mx-assist-field';
 
 type AssistTextKey = 'mixerCloudAssistBinaryPath' | 'mixerLocalAssistEndpoint' | 'mixerLocalAssistModel';
@@ -83,6 +87,76 @@ function TextField({ id, label, settingKey, value, placeholder, maxLength, statu
   );
 }
 
+function TokenField({ status, tokenMessage, tokenLine }: { status: MixerAssistStatusDto | null; tokenMessage: string | null; tokenLine: string }): JSX.Element {
+  return (
+    <>
+      <div className={`ai-field ${FIELD_CLASS}`}>
+        <label className="ai-field-label" htmlFor="mixer-cloud-token">
+          Claude Code token
+        </label>
+        <div className="mx-assist-control">
+          <input type="password" id="mixer-cloud-token" className="rig-dialog-input" placeholder="Paste token" autoComplete="off" spellCheck={false} />
+          <button
+            type="button"
+            className="btn btn-secondary sm"
+            id="mixer-cloud-token-save"
+            /* c8 ignore next -- click dispatch, no jsdom */
+            onClick={(e) => void saveAssistToken(closestField(e.currentTarget))}
+          >
+            Save
+          </button>
+          {status?.cloud.tokenSaved && (
+            <button
+              type="button"
+              className="btn btn-ghost sm"
+              id="mixer-cloud-token-clear"
+              /* c8 ignore next -- click dispatch, no jsdom */
+              onClick={() => void useMixerAssistStore.getState().clearToken()}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        <span className={`mx-assist-hint${status?.cloud.tokenSaved ? ' mx-assist-good' : ''}`} id="mixer-cloud-token-status">
+          {tokenLine}
+        </span>
+      </div>
+      <p className="ai-dialog-note">{TOKEN_HELP}</p>
+      {tokenMessage !== null && (
+        <p className="ai-dialog-note mx-assist-warn" id="mixer-cloud-token-message" role="status">
+          {tokenMessage}
+        </p>
+      )}
+    </>
+  );
+}
+
+function LoginNote({ storedToken }: { storedToken: boolean }): JSX.Element {
+  return (
+    <>
+      <p className="ai-dialog-note" id="mixer-cloud-login-copy">
+        {LOGIN_COPY}
+      </p>
+      {storedToken && (
+        <div className="mx-assist-notice">
+          <p className="ai-dialog-note mx-assist-warn" id="mixer-cloud-stored-token-notice" role="status">
+            {STORED_TOKEN_NOTICE}
+          </p>
+          <button
+            type="button"
+            className="btn btn-secondary sm"
+            id="mixer-cloud-stored-token-remove"
+            /* c8 ignore next -- click dispatch, no jsdom */
+            onClick={() => void useMixerAssistStore.getState().clearToken()}
+          >
+            {REMOVE_STORED_TOKEN_LABEL}
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function MixerAssistSettings(): JSX.Element | null {
   const { settings, featureFlags } = useStoreShallow(useSettingsStore, (s) => ({ settings: s.settings, featureFlags: s.featureFlags }));
   const { status, tokenMessage } = useStoreShallow(useMixerAssistStore, (s) => ({ status: s.status, tokenMessage: s.tokenMessage }));
@@ -113,42 +187,10 @@ export default function MixerAssistSettings(): JSX.Element | null {
       <p className="ai-dialog-note" id="mixer-cloud-assist-copy">
         {CLOUD_ROW_COPY}
       </p>
-      <div className={`ai-field ${FIELD_CLASS}`}>
-        <label className="ai-field-label" htmlFor="mixer-cloud-token">
-          Claude Code token
-        </label>
-        <div className="mx-assist-control">
-          <input type="password" id="mixer-cloud-token" className="rig-dialog-input" placeholder="Paste token" autoComplete="off" spellCheck={false} />
-          <button
-            type="button"
-            className="btn btn-secondary sm"
-            id="mixer-cloud-token-save"
-            /* c8 ignore next -- click dispatch, no jsdom */
-            onClick={(e) => void saveAssistToken(closestField(e.currentTarget))}
-          >
-            Save
-          </button>
-          {status?.cloud.tokenSaved && (
-            <button
-              type="button"
-              className="btn btn-ghost sm"
-              id="mixer-cloud-token-clear"
-              /* c8 ignore next -- click dispatch, no jsdom */
-              onClick={() => void useMixerAssistStore.getState().clearToken()}
-            >
-              Clear
-            </button>
-          )}
-        </div>
-        <span className={`mx-assist-hint${status?.cloud.tokenSaved ? ' mx-assist-good' : ''}`} id="mixer-cloud-token-status">
-          {lines.token}
-        </span>
-      </div>
-      <p className="ai-dialog-note">{TOKEN_HELP}</p>
-      {tokenMessage !== null && (
-        <p className="ai-dialog-note mx-assist-warn" id="mixer-cloud-token-message" role="status">
-          {tokenMessage}
-        </p>
+      {featureFlags.mixerCloudAssistLogin ? (
+        <LoginNote storedToken={status?.cloud.storedToken === true} />
+      ) : (
+        <TokenField status={status} tokenMessage={tokenMessage} tokenLine={lines.token} />
       )}
       <TextField
         id="mixer-cloud-binary"

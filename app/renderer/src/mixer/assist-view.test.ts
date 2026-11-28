@@ -8,11 +8,14 @@ import {
   ASSIST_CHIPS,
   ASSIST_CLOUD_SOURCE_LABEL,
   BUSY_LINE,
+  CLAUDE_MISSING_LINE,
+  CLAUDE_SIGNED_OUT_LINE,
   COMPOSER_OFF_PLACEHOLDER,
   COMPOSER_READY_PLACEHOLDER,
   COMPOSER_UNAVAILABLE_PLACEHOLDER,
   FALLBACK_COPY,
   RULES_FALLBACK_LINE,
+  STORED_TOKEN_LINE,
   assistChannels,
   newlyVisibleIssues,
   questionChannelIndexes,
@@ -161,6 +164,57 @@ describe('settingsStatusLines', () => {
       `Local assist can't run yet. ${FALLBACK_COPY.local['bad-endpoint']} ${FALLBACK_COPY.local['no-model']}`
     );
     expect(settingsStatusLines(null, '')).toEqual({ cloud: 'Checking Cloud assist…', local: 'Checking Local assist…', token: 'Not set', binary: 'Checking…' });
+  });
+});
+
+describe('login path (flag mixerCloudAssistLogin): Claude Code\'s own login', () => {
+  const LOGIN_READY: MixerAssistStatusDto = { ...OFF, cloud: { enabled: true, binaryFound: true, tokenSaved: false, encryptionAvailable: null, lastFailure: null, auth: 'login', storedToken: false } };
+  const MISSING: MixerAssistStatusDto = { ...LOGIN_READY, cloud: { ...LOGIN_READY.cloud, binaryFound: false } };
+  const SIGNED_OUT: MixerAssistStatusDto = { ...LOGIN_READY, cloud: { ...LOGIN_READY.cloud, lastFailure: 'not-signed-in' } };
+  const FORBIDDEN = /Paste token|write-only token|Token saved|setup-token|token isn't set|encrypt/i;
+
+  it('no token and no keychain are needed: an installed claude is ready', () => {
+    expect(runtimeHealth(LOGIN_READY).cloud).toEqual({ state: 'ready', reasons: [] });
+    expect(rail(LOGIN_READY)).toMatchObject({ mode: 'ready', composerEnabled: true, chips: ASSIST_CHIPS, fallbackLines: [] });
+  });
+
+  it('missing binary and signed out are distinct, honest lines that fall back to rules', () => {
+    const missing = rail(MISSING);
+    const signedOut = rail(SIGNED_OUT);
+    expect(missing).toMatchObject({ mode: 'unavailable', composerEnabled: false, chips: [] });
+    expect(signedOut).toMatchObject({ mode: 'unavailable', composerEnabled: false, chips: [] });
+    expect(missing.fallbackLines).toEqual([{ key: 'cloud:no-binary', text: CLAUDE_MISSING_LINE }, { key: 'rules', text: RULES_FALLBACK_LINE }]);
+    expect(signedOut.fallbackLines).toEqual([{ key: 'cloud:not-signed-in', text: CLAUDE_SIGNED_OUT_LINE }, { key: 'rules', text: RULES_FALLBACK_LINE }]);
+    expect(CLAUDE_MISSING_LINE).toMatch(/^Claude Code isn't installed on this Mac\./);
+    expect(CLAUDE_SIGNED_OUT_LINE).toMatch(/^Claude Code isn't signed in\. Run claude in Terminal and sign in/);
+    expect(CLAUDE_MISSING_LINE).not.toBe(CLAUDE_SIGNED_OUT_LINE);
+    expect(JSON.stringify([missing, signedOut])).not.toMatch(FORBIDDEN);
+  });
+
+  it('a signed-out failure from the last question shows its line even before status catches up', () => {
+    const view = rail(LOGIN_READY, { lastFailure: { reason: 'not-signed-in', attempts: [{ source: 'cloud', reason: 'not-signed-in' }], trigger: 'question' } });
+    expect(view.fallbackLines.map((l) => l.text)).toEqual([CLAUDE_SIGNED_OUT_LINE]);
+  });
+
+  it('a stored token from before shows a one-line notice pointing to Settings, whatever the runtimes are doing', () => {
+    const stored = (s: MixerAssistStatusDto): MixerAssistStatusDto => ({ ...s, cloud: { ...s.cloud, storedToken: true } });
+    expect(rail(stored(LOGIN_READY)).fallbackLines).toEqual([{ key: 'cloud:stored-token', text: STORED_TOKEN_LINE }]);
+    expect(rail(stored(LOGIN_READY)).composerEnabled).toBe(true);
+    expect(rail(stored({ ...LOGIN_READY, cloud: { ...LOGIN_READY.cloud, enabled: false } })).fallbackLines).toEqual([{ key: 'cloud:stored-token', text: STORED_TOKEN_LINE }]);
+    expect(rail(stored(MISSING)).fallbackLines.map((l) => l.key)).toEqual(['cloud:stored-token', 'cloud:no-binary', 'rules']);
+    expect(STORED_TOKEN_LINE).toContain('no longer stores');
+  });
+
+  it('Settings status lines name the login, not a token', () => {
+    expect(settingsStatusLines(LOGIN_READY, '').cloud).toBe('Cloud assist is ready: Claude Code found, using your Claude Code login.');
+    expect(settingsStatusLines(MISSING, '').cloud).toBe(`Cloud assist can't run yet. ${CLAUDE_MISSING_LINE}`);
+    expect(settingsStatusLines(SIGNED_OUT, '').cloud).toBe(`Cloud assist can't run yet. ${CLAUDE_SIGNED_OUT_LINE}`);
+    expect(JSON.stringify([LOGIN_READY, MISSING, SIGNED_OUT].map((s) => settingsStatusLines(s, '').cloud))).not.toMatch(FORBIDDEN);
+  });
+
+  it('the token path keeps its original missing-binary copy', () => {
+    expect(rail({ ...CLOUD_READY, cloud: { ...CLOUD_READY.cloud, binaryFound: false } }).fallbackLines[0]).toEqual({ key: 'cloud:no-binary', text: FALLBACK_COPY.cloud['no-binary'] });
+    expect(FALLBACK_COPY.cloud['no-binary']).not.toBe(CLAUDE_MISSING_LINE);
   });
 });
 

@@ -981,6 +981,7 @@ export type MixerAssistReason =
   | 'no-token'
   | 'no-encryption'
   | 'exit'
+  | 'not-signed-in'
   | 'timeout'
   | 'overflow'
   | 'spawn-error'
@@ -1000,6 +1001,8 @@ export interface MixerAssistStatusDto {
     tokenSaved: boolean;
     encryptionAvailable: boolean | null;
     lastFailure: MixerAssistReason | null;
+    auth?: 'login';
+    storedToken?: boolean;
   };
   local: {
     enabled: boolean;
@@ -1012,7 +1015,7 @@ export interface MixerAssistStatusDto {
 
 export type SetMixerAssistTokenResult =
   | { ok: true; status: MixerAssistStatusDto }
-  | { ok: false; reason: 'empty' | 'too-long' | 'no-encryption' | 'write-failed'; message: string; status: MixerAssistStatusDto };
+  | { ok: false; reason: 'empty' | 'too-long' | 'no-encryption' | 'write-failed' | 'login-mode'; message: string; status: MixerAssistStatusDto };
 
 export interface MixerAssistDynamicsContext {
   on: boolean;
