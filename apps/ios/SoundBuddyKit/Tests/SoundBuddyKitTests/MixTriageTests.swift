@@ -182,6 +182,44 @@ struct MixChannelListTests {
     }
 }
 
+@Suite("MixChannelsState")
+struct MixChannelsStateTests {
+    @Test func noConsoleModelIsALabelledUnavailableState() {
+        let state = MixChannelsState(catalog: nil)
+        #expect(state == .unavailable)
+        #expect(state.rows.isEmpty)
+        #expect(state.emptyMessage == MixCopy.channelsUnavailable)
+    }
+
+    @Test func aConsoleWithAnEmptyCatalogKeepsTheDiscoverCopy() {
+        let state = MixChannelsState(catalog: ConsoleTargetCatalog())
+        #expect(state == .empty)
+        #expect(state.rows.isEmpty)
+        #expect(state.emptyMessage == MixCopy.noChannels)
+    }
+
+    @Test func aConsoleWithOnlyBlankStripsIsStillEmpty() {
+        var catalog = ConsoleTargetCatalog()
+        catalog.apply(nodeLine: "/ch/09/config \"\" 1 OFF 9")
+        #expect(MixChannelsState(catalog: catalog) == .empty)
+    }
+
+    @Test func aFilledCatalogListsItsRowsWithNoMessage() {
+        var catalog = ConsoleTargetCatalog()
+        catalog.apply(nodeLine: "/ch/02/config \"Vox 1\" 1 MG 2")
+        let state = MixChannelsState(catalog: catalog)
+        #expect(state == .rows(MixChannelList.rows(from: catalog)))
+        #expect(state.rows.map(\.displayName) == ["Vox 1"])
+        #expect(state.emptyMessage == nil)
+    }
+
+    @Test func unavailableCopyNeverPointsAtASettingsRowThatMayNotExist() {
+        #expect(MixCopy.channelsUnavailable == "Channel names need a live console link. Not in this build.")
+        #expect(!MixCopy.channelsUnavailable.contains("Discover"))
+        #expect(MixCopy.noChannels == "No channel list yet. Run Discover channel setup in Settings › Console (beta).")
+    }
+}
+
 @Suite("MixCopy")
 struct MixCopyTests {
     @Test func segmentTitles() {

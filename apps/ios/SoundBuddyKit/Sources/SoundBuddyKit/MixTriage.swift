@@ -96,6 +96,31 @@ public enum MixChannelList {
     }
 }
 
+public enum MixChannelsState: Equatable, Sendable {
+    case unavailable
+    case empty
+    case rows([ConsoleTargetLabel])
+
+    public init(catalog: ConsoleTargetCatalog?) {
+        guard let catalog else { self = .unavailable; return }
+        let rows = MixChannelList.rows(from: catalog)
+        self = rows.isEmpty ? .empty : .rows(rows)
+    }
+
+    public var rows: [ConsoleTargetLabel] {
+        guard case .rows(let rows) = self else { return [] }
+        return rows
+    }
+
+    public var emptyMessage: String? {
+        switch self {
+        case .unavailable: MixCopy.channelsUnavailable
+        case .empty: MixCopy.noChannels
+        case .rows: nil
+        }
+    }
+}
+
 public enum MixCopy {
     public static let title = "Needs Attention"
     public static let roomMicSubline = "Room mic · phone estimate"
@@ -107,6 +132,7 @@ public enum MixCopy {
     public static let onTarget = CoachingStabilizer.onTargetMessage
     public static let allHeld = "Sermon Quiet is holding every tip right now."
     public static let noChannels = "No channel list yet. Run Discover channel setup in Settings › Console (beta)."
+    public static let channelsUnavailable = "Channel names need a live console link. Not in this build."
     public static let reviewFix = "Review fix"
     static let separator = " · "
 

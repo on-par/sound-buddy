@@ -21,7 +21,7 @@ import SwiftUI
 /// meter, so the rest of the screen does not re-render with it.
 struct RTAView: View {
     let model: AnalyzeModel
-    var fillsHeight: Bool = false
+    let heightRange: ClosedRange<Double>
     var showsProblemMarkers: Bool = false
     @AppStorage(RTAViewMode.defaultsKey) private var requestedMode = RTAViewMode.defaultValue
     @State private var stepper = RTAFrameStepperBox()
@@ -100,10 +100,7 @@ struct RTAView: View {
                 }
             }
         }
-        .frame(
-            minHeight: fillsHeight ? RTAMetrics.minFillHeight : RTAMetrics.height,
-            maxHeight: fillsHeight ? .infinity : RTAMetrics.height
-        )
+        .frame(minHeight: heightRange.lowerBound, maxHeight: heightRange.upperBound)
         .background(RTAPalette.plotBackground, in: RoundedRectangle(cornerRadius: RTAMetrics.cornerRadius))
         .overlay(RoundedRectangle(cornerRadius: RTAMetrics.cornerRadius).strokeBorder(Palette.borderSubtle, lineWidth: RTAMetrics.wellBorderWidth))
     }
@@ -419,10 +416,6 @@ struct RTAView: View {
 }
 
 private enum RTAMetrics {
-    static let height: CGFloat = 300
-    /// fillsHeight floor (landscape, iPad tall portrait and wide, #1659), so
-    /// the grid stays readable on an SE in landscape.
-    static let minFillHeight: CGFloat = 120
     static let cornerRadius: CGFloat = 14
     static let wellBorderWidth: CGFloat = 1
     static let dbLabelWidth: CGFloat = 34

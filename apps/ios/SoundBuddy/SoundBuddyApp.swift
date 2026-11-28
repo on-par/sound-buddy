@@ -238,9 +238,6 @@ struct SoundBuddyApp: App {
                 featureFlags: featureFlags,
                 consoleConsent: consoleConsent,
                 onConsoleConsentRevoked: {
-                    // The heartbeat/session slice (#1667) will also call
-                    // ConsoleSessionModel.consentRevoked() here once a live
-                    // session model exists.
                     console = nil
                     consoleSession?.consentRevoked()
                     consoleEQWriter = nil

@@ -101,11 +101,6 @@ struct DebugLaunchOptionsTabsTests {
         #expect(!DebugLaunchOptions.forcesSermonQuiet([]))
     }
 
-    @Test func landscapeFlag() {
-        #expect(DebugLaunchOptions.forcesLandscape(["-coachingDemo", "-landscape"]))
-        #expect(!DebugLaunchOptions.forcesLandscape(["-coachingDemo"]))
-    }
-
     @Test func consoleArmedDemoNeedsALiveConsoleDemo() {
         #expect(DebugLaunchOptions.armsConsoleDemo(["-consoleDemo", "live", "-consoleArmedDemo"]))
         #expect(!DebugLaunchOptions.armsConsoleDemo(["-consoleArmedDemo"]))
@@ -114,6 +109,6 @@ struct DebugLaunchOptionsTabsTests {
     }
 
     @Test func newProofFlagsNeverSkipTheMicPromptOnTheirOwn() {
-        #expect(!DebugLaunchOptions.skipsMicPermissionPrompt(["-startTab", "mix", "-agentSheet", "-sermonQuiet", "-landscape", "-consoleArmedDemo"]))
+        #expect(!DebugLaunchOptions.skipsMicPermissionPrompt(["-startTab", "mix", "-agentSheet", "-sermonQuiet", "-consoleArmedDemo"]))
     }
 }

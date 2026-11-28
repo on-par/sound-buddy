@@ -223,25 +223,29 @@ struct AnalyzeView: View {
     private func portraitBody(layout: AnalyzeLayout, placement: AnalyzeLayout.ConsoleEQPlacement) -> some View {
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
             header(placement: placement)
+                .fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: Layout.legendSpacing) {
                 RTAView(
                     model: model,
-                    fillsHeight: layout.rtaFillsHeight,
+                    heightRange: layout.rtaHeightRange,
                     showsProblemMarkers: layout.showsProblemMarkers(isEditingTarget: model.isEditingTarget)
                 )
                 if layout.targetControlsUnderRTA {
                     TargetControlsBand(model: model, metrics: layout.targetControlMetrics, onEdit: beginTargetEdit)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            .layoutPriority(1)
             CoachingStackView(
                 model: model,
+                layout: layout,
                 onReviewFix: reviewFix,
-                limit: layout.inlineCoachingCardLimit,
                 onShowMore: onShowMore,
                 applied: console?.appliedCoaching,
                 canUndoApplied: canUndoApplied,
                 onUndoApplied: { try? console?.undoAppliedCoaching(using: consoleEQWriter) }
             )
+            .fixedSize(horizontal: false, vertical: true)
             if !layout.rtaFillsHeight {
                 Spacer(minLength: 0)
             }
@@ -265,7 +269,7 @@ struct AnalyzeView: View {
             consoleVisible: showsConsoleChip && console != nil
         )
         let coaching = ScrollView {
-            CoachingStackView(model: model, onReviewFix: reviewFix)
+            CoachingStackView(model: model, layout: layout, onReviewFix: reviewFix)
         }
         return VStack(spacing: Layout.landscapeSpacing) {
             landscapeStrip(placement: placement)
@@ -273,7 +277,7 @@ struct AnalyzeView: View {
                 VStack(spacing: Layout.landscapeSpacing) {
                     RTAView(
                         model: model,
-                        fillsHeight: layout.rtaFillsHeight,
+                        heightRange: layout.rtaHeightRange,
                         showsProblemMarkers: layout.showsProblemMarkers(isEditingTarget: model.isEditingTarget)
                     )
                     if layout.targetControlsUnderRTA {
@@ -325,7 +329,7 @@ struct AnalyzeView: View {
     private func landscapeBody(proxy: GeometryProxy, placement: AnalyzeLayout.ConsoleEQPlacement) -> some View {
         let rta = RTAView(
             model: model,
-            fillsHeight: true,
+            heightRange: AnalyzeLayout.landscape.rtaHeightRange,
             showsProblemMarkers: AnalyzeLayout.landscape.showsProblemMarkers(isEditingTarget: model.isEditingTarget)
         )
         return VStack(spacing: Layout.landscapeSpacing) {
@@ -794,6 +798,7 @@ private struct CoachingPeekPanel: View {
             ScrollView {
                 CoachingStackView(
                     model: model,
+                    layout: .landscape,
                     onReviewFix: onReviewFix,
                     applied: applied,
                     canUndoApplied: canUndoApplied,
@@ -822,6 +827,7 @@ private struct ListeningIndicator: View {
                 .foregroundStyle(Palette.secondaryText)
         }
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("analyze.listening")
     }
 
     private var text: String {
@@ -851,8 +857,23 @@ private struct TargetControlsBand: View {
     @AppStorage(RTAViewMode.defaultsKey) private var requestedMode = RTAViewMode.defaultValue
 
     var body: some View {
+        ViewThatFits(in: .horizontal) {
+            band(.oneRow)
+            band(.roomBelow)
+            band(.roomAndModeBelow)
+        }
+    }
+
+    private enum Arrangement {
+        case oneRow
+        case roomBelow
+        case roomAndModeBelow
+    }
+
+    private func band(_ arrangement: Arrangement) -> some View {
         let editing = model.isEditingTarget
-        VStack(alignment: .leading, spacing: Layout.legendSpacing) {
+        let showsRoom = AnalyzeLayout.showsRoomLegend(isEditingTarget: editing, requestedMode: requestedMode)
+        return VStack(alignment: .leading, spacing: Layout.legendSpacing) {
             HStack(spacing: Layout.legendSwatchGap) {
                 ZStack(alignment: .leading) {
                     TargetLegend(text: model.targetLegendText, metrics: metrics, onEdit: onEdit)
@@ -866,21 +887,35 @@ private struct TargetControlsBand: View {
                 }
                 .frame(minHeight: metrics.rowMinHeight)
                 Spacer(minLength: Layout.legendSwatchGap)
-                if !editing, requestedMode == .absolute {
-                    RoomLegend(metrics: metrics)
+                if arrangement == .oneRow {
+                    RoomLegend(metrics: metrics, isVisible: showsRoom)
                 }
-                ProgramModeChip(model: model, metrics: metrics)
+                if arrangement != .roomAndModeBelow {
+                    ProgramModeChip(model: model, metrics: metrics)
+                }
             }
-            TargetPresetStrip(model: model, metrics: metrics)
-                .opacity(editing ? 1 : 0)
-                .allowsHitTesting(editing)
-                .accessibilityHidden(!editing)
+            HStack(spacing: Layout.legendSwatchGap) {
+                ZStack(alignment: .leading) {
+                    TargetPresetStrip(model: model, metrics: metrics)
+                        .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity)
+                        .opacity(editing ? 1 : 0)
+                        .allowsHitTesting(editing)
+                        .accessibilityHidden(!editing)
+                    if arrangement != .oneRow {
+                        RoomLegend(metrics: metrics, isVisible: showsRoom)
+                    }
+                }
+                if arrangement == .roomAndModeBelow {
+                    ProgramModeChip(model: model, metrics: metrics)
+                }
+            }
         }
     }
 }
 
 private struct RoomLegend: View {
     let metrics: TargetControlMetrics
+    let isVisible: Bool
 
     var body: some View {
         HStack(spacing: Layout.legendSwatchGap) {
@@ -892,8 +927,10 @@ private struct RoomLegend: View {
                 .foregroundStyle(Palette.secondaryText)
         }
         .fixedSize()
+        .opacity(isVisible ? 1 : 0)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Room, gold line, the measured bar tops")
+        .accessibilityHidden(!isVisible)
         .accessibilityIdentifier("analyze.roomLegend")
     }
 }
@@ -1208,8 +1245,9 @@ private struct TargetTray: View {
 
 // MARK: - Coaching
 
-/// The short coaching stack: up to `limit` cards,
-/// then the placeholder/filler slots so the stack height stays steady. Cards
+/// The short coaching stack: up to `layout.inlineCoachingCardLimit` cards
+/// (the rest become the "+N more" count from `AnalyzeLayout`), then the
+/// placeholder/filler slots so the stack height stays steady. Cards
 /// are identified by `CoachingEvent.id` (#1700) and the model keeps their
 /// order across refreshes, so a visible tip never moves or is recreated; only
 /// its numbers update in place. Nothing here animates — the model refreshes
@@ -1217,8 +1255,8 @@ private struct TargetTray: View {
 /// text cross-fades old and new copies into ghosted, double-drawn text.
 struct CoachingStackView: View {
     let model: AnalyzeModel
+    let layout: AnalyzeLayout
     var onReviewFix: ((CoachingEvent) -> Void)? = nil
-    var limit = AnalyzeCoachingViewModel.maxCards
     var onShowMore: (() -> Void)? = nil
     /// The last coaching suggestion Apply wrote to Main LR (#1676), or `nil`
     /// before any Apply (or after Undo/a console change clears it).
@@ -1230,8 +1268,9 @@ struct CoachingStackView: View {
     var onUndoApplied: (() -> Void)? = nil
 
     var body: some View {
+        let limit = layout.inlineCoachingCardLimit
         let shown = Array(model.coaching.prefix(limit))
-        let overflow = max(0, model.coaching.count - shown.count)
+        let overflow = layout.coachingOverflowCount(cardCount: model.coaching.count)
         VStack(alignment: .leading, spacing: Layout.cardSpacing) {
             HStack {
                 Text("Coaching")

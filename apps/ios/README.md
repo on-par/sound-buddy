@@ -57,13 +57,15 @@ Capabilities**. The project sets no team on purpose.
    A gold Room line traces the bar tops in Absolute. A dashed azure target
    line with a dark halo rides on top, tracks the material's level, and keeps
    its shape as the level changes. Under the RTA, "Target · Worship – Full
-   Band (auto)" shows with a matching dashed swatch, and a gold "Room" swatch
-   sits beside it.
+   Band (auto)" shows in full with a matching dashed swatch, and a gold
+   "Room" swatch sits beside it (on the row beneath it on a narrow iPhone in
+   portrait).
 4. Play something tonally lopsided, such as a bass-heavy track. Within a
    second, coaching cards appear (one on iPhone portrait, with "+N more"
-   opening the Agent tab; up to three elsewhere). An example: "Bass is 6.2 dB over
-   the target. Try a gentle cut around 60-250 Hz." The cards update in place
-   about once a second.
+   opening the Agent tab; up to three elsewhere). An example: "Bass (60–250
+   Hz) is 6.2 dB above the target. A gentle cut there is what Sound Buddy
+   would try first." The whole tip and its **Review fix** button stay
+   visible. The cards update in place about once a second.
 5. Tap the gear. Settings shows **Keep screen awake** and a **Microphone**
    section: the input in use, **System default** plus each available input
    (built-in data sources and connected mics), and the honesty footnote

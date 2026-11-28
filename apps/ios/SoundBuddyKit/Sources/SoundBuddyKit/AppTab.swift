@@ -49,7 +49,6 @@ extension DebugLaunchOptions {
     public static let agentSheetFlag = "-agentSheet"
     public static let sermonQuietFlag = "-sermonQuiet"
     public static let consoleArmedDemoFlag = "-consoleArmedDemo"
-    public static let landscapeFlag = "-landscape"
     static let consoleDemoFlag = "-consoleDemo"
     static let consoleDemoLivePhase = "live"
 
@@ -60,10 +59,6 @@ extension DebugLaunchOptions {
 
     public static func opensAgentSheet(_ arguments: [String]) -> Bool {
         arguments.contains(agentSheetFlag)
-    }
-
-    public static func forcesLandscape(_ arguments: [String]) -> Bool {
-        arguments.contains(landscapeFlag)
     }
 
     public static func forcesSermonQuiet(_ arguments: [String]) -> Bool {
