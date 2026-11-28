@@ -2,7 +2,7 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { describe, it, expect } from 'vitest';
-import { sanitize, MAX_SANITIZED_LENGTH, REDACTED } from './sanitize';
+import { redact, sanitize, MAX_SANITIZED_LENGTH, REDACTED } from './sanitize';
 
 const ENV_NAME = 'CLAUDE_CODE_' + 'OAUTH_TOKEN';
 
@@ -44,5 +44,14 @@ describe('sanitize', () => {
   it('turns non-string input into a safe string', () => {
     expect(sanitize(new Error(`boom ${ENV_NAME}=s3cret`))).toBe(`Error: boom ${REDACTED}`);
     expect(sanitize(undefined)).toBe('undefined');
+  });
+});
+
+describe('redact', () => {
+  it('applies the same redaction as sanitize without the length cap', () => {
+    const long = `${'x'.repeat(MAX_SANITIZED_LENGTH)} Bearer abc sk-ant-oat01-zzz ${ENV_NAME}=qqq raw-secret-1`;
+    const out = redact(long, ['raw-secret-1']);
+    expect(out).toBe(`${'x'.repeat(MAX_SANITIZED_LENGTH)} Bearer ${REDACTED} ${REDACTED} ${REDACTED} ${REDACTED}`);
+    expect(redact(new Error('plain'))).toBe('Error: plain');
   });
 });

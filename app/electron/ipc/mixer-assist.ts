@@ -8,10 +8,11 @@ import * as os from 'os';
 import * as path from 'path';
 import { getSettings } from '../settings';
 import { logWarn } from '../logger';
+import { resolveFeatureFlags } from '../feature-flags';
 import { createSecretStore, type SecretStore } from '../mixer-assist/secret-store';
 import { checkLocalEndpoint, runLocal, type FetchLike } from '../mixer-assist/local-endpoint';
 import { PINNED_CLAUDE_MODEL, resolveClaudeBinary, runClaude, type SpawnLike, type TimersLike } from '../mixer-assist/claude-cli';
-import { EMPTY_BUDGET, beginCall, decideCall, endCall, type BudgetRequest, type BudgetState } from '../mixer-assist/budget';
+import { EMPTY_BUDGET, beginCall, decideCall, endCall, refundCall, type BudgetRequest, type BudgetState } from '../mixer-assist/budget';
 import { buildPrompt, capAnswer, parseAssistRequest } from '../mixer-assist/prompt';
 import type {
   AppSettings,
@@ -42,7 +43,10 @@ export const TOKEN_SAVE_MESSAGES: Record<TokenSaveFailure, string> = {
   'too-long': 'That is longer than any Claude Code token. Copy it again from `claude setup-token`, then paste it.',
   'no-encryption': "This Mac can't encrypt the token right now, so it was not saved. Unlock your login keychain, then try again.",
   'write-failed': "Couldn't write the token file. Check that Sound Buddy can write to its Application Support folder, then try again.",
+  'login-mode': 'Sound Buddy no longer stores a Claude Code token. Run claude in Terminal and sign in, then choose Check again.',
 };
+
+const UNSPENT_LOGIN_REASONS: ReadonlySet<MixerAssistReason> = new Set(['not-signed-in', 'no-binary']);
 
 export interface MixerAssistIpcDeps {
   handle(channel: string, fn: (event: unknown, ...args: unknown[]) => unknown): void;
@@ -59,6 +63,7 @@ export interface MixerAssistIpcDeps {
   removeDir(dir: string): void;
   timers: TimersLike;
   now(): number;
+  cloudLogin: boolean;
 }
 
 export interface MixerAssistService {
@@ -89,9 +94,9 @@ export function createMixerAssistService(deps: MixerAssistIpcDeps): MixerAssistS
   const failures: Partial<Record<MixerAssistSource, FailureMark>> = {};
 
   function signature(source: MixerAssistSource, settings: AppSettings): string {
-    return source === 'cloud'
-      ? JSON.stringify([settings.mixerCloudAssistEnabled, settings.mixerCloudAssistBinaryPath, deps.secrets.isSaved()])
-      : JSON.stringify([settings.mixerLocalAssistEnabled, settings.mixerLocalAssistEndpoint, settings.mixerLocalAssistModel]);
+    if (source === 'local') return JSON.stringify([settings.mixerLocalAssistEnabled, settings.mixerLocalAssistEndpoint, settings.mixerLocalAssistModel]);
+    const auth = deps.cloudLogin ? 'login' : deps.secrets.isSaved();
+    return JSON.stringify([settings.mixerCloudAssistEnabled, settings.mixerCloudAssistBinaryPath, auth]);
   }
 
   function lastFailure(source: MixerAssistSource, settings: AppSettings): MixerAssistReason | null {
@@ -115,16 +120,8 @@ export function createMixerAssistService(deps: MixerAssistIpcDeps): MixerAssistS
     }
     const settings = deps.getSettings();
     const binaryFound = findBinary(settings) !== null;
-    const tokenSaved = deps.secrets.isSaved();
-    const probe = settings.mixerCloudAssistEnabled && binaryFound && tokenSaved;
     return {
-      cloud: {
-        enabled: settings.mixerCloudAssistEnabled,
-        binaryFound,
-        tokenSaved,
-        encryptionAvailable: probe ? deps.secrets.encryptionAvailable() : null,
-        lastFailure: lastFailure('cloud', settings),
-      },
+      cloud: deps.cloudLogin ? loginCloudStatus(settings, binaryFound) : tokenCloudStatus(settings, binaryFound),
       local: {
         enabled: settings.mixerLocalAssistEnabled,
         endpoint: checkLocalEndpoint(settings.mixerLocalAssistEndpoint).state,
@@ -135,9 +132,34 @@ export function createMixerAssistService(deps: MixerAssistIpcDeps): MixerAssistS
     };
   }
 
+  function tokenCloudStatus(settings: AppSettings, binaryFound: boolean): MixerAssistStatusDto['cloud'] {
+    const tokenSaved = deps.secrets.isSaved();
+    const probe = settings.mixerCloudAssistEnabled && binaryFound && tokenSaved;
+    return {
+      enabled: settings.mixerCloudAssistEnabled,
+      binaryFound,
+      tokenSaved,
+      encryptionAvailable: probe ? deps.secrets.encryptionAvailable() : null,
+      lastFailure: lastFailure('cloud', settings),
+    };
+  }
+
+  function loginCloudStatus(settings: AppSettings, binaryFound: boolean): MixerAssistStatusDto['cloud'] {
+    return {
+      enabled: settings.mixerCloudAssistEnabled,
+      binaryFound,
+      tokenSaved: false,
+      encryptionAvailable: null,
+      lastFailure: lastFailure('cloud', settings),
+      auth: 'login',
+      storedToken: deps.secrets.isSaved(),
+    };
+  }
+
   async function runCloud(settings: AppSettings, request: MixerAssistRequest, signal: AbortSignal): Promise<RunOutcome> {
     const binary = findBinary(settings);
     if (binary === null) return { ok: false, reason: 'no-binary', detail: '' };
+    if (deps.cloudLogin) return runClaude(deps, { binary, token: null, prompt: buildPrompt(request).combined, env: deps.env, model: PINNED_CLAUDE_MODEL, signal });
     if (!deps.secrets.isSaved()) return { ok: false, reason: 'no-token', detail: '' };
     if (!deps.secrets.encryptionAvailable()) return { ok: false, reason: 'no-encryption', detail: '' };
     const token = deps.secrets.read();
@@ -194,9 +216,14 @@ export function createMixerAssistService(deps: MixerAssistIpcDeps): MixerAssistS
     const id = nextId++;
     const controller = new AbortController();
     current = { id, controller };
+    const prior = budget;
     budget = beginCall(budget, budgetRequest, id, now);
     try {
-      return await runChain(request, settings, controller.signal);
+      const answer = await runChain(request, settings, controller.signal);
+      if (deps.cloudLogin && !answer.ok && answer.attempts.every((a) => UNSPENT_LOGIN_REASONS.has(a.reason))) {
+        budget = refundCall(budget, prior, budgetRequest);
+      }
+      return answer;
     } finally {
       budget = endCall(budget, id);
       if (current?.id === id) current = null;
@@ -210,6 +237,7 @@ export function createMixerAssistService(deps: MixerAssistIpcDeps): MixerAssistS
   return {
     status,
     saveToken(token) {
+      if (deps.cloudLogin) return { ok: false, reason: 'login-mode', message: TOKEN_SAVE_MESSAGES['login-mode'], status: status() };
       const outcome = deps.secrets.save(typeof token === 'string' ? token : '');
       if (outcome.ok) return { ok: true, status: status() };
       deps.log(`mixer assist: token not saved (${outcome.reason})`);
@@ -265,6 +293,7 @@ export function defaultMixerAssistDeps(): MixerAssistIpcDeps {
     removeDir: (dir) => fs.rmSync(dir, { recursive: true, force: true }),
     timers: { setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: (handle) => clearTimeout(handle as NodeJS.Timeout) },
     now: () => Date.now(),
+    cloudLogin: resolveFeatureFlags(process.env).mixerCloudAssistLogin,
   };
 }
 

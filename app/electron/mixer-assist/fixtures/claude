@@ -5,6 +5,14 @@ case "$SB_STUB_MODE" in
     printf 'stub refused token %s\n' "$CLAUDE_CODE_OAUTH_TOKEN" >&2
     exit 3
     ;;
+  logged-out)
+    printf 'Invalid API key \302\267 Please run /login\n'
+    printf 'auth probe failed sk-ant-oat01-stubFAKEstub0000\n' >&2
+    exit 1
+    ;;
+  env)
+    printf 'oauth=%s anthropic=%s home=%s\n' "${CLAUDE_CODE_OAUTH_TOKEN+set}" "${ANTHROPIC_API_KEY+set}" "${HOME+set}"
+    ;;
   slow)
     exec sleep 30
     ;;

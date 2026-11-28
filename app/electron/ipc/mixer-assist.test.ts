@@ -32,7 +32,7 @@ vi.mock('electron', () => ({
 import { createSecretStore, type SafeStorageLike } from '../mixer-assist/secret-store';
 import { CLAUDE_KILL_GRACE_MS, CLAUDE_KILL_SETTLE_MS, CLAUDE_TIMEOUT_MS, MAX_STDERR_CHARS, type ChildLike, type SpawnLike } from '../mixer-assist/claude-cli';
 import type { FetchLike } from '../mixer-assist/local-endpoint';
-import { ANOMALY_COOLDOWN_MS } from '../mixer-assist/budget';
+import { ANOMALY_COOLDOWN_MS, MAX_ANOMALY_CALLS_PER_WINDOW } from '../mixer-assist/budget';
 import type { MixerAssistRequest } from './api';
 import { getSettings, updateSettings } from '../settings';
 import {
@@ -153,6 +153,7 @@ function harness(overrides: Partial<MixerAssistIpcDeps> = {}): Harness {
     removeDir: () => undefined,
     timers: { setTimeout: () => 0, clearTimeout: () => undefined },
     now: () => clock.now,
+    cloudLogin: false,
     ...overrides,
   };
   return { deps, handles, quit, logs, spawns, fetches, clock, fetchReply };
@@ -606,7 +607,196 @@ describe('ask-mixer-assist wiring', () => {
   });
 });
 
+describe('flag mixerCloudAssistLogin on: Cloud uses the user\'s own Claude Code login', () => {
+  const TOKEN_FILE = 'mixer-assist-token.bin';
+  const OAUTH_KEY = 'CLAUDE_CODE_' + 'OAUTH_TOKEN';
+  const FAKE_OAT = 'sk-ant-oat01-LOGINfakeLOGINfake4242';
+  const LOGIN_ENV = { PATH: '/usr/bin:/bin', HOME: '/Users/op', ANTHROPIC_API_KEY: 'parent-key', ANTHROPIC_AUTH_TOKEN: 'parent-auth', ANTHROPIC_BASE_URL: 'https://proxy.example', [OAUTH_KEY]: 'inherited-not-ours' };
+
+  function strictSafeStorage() {
+    const touched: string[] = [];
+    const safe: SafeStorageLike = {
+      isEncryptionAvailable: () => (touched.push('probe'), true),
+      encryptString: (p) => (touched.push('encrypt'), xorSafeStorage().encryptString(p)),
+      decryptString: (c) => (touched.push('decrypt'), xorSafeStorage().decryptString(c)),
+    };
+    return { touched, safe };
+  }
+
+  function loginHarness(overrides: Partial<MixerAssistIpcDeps> = {}) {
+    const strict = strictSafeStorage();
+    const h = harness({ cloudLogin: true, env: LOGIN_ENV, secrets: createSecretStore({ safeStorage: strict.safe, fs, dir: electronState.userData }), ...overrides });
+    registerMixerAssistHandlers(h.deps);
+    updateSettings({ mixerCloudAssistEnabled: true });
+    return {
+      ...h,
+      touched: strict.touched,
+      ask: (req: unknown) => h.handles.get('ask-mixer-assist')!(null, req) as Promise<Record<string, unknown>>,
+      status: (recheck?: boolean) => h.handles.get('get-mixer-assist-status')!(null, recheck) as { cloud: Record<string, unknown> },
+    };
+  }
+
+  function plantOldToken(): string {
+    const file = path.join(electronState.userData, TOKEN_FILE);
+    fs.writeFileSync(file, xorSafeStorage().encryptString(FAKE_TOKEN));
+    return file;
+  }
+
+  async function failNextWith(h: ReturnType<typeof loginHarness>, req: unknown, code: number, stderr: string) {
+    const pending = h.ask(req);
+    await flush();
+    h.spawns[h.spawns.length - 1].child.fail(code, stderr);
+    return pending;
+  }
+
+  it('logged in: spawns the user binary with the safe argv, no oauth variable, stripped keys gone, prompt on stdin, and answers labelled cloud', async () => {
+    const h = loginHarness();
+    expect(h.status().cloud).toEqual({ enabled: true, binaryFound: true, tokenSaved: false, encryptionAvailable: null, lastFailure: null, auth: 'login', storedToken: false });
+    const pending = h.ask(QUESTION);
+    await flush();
+    const [call] = h.spawns;
+    expect(call.command).toBe(BINARY);
+    expect(call.shell).toBe(false);
+    expect(call.args).toEqual(['-p', '--output-format', 'text', '--tools', '']);
+    expect(Object.keys(call.env).sort()).toEqual(['HOME', 'PATH']);
+    expect(call.child.stdin.written.join('')).toContain('Operator question: Why is Vox 1 flagged?');
+    expect(call.child.stdin.ended).toBe(true);
+    call.child.answer('Lower the trim on 02.');
+    expect(await pending).toEqual({ ok: true, trigger: 'question', issueKey: null, source: 'cloud', text: 'Lower the trim on 02.', attempts: [] });
+    expect(LOGIN_ENV[OAUTH_KEY]).toBe('inherited-not-ours');
+    expect(h.touched).toEqual([]);
+  });
+
+  it('logged out: a distinct not-signed-in reason, no retry, a redacted log, and lastFailure until recheck', async () => {
+    const h = loginHarness();
+    const stderr = `Invalid API key · Please run /login ${FAKE_OAT} Bearer fakebearer55 ${OAUTH_KEY}=fakeenv66`;
+    expect(await failNextWith(h, QUESTION, 1, stderr)).toEqual({ ok: false, trigger: 'question', issueKey: null, reason: 'not-signed-in', attempts: [{ source: 'cloud', reason: 'not-signed-in' }] });
+    expect(h.spawns).toHaveLength(1);
+    const logged = h.logs.join('\n');
+    expect(logged).toContain('cloud unavailable (not-signed-in)');
+    for (const leak of ['sk-ant-', 'LOGINfake', 'fakebearer55', 'fakeenv66', 'PATH=']) expect(logged).not.toContain(leak);
+    expect(h.status().cloud.lastFailure).toBe('not-signed-in');
+    expect(h.status(true).cloud.lastFailure).toBeNull();
+  });
+
+  it('logged out spends neither the 10-minute cooldown nor the hourly cap', async () => {
+    const h = loginHarness();
+    for (let i = 0; i <= MAX_ANOMALY_CALLS_PER_WINDOW; i += 1) {
+      expect(await failNextWith(h, anomalyRequest(3), 1, 'Not logged in · Please run /login')).toMatchObject({ reason: 'not-signed-in' });
+    }
+    expect(h.spawns).toHaveLength(MAX_ANOMALY_CALLS_PER_WINDOW + 1);
+    const ok = h.ask(anomalyRequest(4));
+    await flush();
+    h.spawns[h.spawns.length - 1].child.answer('Now signed in.');
+    expect(await ok).toMatchObject({ ok: true, text: 'Now signed in.' });
+  });
+
+  it('claude missing: a distinct no-binary reason, no spawn, and no budget spent', async () => {
+    const h = loginHarness({ isExecutable: () => false });
+    expect(h.status().cloud).toMatchObject({ binaryFound: false, auth: 'login' });
+    for (let i = 0; i <= MAX_ANOMALY_CALLS_PER_WINDOW; i += 1) {
+      expect(await h.ask(anomalyRequest(5))).toEqual({ ok: false, trigger: 'anomaly', issueKey: 'clipping:5', reason: 'no-binary', attempts: [{ source: 'cloud', reason: 'no-binary' }] });
+    }
+    expect(h.spawns).toEqual([]);
+    h.deps.isExecutable = (file) => file === BINARY;
+    void h.ask(anomalyRequest(5));
+    await flush();
+    expect(h.spawns).toHaveLength(1);
+  });
+
+  it('a non-login failure still spends the anomaly budget, as today', async () => {
+    const h = loginHarness();
+    expect(await failNextWith(h, anomalyRequest(6), 1, 'Credit balance is too low')).toMatchObject({ reason: 'exit' });
+    expect(await h.ask(anomalyRequest(6))).toMatchObject({ ok: false, reason: 'cooldown' });
+  });
+
+  it('timeout: the kill and settle still hold and the budget is spent, same as today', async () => {
+    const t = recordingTimers();
+    const h = loginHarness({ timers: t.timers });
+    const hung = h.ask(anomalyRequest(7));
+    await flush();
+    h.spawns[0].child.hangs = true;
+    t.fire(CLAUDE_TIMEOUT_MS);
+    t.fire(CLAUDE_KILL_GRACE_MS);
+    expect(h.spawns[0].child.signals).toEqual(['SIGTERM', 'SIGKILL']);
+    expect(await settledOrNot(hung)).toBe(UNSETTLED);
+    t.fire(CLAUDE_KILL_SETTLE_MS);
+    expect(await hung).toMatchObject({ ok: false, reason: 'timeout' });
+    expect(await h.ask(anomalyRequest(7))).toMatchObject({ ok: false, reason: 'cooldown' });
+  });
+
+  it('fallback chain unchanged: a login failure falls through to Local', async () => {
+    const h = loginHarness();
+    updateSettings({ mixerLocalAssistEnabled: true, mixerLocalAssistEndpoint: 'http://127.0.0.1:8080/v1', mixerLocalAssistModel: 'qwen2.5' });
+    h.fetchReply.current = () => Promise.resolve({ status: 200, text: () => Promise.resolve(JSON.stringify({ choices: [{ message: { content: 'Check the preamp gain.' } }] })) });
+    expect(await failNextWith(h, QUESTION, 1, 'Not logged in')).toEqual({
+      ok: true,
+      trigger: 'question',
+      issueKey: null,
+      source: 'local',
+      text: 'Check the preamp gain.',
+      attempts: [{ source: 'cloud', reason: 'not-signed-in' }],
+    });
+  });
+
+  it('an existing token file is reported for the notice but never read, decrypted or injected', async () => {
+    const file = plantOldToken();
+    const h = loginHarness();
+    expect(h.status().cloud).toMatchObject({ storedToken: true, tokenSaved: false, auth: 'login' });
+    const pending = h.ask(QUESTION);
+    await flush();
+    expect(Object.keys(h.spawns[0].env).sort()).toEqual(['HOME', 'PATH']);
+    expect(JSON.stringify(h.spawns[0])).not.toContain(FAKE_TOKEN);
+    h.spawns[0].child.answer('ok');
+    await pending;
+    expect(h.touched).toEqual([]);
+    expect(fs.existsSync(file)).toBe(true);
+  });
+
+  it('saving a token is refused with the flag on and writes nothing', async () => {
+    const h = loginHarness();
+    const result = await h.handles.get('set-mixer-assist-token')!(null, FAKE_TOKEN);
+    expect(result).toMatchObject({ ok: false, reason: 'login-mode', message: TOKEN_SAVE_MESSAGES['login-mode'], status: { cloud: { storedToken: false, auth: 'login' } } });
+    expect(JSON.stringify(result)).not.toContain(FAKE_TOKEN);
+    expect(fs.readdirSync(electronState.userData).filter((f) => f !== 'settings.json')).toEqual([]);
+    expect(h.touched).toEqual([]);
+  });
+
+  it('the explicit Remove stored token action deletes the file and the notice goes away', async () => {
+    const file = plantOldToken();
+    const h = loginHarness();
+    expect(h.status().cloud.storedToken).toBe(true);
+    const cleared = (await h.handles.get('clear-mixer-assist-token')!(null)) as { cloud: Record<string, unknown> };
+    expect(cleared.cloud).toMatchObject({ storedToken: false, auth: 'login' });
+    expect(fs.existsSync(file)).toBe(false);
+    expect(h.status().cloud.storedToken).toBe(false);
+    expect(h.touched).toEqual([]);
+  });
+
+  it('flag off with the same token file: the token is still read and injected as before', async () => {
+    plantOldToken();
+    const h = harness({ secrets: createSecretStore({ safeStorage: xorSafeStorage(), fs, dir: electronState.userData }) });
+    registerMixerAssistHandlers(h.deps);
+    updateSettings({ mixerCloudAssistEnabled: true });
+    const status = h.handles.get('get-mixer-assist-status')!(null) as { cloud: Record<string, unknown> };
+    expect(status.cloud).toEqual({ enabled: true, binaryFound: true, tokenSaved: true, encryptionAvailable: true, lastFailure: null });
+    const pending = h.handles.get('ask-mixer-assist')!(null, QUESTION) as Promise<unknown>;
+    await flush();
+    expect(h.spawns[0].env[OAUTH_KEY]).toBe(FAKE_TOKEN);
+    h.spawns[0].child.answer('ok');
+    expect(await pending).toMatchObject({ ok: true, source: 'cloud' });
+  });
+});
+
 describe('default deps (no Electron window needed)', () => {
+  it('cloudLogin follows only the SOUND_BUDDY_FEATURES env flag', () => {
+    vi.stubEnv('SOUND_BUDDY_FEATURES', 'console,mixer');
+    expect(defaultMixerAssistDeps().cloudLogin).toBe(false);
+    vi.stubEnv('SOUND_BUDDY_FEATURES', 'console,mixer,mixerCloudAssistLogin');
+    expect(defaultMixerAssistDeps().cloudLogin).toBe(true);
+    vi.unstubAllEnvs();
+  });
+
   it('resolve real executables, make and remove a fresh temp dir, and read the clock', () => {
     const deps = defaultMixerAssistDeps();
     const dir = deps.makeTempDir();
@@ -631,6 +821,7 @@ describe('default deps (no Electron window needed)', () => {
     const deps = defaultMixerAssistDeps();
     deps.secrets.save(FAKE_TOKEN);
     expect(deps.secrets.isSaved()).toBe(true);
+    expect(deps.secrets.encryptionAvailable()).toBe(true);
     deps.secrets.clear();
     expect(deps.secrets.isSaved()).toBe(false);
   });

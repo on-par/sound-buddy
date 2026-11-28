@@ -24,6 +24,9 @@ export const BUSY_LINE = 'Still answering the last question. Wait for it, or cho
 export const ASSIST_CLOUD_SOURCE_LABEL = 'Cloud · Claude Code';
 export const ASSIST_LOCAL_SOURCE_LABEL = 'Local';
 export const ASSIST_LOCAL_FALLBACK_LABEL = 'Local model';
+export const CLAUDE_MISSING_LINE = "Claude Code isn't installed on this Mac. Install it, or set its path in Settings ▸ Console.";
+export const CLAUDE_SIGNED_OUT_LINE = "Claude Code isn't signed in. Run claude in Terminal and sign in, then choose Check again.";
+export const STORED_TOKEN_LINE = "Sound Buddy no longer stores a Claude Code token and uses Claude Code's own login. Remove the old token in Settings ▸ Console.";
 export const ASSIST_CHIPS = ['What needs attention first?', 'Explain the top card in plain words', 'What should I check on the inspected channel?'];
 
 export const FALLBACK_COPY: Record<MixerAssistSource, Partial<Record<MixerAssistReason, string>>> = {
@@ -48,8 +51,14 @@ export const FALLBACK_COPY: Record<MixerAssistSource, Partial<Record<MixerAssist
   },
 };
 
+const LOGIN_CLOUD_COPY: Partial<Record<MixerAssistReason, string>> = {
+  'no-binary': CLAUDE_MISSING_LINE,
+  'not-signed-in': CLAUDE_SIGNED_OUT_LINE,
+};
+
 const UNAVAILABLE_FAILURES: ReadonlySet<MixerAssistReason> = new Set([
   'no-binary',
+  'not-signed-in',
   'no-token',
   'no-encryption',
   'spawn-error',
@@ -118,8 +127,8 @@ export function runtimeHealth(status: MixerAssistStatusDto): Record<MixerAssistS
   const l = status.local;
   const cloudStatic: MixerAssistReason[] = [];
   if (!c.binaryFound) cloudStatic.push('no-binary');
-  if (c.encryptionAvailable === false) cloudStatic.push('no-encryption');
-  if (!c.tokenSaved) cloudStatic.push('no-token');
+  if (c.auth !== 'login' && c.encryptionAvailable === false) cloudStatic.push('no-encryption');
+  if (c.auth !== 'login' && !c.tokenSaved) cloudStatic.push('no-token');
   const localStatic: MixerAssistReason[] = [];
   if (l.endpoint === 'unset') localStatic.push('no-endpoint');
   if (l.endpoint === 'invalid') localStatic.push('bad-endpoint');
@@ -127,8 +136,17 @@ export function runtimeHealth(status: MixerAssistStatusDto): Record<MixerAssistS
   return { cloud: health(c.enabled, cloudStatic, c.lastFailure), local: health(l.enabled, localStatic, l.lastFailure) };
 }
 
-function copyFor(source: MixerAssistSource, reason: MixerAssistReason): string {
-  return FALLBACK_COPY[source][reason] ?? `${SOURCE_NAMES[source]} assist couldn't answer. Ask again.`;
+function copyFor(source: MixerAssistSource, reason: MixerAssistReason, login: boolean): string {
+  const loginCopy = login && source === 'cloud' ? LOGIN_CLOUD_COPY[reason] : undefined;
+  return loginCopy ?? FALLBACK_COPY[source][reason] ?? `${SOURCE_NAMES[source]} assist couldn't answer. Ask again.`;
+}
+
+function isLogin(status: MixerAssistStatusDto | null): boolean {
+  return status?.cloud.auth === 'login';
+}
+
+function storedTokenLines(status: MixerAssistStatusDto | null): Array<{ key: string; text: string }> {
+  return status?.cloud.storedToken === true ? [{ key: 'cloud:stored-token', text: STORED_TOKEN_LINE }] : [];
 }
 
 function sourceLabel(source: MixerAssistSource, localModel: string): string {
@@ -146,17 +164,18 @@ export function railAssistView(input: AssistRailInput): RailAssistView {
   const busyLine = input.lastFailure?.reason === 'busy' ? BUSY_LINE : null;
   const pending = pendingText(input.pending);
   if (input.status === null || (!input.status.cloud.enabled && !input.status.local.enabled)) {
-    return { mode: 'off', composerEnabled: false, composerPlaceholder: COMPOSER_OFF_PLACEHOLDER, chips: [], pending, fallbackLines: [], busyLine, answers };
+    return { mode: 'off', composerEnabled: false, composerPlaceholder: COMPOSER_OFF_PLACEHOLDER, chips: [], pending, fallbackLines: storedTokenLines(input.status), busyLine, answers };
   }
   const h = runtimeHealth(input.status);
   const ready = h.cloud.state === 'ready' || h.local.state === 'ready';
-  const lines: Array<{ key: string; text: string }> = [];
+  const login = isLogin(input.status);
+  const lines = storedTokenLines(input.status);
   const seen = new Set<string>();
   const add = (source: MixerAssistSource, reason: MixerAssistReason) => {
     const key = `${source}:${reason}`;
     if (SILENT_FAILURES.has(reason) || seen.has(key)) return;
     seen.add(key);
-    lines.push({ key, text: copyFor(source, reason) });
+    lines.push({ key, text: copyFor(source, reason, login) });
   };
   for (const source of ['cloud', 'local'] as const) for (const reason of h[source].reasons) add(source, reason);
   for (const attempt of input.lastFailure?.attempts ?? []) add(attempt.source, attempt.reason);
@@ -183,14 +202,15 @@ export interface SettingsStatusLines {
 export function settingsStatusLines(status: MixerAssistStatusDto | null, endpoint: string): SettingsStatusLines {
   if (status === null) return { cloud: 'Checking Cloud assist…', local: 'Checking Local assist…', token: 'Not set', binary: 'Checking…' };
   const h = runtimeHealth(status);
+  const login = isLogin(status);
   const line = (source: MixerAssistSource, readyText: string) => {
     const r = h[source];
     if (r.state === 'off') return `${SOURCE_NAMES[source]} assist is off.`;
     if (r.state === 'ready') return `${SOURCE_NAMES[source]} assist is ready: ${readyText}.`;
-    return `${SOURCE_NAMES[source]} assist can't run yet. ${r.reasons.map((reason) => copyFor(source, reason)).join(' ')}`;
+    return `${SOURCE_NAMES[source]} assist can't run yet. ${r.reasons.map((reason) => copyFor(source, reason, login)).join(' ')}`;
   };
   return {
-    cloud: line('cloud', 'Claude Code found, token saved'),
+    cloud: line('cloud', login ? 'Claude Code found, using your Claude Code login' : 'Claude Code found, token saved'),
     local: line('local', endpoint),
     token: status.cloud.tokenSaved ? 'Token saved' : 'Not set',
     binary: status.cloud.binaryFound ? 'Claude Code found' : 'Claude Code not found',

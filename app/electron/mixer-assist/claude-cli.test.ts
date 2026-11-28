@@ -7,10 +7,12 @@ import {
   CLAUDE_KILL_GRACE_MS,
   CLAUDE_KILL_SETTLE_MS,
   CLAUDE_TIMEOUT_MS,
+  LOGIN_FAILURE_PATTERNS,
   MAX_STDERR_CHARS,
   MAX_STDOUT_BYTES,
   claudeArgs,
   claudeChildEnv,
+  isLoginFailure,
   resolveClaudeBinary,
   runClaude,
   type ChildLike,
@@ -392,5 +394,131 @@ describe('runClaude settles after SIGKILL even when close never fires', () => {
     await tick();
     expect(s.removed).toEqual(s.made);
     expect(child.signals).toEqual(['SIGTERM', 'SIGKILL']);
+  });
+});
+
+const LOGIN_PARENT_ENV = { ...PARENT_ENV, [ENV_NAME]: 'inherited-shell-value-not-ours' };
+const FAKE_OAT = 'sk-ant-oat01-FAKEfakeFAKEfake0123';
+const LOGIN_FAILURE_SAMPLES = [
+  'Not logged in · Please run /login',
+  'Invalid API key · Please run /login',
+  'OAuth token has expired. Please obtain a new token or refresh your existing token.',
+  'OAuth token has been revoked',
+  'API Error: 401 {"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}',
+  'Error: You are not signed in.',
+];
+const OTHER_FAILURE_SAMPLES = [
+  'Error: connect ECONNREFUSED 127.0.0.1:443',
+  'Credit balance is too low',
+  'API Error: 500 {"type":"error","error":{"type":"api_error","message":"Internal server error"}}',
+  'API Error: 529 Overloaded',
+  'Rate limit reached',
+];
+
+function loginInput(signal = new AbortController().signal) {
+  return { ...input(signal), token: null, env: LOGIN_PARENT_ENV };
+}
+
+describe('login failure patterns', () => {
+  it('every named pattern matches at least one known Claude Code login failure, and every sample is matched', () => {
+    for (const pattern of LOGIN_FAILURE_PATTERNS) expect(LOGIN_FAILURE_SAMPLES.some((sample) => pattern.test(sample))).toBe(true);
+    expect(LOGIN_FAILURE_SAMPLES.filter((sample) => !isLoginFailure(sample))).toEqual([]);
+  });
+
+  it('ordinary failures (network, credit, server, overload, rate limit) are not login failures', () => {
+    expect(OTHER_FAILURE_SAMPLES.filter((sample) => isLoginFailure(sample))).toEqual([]);
+  });
+});
+
+describe('claudeChildEnv on the login path (no token)', () => {
+  it('sets no oauth variable at all, drops an inherited one and the three Anthropic keys, and never mutates the parent', () => {
+    const parent = { ...LOGIN_PARENT_ENV };
+    const env = claudeChildEnv(parent, null);
+    expect(Object.keys(env).sort()).toEqual(['HOME', 'PATH']);
+    expect(ENV_NAME in env).toBe(false);
+    expect(parent).toEqual(LOGIN_PARENT_ENV);
+  });
+});
+
+describe('runClaude on the login path (no token)', () => {
+  it('logged in: same safe argv, stripped env with no oauth key, prompt only on stdin, answer returned', async () => {
+    const s = setup();
+    const done = runClaude(s.deps, loginInput());
+    s.child.stdout.emit('data', Buffer.from('Pull 02 down two dB.\n'));
+    s.child.emit('close', 0, null);
+    expect(await done).toEqual({ ok: true, text: 'Pull 02 down two dB.' });
+    const [call] = s.recorded;
+    expect(call.shell).toBe(false);
+    expect(call.args).toEqual(['-p', '--output-format', 'text', '--tools', '']);
+    expect(Object.keys(call.env).sort()).toEqual(['HOME', 'PATH']);
+    expect(call.cwd).toBe(s.made[0]);
+    expect(s.child.stdin.written).toEqual(['Why is 02 Vox 1 clipping?']);
+    expect(s.child.stdin.ended).toBe(true);
+    expect(s.removed).toEqual(s.made);
+    expect(s.timers.pending.size).toBe(0);
+  });
+
+  it.each(LOGIN_FAILURE_SAMPLES)('logged out on stderr (%s): not-signed-in, with a redacted detail', async (sample) => {
+    const s = setup();
+    const done = runClaude(s.deps, loginInput());
+    s.child.stderr.emit('data', Buffer.from(`${sample} ${FAKE_OAT} Bearer fakebearer99 ${ENV_NAME}=fakeenv77`));
+    s.child.emit('close', 1, null);
+    const result = await done;
+    expect(result).toMatchObject({ ok: false, reason: 'not-signed-in' });
+    const detail = result.ok ? '' : result.detail;
+    for (const leak of ['sk-ant-', 'FAKEfake', 'fakebearer99', 'fakeenv77']) expect(detail).not.toContain(leak);
+    expect(s.removed).toEqual(s.made);
+  });
+
+  it('logged out with the message on stdout only: still not-signed-in, detail taken from stdout and redacted', async () => {
+    const s = setup();
+    const done = runClaude(s.deps, loginInput());
+    s.child.stdout.emit('data', Buffer.from(`Invalid API key · Please run /login ${FAKE_OAT}`));
+    s.child.emit('close', 1, null);
+    expect(await done).toEqual({ ok: false, reason: 'not-signed-in', detail: 'Invalid API key · Please run /login [redacted]' });
+  });
+
+  it('a login message buried past the sanitize cap is still classified', async () => {
+    const s = setup();
+    const done = runClaude(s.deps, loginInput());
+    s.child.stderr.emit('data', Buffer.from(`${'w'.repeat(MAX_STDERR_CHARS / 2)} Not logged in · Please run /login`));
+    s.child.emit('close', 1, null);
+    expect(await done).toMatchObject({ ok: false, reason: 'not-signed-in' });
+  });
+
+  it('a non-login failure stays a plain exit, and a zero exit is never reclassified', async () => {
+    const s = setup();
+    const done = runClaude(s.deps, loginInput());
+    s.child.stderr.emit('data', Buffer.from('Credit balance is too low'));
+    s.child.emit('close', 1, null);
+    expect(await done).toEqual({ ok: false, reason: 'exit', detail: 'Credit balance is too low' });
+    const z = setup();
+    const answered = runClaude(z.deps, loginInput());
+    z.child.stdout.emit('data', Buffer.from('If the desk says not logged in, check the network.'));
+    z.child.emit('close', 0, null);
+    expect(await answered).toEqual({ ok: true, text: 'If the desk says not logged in, check the network.' });
+  });
+
+  it('the token path never classifies a login failure: it stays exit, exactly as before', async () => {
+    const s = setup();
+    const done = runClaude(s.deps, input());
+    s.child.stderr.emit('data', Buffer.from('Invalid API key · Please run /login'));
+    s.child.emit('close', 1, null);
+    expect(await done).toEqual({ ok: false, reason: 'exit', detail: 'Invalid API key · Please run /login' });
+  });
+
+  it('timeout on the login path keeps the SIGTERM, 2 s SIGKILL grace and 1 s settle', async () => {
+    const child = new FakeChild();
+    child.closes = false;
+    const s = setup(child);
+    const done = runClaude(s.deps, loginInput());
+    s.timers.fire(CLAUDE_TIMEOUT_MS);
+    expect(child.signals).toEqual(['SIGTERM']);
+    s.timers.fire(CLAUDE_KILL_GRACE_MS);
+    expect(child.signals).toEqual(['SIGTERM', 'SIGKILL']);
+    expect(await settledOrNot(done)).toBe(UNSETTLED);
+    s.timers.fire(CLAUDE_KILL_SETTLE_MS);
+    expect(await settledOrNot(done)).toEqual({ ok: false, reason: 'timeout', detail: '' });
+    expect(s.removed).toEqual(s.made);
   });
 });

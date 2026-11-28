@@ -49,13 +49,13 @@ function realDeps(timeoutMs: number) {
   return { deps, pids, dirs };
 }
 
-function run(mode: string, signal = new AbortController().signal, timeoutMs = ROOMY_TIMEOUT_MS) {
+function run(mode: string, signal = new AbortController().signal, timeoutMs = ROOMY_TIMEOUT_MS, token: string | null = FAKE_TOKEN, extraEnv: Record<string, string> = {}) {
   const r = realDeps(timeoutMs);
   const done = runClaude(r.deps, {
     binary: STUB,
-    token: FAKE_TOKEN,
+    token,
     prompt: 'Channel 02 Vox 1 is clipping. What should I check first?',
-    env: { PATH: '/usr/bin:/bin', SB_STUB_MODE: mode },
+    env: { PATH: '/usr/bin:/bin', SB_STUB_MODE: mode, ...extraEnv },
     model: null,
     signal,
   });
@@ -116,5 +116,27 @@ describe('runClaude against a real stub child named claude', () => {
     } finally {
       if (grandchild > 0 && isAlive(grandchild)) process.kill(grandchild, 'SIGKILL');
     }
+  }, TEST_TIMEOUT_MS);
+});
+
+describe('runClaude login path (no token) against the real stub child', () => {
+  const INHERITED = { ['CLAUDE_CODE_' + 'OAUTH_TOKEN']: 'inherited-not-ours', ANTHROPIC_API_KEY: 'parent-key', HOME: '/Users/op' };
+
+  it('the child sees no oauth variable and no Anthropic key, only the ordinary env', async () => {
+    const result = await run('env', new AbortController().signal, ROOMY_TIMEOUT_MS, null, INHERITED).done;
+    expect(result).toEqual({ ok: true, text: 'oauth= anthropic= home=set' });
+  }, TEST_TIMEOUT_MS);
+
+  it('a logged-out claude exits non-zero and becomes not-signed-in with a redacted detail', async () => {
+    const result = await run('logged-out', new AbortController().signal, ROOMY_TIMEOUT_MS, null).done;
+    expect(result).toEqual({ ok: false, reason: 'not-signed-in', detail: 'auth probe failed [redacted]\n' });
+    expect(JSON.stringify(result)).not.toContain('stubFAKE');
+  }, TEST_TIMEOUT_MS);
+
+  it('a child that ignores SIGTERM is still SIGKILLed after the grace period', async () => {
+    const r = run('stubborn', new AbortController().signal, FAST_TIMEOUT_MS, null);
+    expect(await r.done).toMatchObject({ ok: false, reason: 'timeout' });
+    expect(isAlive(r.pids[0])).toBe(false);
+    expect(fs.existsSync(r.dirs[0])).toBe(false);
   }, TEST_TIMEOUT_MS);
 });
